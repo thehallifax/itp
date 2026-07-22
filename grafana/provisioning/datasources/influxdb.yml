@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: influxdb
+    uid: ffsu5ap2kr5dse
+    type: influxdb
+    access: proxy
+    url: http://influxdb3-core:8181
+    isDefault: true
+    editable: false
+    jsonData:
+      version: SQL
+      dbName: local_system
+      httpMode: POST
+      insecureGrpc: true
+    secureJsonData:
+      token: ${INFLUXDB_TOKEN}

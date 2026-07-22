@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - {name: ITP Overview, orgId: 1, folder: Overview, folderUid: itp-folder-overview, type: file, disableDeletion: false, allowUiUpdates: true, updateIntervalSeconds: 30, options: {path: /var/lib/grafana/dashboards/overview}}
+  - {name: ITP Network, orgId: 1, folder: Network, folderUid: itp-folder-network, type: file, disableDeletion: false, allowUiUpdates: true, updateIntervalSeconds: 30, options: {path: /var/lib/grafana/dashboards/network}}
+  - {name: ITP Wireless, orgId: 1, folder: Wireless, folderUid: itp-folder-wireless, type: file, disableDeletion: false, allowUiUpdates: true, updateIntervalSeconds: 30, options: {path: /var/lib/grafana/dashboards/wireless}}
+  - {name: ITP Security, orgId: 1, folder: Security, folderUid: itp-folder-security, type: file, disableDeletion: false, allowUiUpdates: true, updateIntervalSeconds: 30, options: {path: /var/lib/grafana/dashboards/security}}
+  - {name: ITP Compute, orgId: 1, folder: Compute, folderUid: itp-folder-compute, type: file, disableDeletion: false, allowUiUpdates: true, updateIntervalSeconds: 30, options: {path: /var/lib/grafana/dashboards/compute}}
+  - {name: ITP Vendor, orgId: 1, folder: Vendor, folderUid: itp-folder-vendor, type: file, disableDeletion: false, allowUiUpdates: true, updateIntervalSeconds: 30, options: {path: /var/lib/grafana/dashboards/vendor}}
+  - {name: ITP Health, orgId: 1, folder: Health, folderUid: itp-folder-health, type: file, disableDeletion: false, allowUiUpdates: true, updateIntervalSeconds: 30, options: {path: /var/lib/grafana/dashboards/health}}

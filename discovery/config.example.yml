@@ -1,0 +1,75 @@
+schema_version: 1
+customer: st-brigids
+site: st-brigids
+
+discovery:
+  interval_seconds: 3600
+  concurrency: 40
+  timeout_seconds: 1.5
+  retries: 1
+
+snmp:
+  version: 2
+  communities:
+    - public
+
+networks:
+  - cidr: 192.0.2.0/24
+    purpose: network
+  - cidr: 198.51.100.0/24
+    purpose: printers
+  - cidr: 203.0.113.0/24
+    purpose: wireless
+
+exclusions:
+  - 192.0.2.1
+
+inventory:
+  enabled: true
+  persistence_path: /app/runtime/inventory
+  stale_after_seconds: 86400
+  missing_after_seconds: 604800
+  lifecycle_evaluation_interval_seconds: 3600
+  lifecycle_history_max_events: 10000
+  lifecycle_history_retention_days: 365
+  preserve_legacy_outputs: true
+  change_detection:
+    enabled: true
+    history_max_events: 20000
+    history_retention_days: 365
+    duplicate_suppression_seconds: 3600
+    ignored_fields: []
+    minimum_severity: info
+    field_minimum_severity: {}
+    hostname_pattern_exclusions: []
+    device_type_exclusions: []
+    enrichment_only_fields:
+      - serial_number
+      - mac_address
+      - source_asset_id
+
+collectors:
+  snmp:
+    enabled: true
+    execution: edge
+  mist:
+    enabled: false
+    execution: central
+    base_url: https://api.mist.com
+    organization_id: ${MIST_ORG_ID}
+    api_token: ${MIST_API_TOKEN}
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 120
+    timeout_seconds: 20
+  fortigate:
+    enabled: false
+    execution: edge
+    host: ${FORTIGATE_HOST}
+    api_token: ${FORTIGATE_API_TOKEN}
+    verify_tls: ${FORTIGATE_VERIFY_TLS}
+    customer: ${FORTIGATE_CUSTOMER}
+    site: ${FORTIGATE_SITE}
+    timeout_seconds: ${FORTIGATE_TIMEOUT_SECONDS}
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 60
+    max_retries: 2

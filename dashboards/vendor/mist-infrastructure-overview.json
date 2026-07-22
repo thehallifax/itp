@@ -1,0 +1,746 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring}",
+          "refId": "A",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring}",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Total Devices Reporting",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS online_devices FROM latest WHERE rn = 1 AND online = true AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
+          "refId": "A",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS online_devices FROM latest WHERE rn = 1 AND online = true AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Online Devices",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS offline_devices FROM latest WHERE rn = 1 AND online = false AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
+          "refId": "A",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS offline_devices FROM latest WHERE rn = 1 AND online = false AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Offline / Disconnected",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short",
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "Failed"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "Successful"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collection_success FROM collector_health WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A",
+          "rawSql": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collection_success FROM collector_health WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Last Collection Successful",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "hidden",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "auto",
+        "showValue": "always",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "targets": [
+        {
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT platform, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY platform ORDER BY devices DESC",
+          "refId": "A",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT platform, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY platform ORDER BY devices DESC",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Devices by Type",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "id": 6,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "hidden",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "auto",
+        "showValue": "always",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT site, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY site ORDER BY devices DESC",
+          "refId": "A",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT site, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY site ORDER BY devices DESC",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Devices by Site",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 7,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "last_seen"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "query": "WITH latest AS (SELECT time, device_id, hostname, model, platform, site, online, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, device_id, platform AS device_type, site, 'offline' AS status, time AS last_seen, uptime_seconds FROM latest WHERE rn = 1 AND online = false AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY time DESC",
+          "refId": "A",
+          "rawSql": "WITH latest AS (SELECT time, device_id, hostname, model, platform, site, online, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, device_id, platform AS device_type, site, 'offline' AS status, time AS last_seen, uptime_seconds FROM latest WHERE rn = 1 AND online = false AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY time DESC",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Recently Offline Devices",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "id": 8,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "query": "WITH latest AS (SELECT time, device_id, hostname, model, site, online, client_count, rx_bps, tx_bps, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM wireless_access_point WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS access_point, model, site, client_count, rx_bps, tx_bps, online, time AS last_seen FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} ORDER BY client_count DESC",
+          "refId": "A",
+          "rawSql": "WITH latest AS (SELECT time, device_id, hostname, model, site, online, client_count, rx_bps, tx_bps, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM wireless_access_point WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS access_point, model, site, client_count, rx_bps, tx_bps, online, time AS last_seen FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} ORDER BY client_count DESC",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Access Point Usage",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "id": 9,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "query": "WITH latest AS (SELECT time, hostname, model, platform, site, cpu_percent, memory_used_percent, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, platform AS device_type, site, cpu_percent, memory_used_percent, uptime_seconds, time AS last_seen FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY hostname",
+          "refId": "A",
+          "rawSql": "WITH latest AS (SELECT time, hostname, model, platform, site, cpu_percent, memory_used_percent, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, platform AS device_type, site, cpu_percent, memory_used_percent, uptime_seconds, time AS last_seen FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY hostname",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Device Health",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "id": 10,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "query": "SELECT time, success, duration_ms, devices_returned, points_written, api_requests, retry_count, error_count FROM collector_health WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 20",
+          "refId": "A",
+          "rawSql": "SELECT time, success, duration_ms, devices_returned, points_written, api_requests, retry_count, error_count FROM collector_health WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 20",
+          "rawQuery": true,
+          "format": "table"
+        }
+      ],
+      "title": "Collector Health",
+      "type": "table"
+    }
+  ],
+  "refresh": "2m",
+  "schemaVersion": 41,
+  "tags": [
+    "mist",
+    "infrastructure"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": "'%'",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ffsu5ap2kr5dse"
+        },
+        "definition": "SELECT DISTINCT site FROM infrastructure_device WHERE collector = 'mist' ORDER BY site",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Site",
+        "multi": false,
+        "name": "site",
+        "options": [],
+        "query": "SELECT DISTINCT site FROM infrastructure_device WHERE collector = 'mist' ORDER BY site",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": "'%'",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ffsu5ap2kr5dse"
+        },
+        "definition": "SELECT DISTINCT platform FROM infrastructure_device WHERE collector = 'mist' ORDER BY platform",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Device Type",
+        "multi": false,
+        "name": "device_type",
+        "options": [],
+        "query": "SELECT DISTINCT platform FROM infrastructure_device WHERE collector = 'mist' ORDER BY platform",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": "'%'",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ffsu5ap2kr5dse"
+        },
+        "definition": "SELECT DISTINCT hostname FROM infrastructure_device WHERE collector = 'mist' AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Device",
+        "multi": false,
+        "name": "device",
+        "options": [],
+        "query": "SELECT DISTINCT hostname FROM infrastructure_device WHERE collector = 'mist' AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": "'%'",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Status",
+        "multi": false,
+        "name": "status",
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "%"
+          },
+          {
+            "selected": false,
+            "text": "Online",
+            "value": "online"
+          },
+          {
+            "selected": false,
+            "text": "Offline",
+            "value": "offline"
+          }
+        ],
+        "query": "online,offline",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Mist Infrastructure Overview",
+  "uid": "mist-infrastructure-overview",
+  "version": 1,
+  "weekStart": ""
+}

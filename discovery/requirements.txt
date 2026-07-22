@@ -1,0 +1,4 @@
+pysnmp>=7.1,<8
+PyYAML>=6.0,<7
+pytest>=8,<9
+httpx>=0.27,<1

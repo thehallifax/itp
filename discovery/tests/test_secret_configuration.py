@@ -1,0 +1,47 @@
+from pathlib import Path
+
+import pytest
+import yaml
+
+from collectors.config import load_config
+from collectors.mist.collector import MistCollector
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_mist_secret_is_optional_and_collector_only():
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    collector = compose["services"]["collector"]
+    assert "profiles" not in collector
+    assert collector["env_file"] == [
+        {"path": "secrets/mist.env", "required": False},
+        {"path": "secrets/fortigate.env", "required": False},
+    ]
+    environment = "\n".join(collector["environment"])
+    assert "MIST_ORG_ID" not in environment and "MIST_API_TOKEN" not in environment
+    assert all(name in environment for name in ("INFLUXDB_HOST", "INFLUXDB_TOKEN", "INFLUXDB_BUCKET"))
+
+
+def test_secret_files_are_excluded_from_git_and_docker_context():
+    gitignore = (ROOT / ".gitignore").read_text()
+    dockerignore = (ROOT / ".dockerignore").read_text().splitlines()
+    assert "secrets/*.env" in gitignore and "!secrets/*.env.example" in gitignore
+    assert "secrets/" in dockerignore and ".env" in dockerignore and ".env.*" in dockerignore
+    assert (ROOT / "secrets/mist.env.example").read_text() == "MIST_ORG_ID=\nMIST_API_TOKEN=\n"
+    fortigate = (ROOT / "secrets/fortigate.env.example").read_text()
+    assert "FORTIGATE_API_TOKEN=\n" in fortigate
+    assert "FORTIGATE_VERIFY_TLS=true\n" in fortigate
+    assert "MIST_" not in (ROOT / ".env.example").read_text()
+
+
+def test_missing_environment_placeholders_fail_without_secret_values(tmp_path, monkeypatch):
+    monkeypatch.delenv("MIST_ORG_ID", raising=False)
+    monkeypatch.delenv("MIST_API_TOKEN", raising=False)
+    path = tmp_path / "config.yml"
+    path.write_text("collectors:\n  mist:\n    enabled: true\n    organization_id: ${MIST_ORG_ID}\n    api_token: ${MIST_API_TOKEN}\n")
+    config = load_config(path)
+    assert config["collectors"]["mist"]["organization_id"] == ""
+    assert config["collectors"]["mist"]["api_token"] == ""
+    with pytest.raises(ValueError, match="MIST_ORG_ID and MIST_API_TOKEN are required") as caught:
+        MistCollector(config)
+    assert "${" not in str(caught.value)

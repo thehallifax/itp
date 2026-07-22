@@ -22,6 +22,14 @@ services:
   telegraf:
     container_name: telegraf
     image: telegraf
+    command:
+      - telegraf
+      - --config
+      - /etc/telegraf/telegraf.conf
+      - --config-directory
+      - /etc/telegraf/telegraf.d
+      - --watch-config
+      - poll
     depends_on:
       influxdb3-core:
         condition: service_healthy
@@ -33,9 +41,62 @@ services:
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
       - TELEGRAF_COLLECTION_INTERVAL=${TELEGRAF_COLLECTION_INTERVAL}
       - HOSTNAME=telegraf
+    env_file:
+      - .env
+      - secrets/snmp.env
     volumes:
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+      - ./telegraf/telegraf.d:/etc/telegraf/telegraf.d:ro
     restart: unless-stopped
+
+  discovery:
+    build:
+      context: .
+      dockerfile: discovery/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./discovery/config.yml:/app/config.yml:ro
+      - ./runtime/inventory:/app/runtime/inventory
+      - ./telegraf/telegraf.d/generated:/app/generated
+    command:
+      - python
+      - /app/discover.py
+      - run
+      - --config
+      - /app/config.yml
+
+  collector:
+    build:
+      context: .
+      dockerfile: discovery/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: secrets/mist.env
+        required: false
+      - path: secrets/fortigate.env
+        required: false
+    environment:
+      - ITP_RUNTIME_MODE=${ITP_RUNTIME_MODE:-central}
+      - INFLUXDB_HOST=${INFLUXDB_HOST}
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+    volumes:
+      - ./discovery/config.yml:/app/config.yml:ro
+      - ./runtime/inventory:/app/runtime/inventory
+    command:
+      - python
+      - -m
+      - collectors
+      - run
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/collector-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      influxdb3-core:
+        condition: service_healthy
 
   grafana:
     image: grafana/grafana
@@ -43,9 +104,12 @@ services:
       - "${GRAFANA_PORT}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
     depends_on:
       - influxdb3-core
     # Or switch to influxdb3-enterprise as needed

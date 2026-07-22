@@ -1,0 +1,56 @@
+discovery/config.yml
+.env
+discovery/config.yml
+runtime/inventory/*.json
+runtime/inventory/*.lock
+runtime/inventory/.inventory.lock
+telegraf/telegraf.d/generated/*.conf
+
+# Local service credentials
+secrets/*.env
+!secrets/*.env.example
+
+# Runtime and generated state
+runtime/
+analysis/
+backups/
+
+# Local backup files
+*.backup
+*.backup-*
+
+# Runtime secrets
+secrets/*.env
+!secrets/*.env.example
+
+# Runtime
+runtime/
+analysis/
+backups/
+
+# Local backup files
+*.backup
+*.backup-*
+
+# Local Telegraf configs
+telegraf/telegraf.d/inputs/*.manual
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Pytest
+.pytest_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# macOS
+.DS_Store

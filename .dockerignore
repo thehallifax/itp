@@ -1,0 +1,9 @@
+.git
+.env
+.env.*
+secrets/
+discovery/config.yml
+runtime
+telegraf/telegraf.d/generated
+**/__pycache__
+**/.pytest_cache
