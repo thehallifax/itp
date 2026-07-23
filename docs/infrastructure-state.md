@@ -37,7 +37,7 @@ WAN state are `null` when the existing outputs do not provide them.
 Adapters are evaluated using fixed precedence:
 
 1. Inventory (`300`)
-2. Vendor collectors—Mist and FortiGate (`200`)
+2. Vendor collectors—Mist, FortiGate and Palo Alto Networks (`200`)
 3. SNMP discovery (`100`)
 
 Identity uses serial, chassis ID, management MAC, hostname/site, IP/site, then a
@@ -57,6 +57,8 @@ Health and Observability Health.
 Subclass `SignalAdapter`, set a unique `name` and integer `priority`, and implement
 `collect()` returning `AdapterResult`. Subclasses register automatically. Missing
 collector files must return an empty result; absence is not an exception.
+PAN-OS records use serial-first fusion, including fusion with SNMP. HA peer
+metadata never creates a second asset without a direct observation.
 
 Existing adapters are Inventory, Mist, FortiGate, and SNMP. They consume only the
 current runtime inventory and source-run outputs and do not call vendor APIs.

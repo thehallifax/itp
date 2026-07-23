@@ -7,6 +7,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import CollectorRegistry
 from .config import load_config
@@ -40,7 +41,7 @@ def _enabled_collectors(config):
     if runtime_mode not in ("central", "edge"):
         raise ValueError(f"unsupported ITP_RUNTIME_MODE: {runtime_mode}")
     inventory_path = os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json")
-    for name in ("mist", "fortigate"):
+    for name in ("mist", "fortigate", "paloalto"):
         collector_settings = settings.get(name, {})
         if not collector_settings.get("enabled", False): continue
         default_execution = CollectorRegistry.metadata(name)["execution"]
@@ -88,7 +89,7 @@ async def _validate(config):
     check("schema version", config.get("schema_version") == 1,
           f"configured={config.get('schema_version')!r} supported=1")
     registered = set(CollectorRegistry.names())
-    check("collector registration", {"mist", "fortigate", "snmp"} <= registered,
+    check("collector registration", {"mist", "fortigate", "paloalto", "snmp"} <= registered,
           ", ".join(sorted(registered)))
     for name, settings in config.get("collectors", {}).items():
         if not settings.get("enabled") or name not in registered: continue
@@ -98,6 +99,14 @@ async def _validate(config):
         if name == "fortigate":
             ok = bool(settings.get("host") and settings.get("api_token"))
             check("FortiGate secrets", ok, "configured" if ok else "FORTIGATE_HOST and FORTIGATE_API_TOKEN are required")
+        if name == "paloalto":
+            from .paloalto.collector import validate_settings
+            try:
+                validate_settings(config)
+                ok = True; detail = "configured"
+            except ValueError as exc:
+                ok = False; detail = str(exc)
+            check("Palo Alto configuration", ok, detail)
     provision = ROOT / "grafana/provisioning/dashboards/dashboards.yml"
     try:
         import yaml
@@ -155,6 +164,29 @@ async def _run(args):
     config = load_config(args.config)
     if args.command == "validate":
         await _validate(config)
+        return
+    if args.command == "paloalto":
+        from .paloalto.collector import validate_settings
+        settings = config.get("collectors", {}).get("paloalto", {})
+        if not settings.get("enabled", False):
+            raise ValueError("collector paloalto is not enabled")
+        if args.action == "validate":
+            validated = validate_settings(config)
+            print(f"Palo Alto configuration valid: endpoint={urlsplit(validated.base_url).hostname} "
+                  f"site={validated.site} tls_verify={'yes' if validated.verify_tls else 'no'}")
+            return
+        collector = CollectorRegistry.create("paloalto", config,
+            os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json"))
+        try:
+            if args.action == "discover":
+                result = await collector.inspect()
+                print(json.dumps(result, indent=2, sort_keys=True))
+            else:
+                await collector.discover()
+                result = await collector.collect()
+                print(json.dumps(result, indent=2, sort_keys=True))
+        finally:
+            await collector.close()
         return
     if args.command == "operations":
         settings = config.get("operations", {})
@@ -401,6 +433,8 @@ def main():
     sites.add_argument("action", choices=("generate",), default="generate", nargs="?")
     wallboard = sub.add_parser("wallboard")
     wallboard.add_argument("action", choices=("generate",), default="generate", nargs="?")
+    paloalto = sub.add_parser("paloalto")
+    paloalto.add_argument("action", choices=("validate", "discover", "run"))
     args = parser.parse_args()
     if args.command == "inventory" and args.action in ("show", "retire", "restore") and not args.asset_id:
         parser.error(f"inventory {args.action} requires asset_id")

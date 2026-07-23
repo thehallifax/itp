@@ -6,9 +6,9 @@ import hashlib
 from .identity import normalize_device_type
 
 
-SOURCE_PRIORITY = {"inventory": 300, "mist": 200, "fortigate": 200, "snmp": 100,
+SOURCE_PRIORITY = {"inventory": 300, "mist": 200, "fortigate": 200, "paloalto": 200, "snmp": 100,
                    "discovery": 100, "legacy": 50}
-VENDOR_SOURCES = {"mist", "fortigate"}
+VENDOR_SOURCES = {"mist", "fortigate", "paloalto"}
 STATUS_FRESHNESS_SECONDS = 300
 
 

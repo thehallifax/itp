@@ -76,6 +76,8 @@ services:
         required: false
       - path: secrets/fortigate.env
         required: false
+      - path: secrets/paloalto.env
+        required: false
     environment:
       - ITP_RUNTIME_MODE=${ITP_RUNTIME_MODE:-central}
       - INFLUXDB_HOST=${INFLUXDB_HOST}

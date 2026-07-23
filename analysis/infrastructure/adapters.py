@@ -70,5 +70,9 @@ class FortiGateAdapter(CollectorAdapter):
     name = "fortigate"; collector = "fortigate"; priority = 200
 
 
+class PaloAltoAdapter(CollectorAdapter):
+    name = "paloalto"; collector = "paloalto"; priority = 200
+
+
 class SNMPAdapter(CollectorAdapter):
     name = "snmp"; collector = "snmp"; priority = 100

@@ -58,6 +58,10 @@ domain unless the dashboard cannot reasonably fit the existing navigation model.
 Collectors must not contain dashboard logic, and operational dashboards should
 not require knowledge of a vendor collector.
 
+Palo Alto firewalls therefore enter generic Firewall and Security/Edge panels
+through canonical classification. COL-PA-001 adds no vendor dashboard and does
+not alter FortiGate panels.
+
 ## Upgrade note
 
 The fixed `itp-folder-overview`, `itp-folder-network`, `itp-folder-compute`, and

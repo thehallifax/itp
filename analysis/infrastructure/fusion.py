@@ -13,7 +13,7 @@ CONFIDENCE_RANK = {"unmerged": 0, "low": 1, "medium": 2, "high": 3, "exact": 4}
 FUSION_FIELDS = ("hostname", "serial_number", "management_ip", "site", "site_id",
     "site_display_name", "device_type",
     "device_role", "vendor", "model", "firmware_version", "lifecycle_state", "managed",
-    "customer", "location", "last_seen_at")
+    "customer", "location", "last_seen_at", "extensions")
 
 
 def _source(record): return str(record.get("source") or record.get("collector") or "unknown").lower()

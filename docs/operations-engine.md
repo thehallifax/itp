@@ -79,6 +79,11 @@ inventory drift, unsupported firmware, certificate expiry, printer consumables,
 WAN packet loss/unavailability, unknown inventory, lifecycle age, and explicit AP,
 switch, and firewall availability.
 
+PAN-OS rules require authoritative evidence: API failure changes observability,
+degraded HA and configured expected-interface failures create issues, and
+licence findings require API-returned expiry. Installed content versions alone
+never produce currency findings.
+
 ## Roadmap
 
 Future work may add vendor-neutral adapters for service checks, backup state,

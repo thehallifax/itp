@@ -102,3 +102,23 @@ collectors:
     discovery_interval_seconds: 21600
     collection_interval_seconds: 60
     max_retries: 2
+  paloalto:
+    enabled: false
+    execution: edge
+    site: customer-site-slug
+    customer: Customer Name
+    base_url: https://192.0.2.1
+    api_key_env: PALOALTO_API_KEY
+    verify_tls: true
+    ca_bundle:
+    timeout_seconds: 20
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 60
+    max_retries: 2
+    collect_interfaces: true
+    collect_ha: true
+    collect_system_resources: true
+    collect_licenses: true
+    collect_content_versions: true
+    expected_interfaces: []
+    licence_expiry_days: 30

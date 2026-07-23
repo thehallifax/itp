@@ -16,6 +16,7 @@ def test_mist_secret_is_optional_and_collector_only():
     assert collector["env_file"] == [
         {"path": "secrets/mist.env", "required": False},
         {"path": "secrets/fortigate.env", "required": False},
+        {"path": "secrets/paloalto.env", "required": False},
     ]
     environment = "\n".join(collector["environment"])
     assert "MIST_ORG_ID" not in environment and "MIST_API_TOKEN" not in environment
@@ -31,6 +32,7 @@ def test_secret_files_are_excluded_from_git_and_docker_context():
     fortigate = (ROOT / "secrets/fortigate.env.example").read_text()
     assert "FORTIGATE_API_TOKEN=\n" in fortigate
     assert "FORTIGATE_VERIFY_TLS=true\n" in fortigate
+    assert (ROOT / "secrets/paloalto.env.example").read_text() == "PALOALTO_API_KEY=\n"
     assert "MIST_" not in (ROOT / ".env.example").read_text()
 
 

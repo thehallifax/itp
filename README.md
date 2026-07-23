@@ -39,6 +39,7 @@ commit `.env`, `secrets/*.env`, generated inventory, or tokens.
 | SNMP | `collectors.snmp.enabled: true` | Discovery → generated Telegraf inputs → InfluxDB |
 | Juniper Mist | `collectors.mist.enabled: true` | Native HTTPS API → shared telemetry contract → InfluxDB |
 | FortiGate | `collectors.fortigate.enabled: true` | Native edge HTTPS API → normalized and compatible telemetry → InfluxDB |
+| Palo Alto Networks | `collectors.paloalto.enabled: true` | Read-only PAN-OS XML API → canonical firewall telemetry → InfluxDB |
 
 Every supported collector is included in the collector image. To enable one:
 
@@ -112,6 +113,8 @@ The one-shot `collect` command writes telemetry and health. `inspect` validates 
 normalization behavior without writing telemetry. SNMP remains a fallback, interface
 counter enrichment source, and option for devices without a suitable API. See the
 [FortiGate collector guide](collectors/fortigate/README.md).
+For PAN-OS permissions, TLS, configuration and second-site deployment, see the
+[Palo Alto collector guide](docs/collectors/paloalto.md).
 
 ## Repository layout
 

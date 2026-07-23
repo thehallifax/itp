@@ -255,3 +255,92 @@ class SwitchOfflineRule(TypedOfflineRule):
 
 class FirewallUnavailableRule(TypedOfflineRule):
     id = "firewall.unavailable"; category = "Firewall"; match = "firewall"; title_word = "Firewall"; severity = "Critical"
+
+
+class PaloAltoAPIUnavailableRule(Rule):
+    id = "PA-API-UNAVAILABLE"; category = "Collector"
+    def evaluate(self, context):
+        state = context.source_states.get("paloalto", {})
+        run = state.get("last_run", {})
+        if run.get("success") is not False: return []
+        category = run.get("error_category") or "unknown"
+        return [item(self, "issue", "Palo Alto API collection unavailable", "High",
+            device="paloalto", summary="The Palo Alto collector could not complete identity collection.",
+            reason=f"Latest source run failed with safe category {category}.",
+            impact="Palo Alto observability is unavailable; firewall availability is not inferred.",
+            action="Verify the read-only API key, TLS trust, and management connectivity.",
+            evidence={"source_collector": "paloalto", "error_category": category})]
+
+
+class PaloAltoHADegradedRule(Rule):
+    id = "PA-HA-DEGRADED"; category = "Firewall"
+    def evaluate(self, context):
+        result = []
+        for asset in context.assets:
+            if "paloalto" not in asset.get("sources", []): continue
+            ha = (asset.get("extensions") or {}).get("ha") or {}
+            if ha.get("status") != "degraded": continue
+            result.append(item(self, "issue", f"Palo Alto HA degraded: {_name(asset)}", "High",
+                canonical_id=asset.get("canonical_id", ""), device=_name(asset),
+                site=_site(asset), site_id=_site_id(asset),
+                summary="Authoritative PAN-OS HA state is degraded.",
+                reason="PAN-OS reported a suspended, non-functional, unavailable, or unsynchronised HA state.",
+                impact="Firewall redundancy may not protect against a node failure.",
+                action="Review local/peer HA state and restore synchronisation.",
+                evidence={"source_collector": "paloalto", "ha": ha}))
+        return result
+
+
+class PaloAltoExpectedInterfaceDownRule(Rule):
+    id = "PA-EXPECTED-INTERFACE-DOWN"; category = "Firewall"
+    def evaluate(self, context):
+        result = []
+        for asset in context.assets:
+            if "paloalto" not in asset.get("sources", []): continue
+            down = ((asset.get("extensions") or {}).get("interface_summary") or {}).get("expected_down", [])
+            for interface in sorted(down):
+                result.append(item(self, "issue",
+                    f"Expected firewall interface down: {_name(asset)} {interface}", "High",
+                    canonical_id=asset.get("canonical_id", ""), device=_name(asset),
+                    site=_site(asset), site_id=_site_id(asset),
+                    summary=f"Explicitly expected interface {interface} is operationally down.",
+                    reason="The interface is listed in expected_interfaces and PAN-OS did not report it up.",
+                    impact="A configured production path may be unavailable.",
+                    action="Validate the connected service, cabling, and interface configuration.",
+                    evidence={"source_collector": "paloalto", "interface": interface,
+                              "expected": True, "operational_status": "down"}))
+        return result
+
+
+class PaloAltoLicenceRule(Rule):
+    id = ""; category = "Security"; expired = None
+    def evaluate(self, context):
+        result = []
+        threshold = int(context.settings.get("licence_expiry_days", 30))
+        for asset in context.assets:
+            if "paloalto" not in asset.get("sources", []): continue
+            for licence in (asset.get("extensions") or {}).get("licenses", []):
+                expired = licence.get("expired") is True
+                days = licence.get("days_remaining")
+                if not expired and (days is None or days > threshold): continue
+                if expired is not self.expired: continue
+                severity = "High" if expired else "Medium"
+                result.append(item(self, "risk",
+                    f"Palo Alto licence {'expired' if expired else 'expiring'}: {licence['name']}",
+                    severity, canonical_id=asset.get("canonical_id", ""), device=_name(asset),
+                    site=_site(asset), site_id=_site_id(asset),
+                    summary=f"{licence['name']} has {days if days is not None else 0} days remaining.",
+                    reason="PAN-OS returned an authoritative licence expiry state.",
+                    impact="Subscribed security or support services may become unavailable.",
+                    action="Review the subscription with the authorised Palo Alto support partner.",
+                    evidence={"source_collector": "paloalto", "licence": licence["name"],
+                              "days_remaining": days, "expired": expired}))
+        return result
+
+
+class PaloAltoLicenceExpiredRule(PaloAltoLicenceRule):
+    id = "PA-LICENCE-EXPIRED"; expired = True
+
+
+class PaloAltoLicenceExpiringRule(PaloAltoLicenceRule):
+    id = "PA-LICENCE-EXPIRING"; expired = False

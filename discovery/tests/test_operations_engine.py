@@ -66,11 +66,11 @@ def fixture(tmp_path):
         settings={"collector_overdue_seconds": 900}), output
 
 
-def test_fourteen_rules_are_auto_registered_and_stable():
+def test_rules_are_auto_registered_and_stable():
     rules = Rule.registered()
-    assert len(rules) == 14
+    assert len(rules) == 19
     assert [rule.id for rule in rules] == sorted(rule.id for rule in rules)
-    assert len({rule.id for rule in rules}) == 14
+    assert len({rule.id for rule in rules}) == 19
 
 
 def test_engine_is_deterministic_explainable_and_sorted(tmp_path):

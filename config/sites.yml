@@ -6,3 +6,10 @@ sites:
       - st-brigids
       - "St Brigid's College"
       - "St Brigid's College, Lesmurdie P2P"
+
+  - id: MLC
+    display_name: "Methodist Ladies College"
+    aliases:
+      - MLC
+      - Methodist Ladies College
+      - any-name-returned-by-snmp
