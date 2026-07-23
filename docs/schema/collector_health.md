@@ -6,3 +6,8 @@ optional `diagnostic_category`. Fields: `success`, `partial` (boolean), `duratio
 `points_written` (counts). Example:
 `collector_health,collector=fortigate,customer=acme,site=hq success=true,partial=false,duration_ms=120i`.
 Collectors: Mist and FortiGate API; other collectors adopt this contract incrementally.
+
+Palo Alto adds `api_duration_ms_total` and `api_duration_ms_max` to the
+existing `api_requests`, `retry_count`, `partial`, `error_count`,
+`duration_ms`, and `points_written` fields. Command names and safe failure
+categories remain internal and raw URLs, XML, and error bodies are never tags.

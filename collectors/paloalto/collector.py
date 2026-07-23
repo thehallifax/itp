@@ -12,14 +12,58 @@ from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
 from .api import PaloAltoClient
 from .mapper import map_snapshot
-from .models import PaloAltoConfig, PaloAltoError, Snapshot
+from .models import PaloAltoConfig, PaloAltoError, Snapshot, WanInterface
 from . import parser
 
 LOG = logging.getLogger("collector.paloalto")
+WAN_ROLES = {"primary", "secondary", "tertiary", "backup", "cellular",
+             "mpls", "internet", "other"}
 
 
 def _utcnow():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_time(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _add_wan_rate_samples(record, previous):
+    """Derive bounded WAN rates from successive inventory observations.
+
+    PAN-OS exposes cumulative octet counters. Counter resets and incomplete
+    observations are intentionally omitted instead of producing misleading
+    negative or zero traffic.
+    """
+    current_values = record.get("extensions", {}).get("wan_interfaces", [])
+    previous_values = (previous or {}).get("extensions", {}).get("wan_interfaces", [])
+    by_interface = {value.get("interface_name"): value for value in previous_values}
+    for current in current_values:
+        old = by_interface.get(current.get("interface_name"))
+        if not old:
+            continue
+        current_time = _parse_time(current.get("observed_at"))
+        previous_time = _parse_time(old.get("observed_at"))
+        elapsed = ((current_time - previous_time).total_seconds()
+                   if current_time and previous_time else 0)
+        if elapsed <= 0:
+            continue
+        sample = {"time": current.get("observed_at")}
+        for counter, rate in (("rx_bytes_total", "rx_bps"), ("tx_bytes_total", "tx_bps")):
+            before, after = old.get(counter), current.get(counter)
+            if isinstance(before, (int, float)) and isinstance(after, (int, float)) and after >= before:
+                sample[rate] = round((after - before) * 8 / elapsed, 3)
+        if len(sample) == 1:
+            continue
+        history = [value for value in old.get("samples", [])
+                   if isinstance(value, dict) and value.get("time")]
+        current["samples"] = (history + [sample])[-120:]
+    return record
 
 
 def _bool(value, default=True):
@@ -49,6 +93,26 @@ def validate_settings(config, *, require_key=True):
     ca_bundle = str(raw.get("ca_bundle") or "").strip() or None
     if ca_bundle and not os.path.isfile(ca_bundle):
         raise ValueError("Palo Alto custom CA bundle does not exist")
+    configured_wan = raw.get("wan_interfaces") or []
+    if not isinstance(configured_wan, list):
+        raise ValueError("collectors.paloalto.wan_interfaces must be a list")
+    wan = []
+    for index, value in enumerate(configured_wan):
+        if not isinstance(value, dict):
+            raise ValueError(f"Palo Alto WAN interface entry {index + 1} must be a mapping")
+        name = str(value.get("name") or "").strip()
+        role = str(value.get("role") or "").strip().lower()
+        display = str(value.get("display_name") or name).strip()
+        if not name or role not in WAN_ROLES or not display:
+            raise ValueError(
+                f"Palo Alto WAN interface entry {index + 1} requires name, display_name, "
+                f"and role in {sorted(WAN_ROLES)}")
+        wan.append(WanInterface(name, role, display))
+    names = [value.name for value in wan]
+    if len(names) != len(set(names)):
+        raise ValueError("Palo Alto wan_interfaces contains duplicate interface names")
+    if sum(value.role == "primary" for value in wan) > 1:
+        raise ValueError("Palo Alto wan_interfaces supports only one primary interface")
     return PaloAltoConfig(base_url=base_url, api_key=api_key, api_key_env=api_key_env,
         customer=str(raw.get("customer") or config.get("customer", "unknown")),
         site=site, verify_tls=_bool(raw.get("verify_tls", True)),
@@ -62,7 +126,10 @@ def validate_settings(config, *, require_key=True):
         collect_system_resources=_bool(raw.get("collect_system_resources", True)),
         collect_licenses=_bool(raw.get("collect_licenses", True)),
         collect_content_versions=_bool(raw.get("collect_content_versions", True)),
-        licence_expiry_days=int(raw.get("licence_expiry_days", 30)))
+        licence_expiry_days=int(raw.get("licence_expiry_days", 30)),
+        wan_interfaces=tuple(wan),
+        content_warning_days=int(raw.get("content_warning_days", 30)),
+        content_critical_days=int(raw.get("content_critical_days", 90)))
 
 
 @CollectorRegistry.register
@@ -91,7 +158,10 @@ class PaloAltoCollector(BaseCollector):
         enabled = {
             "ha": self.settings.collect_ha,
             "interfaces": self.settings.collect_interfaces,
+            "interface_counters": self.settings.collect_interfaces,
             "resources": self.settings.collect_system_resources,
+            "resource_monitor": self.settings.collect_system_resources,
+            "sessions": self.settings.collect_system_resources,
             "licenses": self.settings.collect_licenses,
         }
         for name, collect in enabled.items():
@@ -101,7 +171,10 @@ class PaloAltoCollector(BaseCollector):
     def _parse(self, snapshot):
         values = {"system": parser.system(snapshot.capabilities["system"].data)}
         parsers = {"ha": parser.ha, "interfaces": parser.interfaces,
-                   "resources": parser.resources, "licenses": parser.licenses}
+                   "interface_counters": parser.interface_counters,
+                   "resources": parser.resources,
+                   "resource_monitor": parser.resource_monitor,
+                   "sessions": parser.sessions, "licenses": parser.licenses}
         for name, function in parsers.items():
             capability = snapshot.capabilities.get(name)
             if capability and capability.available:
@@ -109,6 +182,19 @@ class PaloAltoCollector(BaseCollector):
                 except Exception:
                     LOG.warning("collector=paloalto operation=%s category=parse message=capability unavailable",
                                 name)
+        by_name = {value["name"]: value for value in values.get("interfaces", [])}
+        for counter in values.get("interface_counters", []):
+            if counter["name"] in by_name:
+                by_name[counter["name"]].update(
+                    {key: value for key, value in counter.items() if key != "name"})
+        values["interfaces"] = [by_name[name] for name in sorted(by_name)]
+        discovered = set(by_name)
+        values["wan_validation"] = {
+            "configured": bool(self.settings.wan_interfaces),
+            "missing": sorted(value.name for value in self.settings.wan_interfaces
+                              if value.name not in discovered),
+        }
+        values["content_packages"] = parser.content_packages(values["system"])
         return values
 
     async def discover(self):
@@ -117,6 +203,12 @@ class PaloAltoCollector(BaseCollector):
             snapshot = await self._snapshot()
             parsed = self._parse(snapshot)
             record, _ = map_snapshot(parsed, self.settings, _utcnow())
+            existing = self.inventory.engine.load().get("assets", [])
+            previous = next((value for value in existing
+                             if value.get("id") == record["id"]
+                             or value.get("asset_id") == record["id"]
+                             or value.get("source_record_id") == record["id"]), None)
+            _add_wan_rate_samples(record, previous)
             result = self.inventory.update_source([record], "paloalto", self.settings.customer,
                 self.settings.site, _utcnow(), source_run_id=run_id)
             self.inventory.engine.complete_source_run("paloalto", run_id, success=True,
@@ -133,6 +225,7 @@ class PaloAltoCollector(BaseCollector):
         retries = self.client.retry_count; success = False; partial = False
         category = "success"; written = 0; unavailable = 0
         try:
+            diagnostics_before = len(self.client.command_diagnostics)
             snapshot = await self._snapshot(); partial = snapshot.partial
             diagnostics = [value for value in snapshot.capabilities.values() if not value.available]
             unavailable = len(diagnostics); category = "partial" if partial else "success"
@@ -140,18 +233,25 @@ class PaloAltoCollector(BaseCollector):
             written = await asyncio.to_thread(self.writer.write, points)
             success = True
             return {"status": category, "points_written": written, "asset_id": record["id"],
-                    "capabilities_unavailable": sorted(value.name for value in diagnostics)}
+                    "capabilities_unavailable": sorted(value.name for value in diagnostics),
+                    "configuration_diagnostics": record["extensions"].get(
+                        "wan_validation", {}).get("missing", [])}
         except Exception as exc:
             category = getattr(exc, "category",
                                "write_failure" if not isinstance(exc, PaloAltoError) else "invalid_response")
             raise
         finally:
+            command_diagnostics = self.client.command_diagnostics[
+                locals().get("diagnostics_before", len(self.client.command_diagnostics)):]
+            durations = [value["duration_ms"] for value in command_diagnostics]
             health = {"measurement": "collector_health",
                 "tags": {"collector": "paloalto", "customer": self.settings.customer,
                          "site": self.settings.site, "diagnostic_category": category},
                 "fields": {"success": success, "partial": partial,
                     "duration_ms": int((time.monotonic() - started) * 1000),
                     "api_requests": self.client.api_requests - requests,
+                    "api_duration_ms_total": sum(durations),
+                    "api_duration_ms_max": max(durations, default=0),
                     "retry_count": self.client.retry_count - retries,
                     "error_count": unavailable if success else max(1, unavailable),
                     "devices_returned": 1 if success else 0, "points_written": written}}

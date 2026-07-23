@@ -3,6 +3,8 @@ WORKDIR /app
 COPY discovery/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY collectors /app/collectors
+COPY itp_profiles /app/itp_profiles
+COPY profiles /app/profiles
 COPY telemetry /app/telemetry
 COPY analysis /app/analysis
 COPY grafana /app/grafana

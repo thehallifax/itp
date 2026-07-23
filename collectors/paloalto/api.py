@@ -1,6 +1,7 @@
 """Bounded, read-only PAN-OS XML API client."""
 import asyncio
 import ssl
+import time
 from urllib.parse import urlsplit, urlunsplit
 import xml.etree.ElementTree as ET
 
@@ -16,6 +17,12 @@ COMMANDS = {
     "ha": "<show><high-availability><state></state></high-availability></show>",
     "interfaces": "<show><interface>all</interface></show>",
     "resources": "<show><system><resources></resources></system></show>",
+    "resource_monitor": (
+        "<show><running><resource-monitor><second><last>1</last></second>"
+        "</resource-monitor></running></show>"
+    ),
+    "sessions": "<show><session><info></info></session></show>",
+    "interface_counters": "<show><counter><interface>all</interface></counter></show>",
     "licenses": "<request><license><info></info></license></request>",
 }
 
@@ -31,6 +38,7 @@ class PaloAltoClient:
                          "User-Agent": "itp-paloalto-collector/1.0"}
         self.max_retries = max(0, min(3, int(max_retries)))
         self.sleep = sleep; self.api_requests = 0; self.retry_count = 0
+        self.command_diagnostics = []
         self._owns_client = client is None
         verify = ca_bundle or verify_tls
         self.client = client or httpx.AsyncClient(
@@ -55,6 +63,8 @@ class PaloAltoClient:
     async def op(self, operation, command=None):
         command = command or COMMANDS[operation]
         transient = {502, 503, 504}
+        started = time.monotonic()
+        retries_before = self.retry_count
         for attempt in range(self.max_retries + 1):
             self.api_requests += 1
             try:
@@ -91,9 +101,25 @@ class PaloAltoClient:
                     raise PaloAltoError(self._safe(
                         operation, "http", f"API returned HTTP {response.status_code}"))
                 else:
-                    return self._validate(operation, response.text)
+                    try:
+                        result = self._validate(operation, response.text)
+                    except Exception as exc:
+                        self._record(operation, started, False, retries_before,
+                                     getattr(exc, "category", "invalid_response"))
+                        raise
+                    self._record(operation, started, True, retries_before, "success")
+                    return result
             self.retry_count += 1
             await self.sleep(min(2 ** attempt, 4))
+
+    def _record(self, operation, started, success, retries_before, category):
+        self.command_diagnostics.append({
+            "command": operation,
+            "duration_ms": max(0, int((time.monotonic() - started) * 1000)),
+            "success": bool(success),
+            "retries": max(0, self.retry_count - retries_before),
+            "category": str(category),
+        })
 
     def _validate(self, operation, text):
         try: root = ET.fromstring(text)
@@ -121,13 +147,25 @@ class PaloAltoClient:
         return result
 
     async def capability(self, name):
+        before = len(self.command_diagnostics)
+        started = time.monotonic()
+        retries_before = self.retry_count
         try:
-            return CapabilityResult(name=name, data=await self.op(name))
+            data = await self.op(name)
+            diagnostic = self.command_diagnostics[-1] if len(self.command_diagnostics) > before else {}
+            return CapabilityResult(name=name, data=data,
+                duration_ms=int(diagnostic.get("duration_ms", 0)),
+                retries=int(diagnostic.get("retries", 0)))
         except (PaloAltoCredentialError, PaloAltoTLSError):
             raise
         except PaloAltoError as exc:
+            if len(self.command_diagnostics) == before:
+                self._record(name, started, False, retries_before, exc.category)
+            diagnostic = self.command_diagnostics[-1] if len(self.command_diagnostics) > before else {}
             return CapabilityResult(name=name, available=False,
-                                    category=exc.category, message=str(exc))
+                                    category=exc.category, message=str(exc),
+                                    duration_ms=int(diagnostic.get("duration_ms", 0)),
+                                    retries=int(diagnostic.get("retries", 0)))
 
     async def close(self):
         if self._owns_client: await self.client.aclose()

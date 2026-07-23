@@ -1,0 +1,15 @@
+collector: mist
+version: 1
+capabilities:
+  - internet
+  - inventory
+  - switching
+  - telemetry
+  - wireless
+requires: []
+dashboards:
+  - uid: mist-infrastructure-overview
+    source: dashboards/Vendor/mist-infrastructure-overview.json
+    folder: Vendor
+    tags: [mist, wireless, switching]
+    requires_capabilities: [wireless]

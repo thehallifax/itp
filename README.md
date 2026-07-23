@@ -10,6 +10,23 @@ InfluxDB storage, Grafana dashboards, Docker Compose workflow, and native Mist
 collector. The ITP name is an architectural evolution of the project, not a
 rewrite.
 
+## Profile quick start
+
+ITP deployments are customer-scoped. Do not copy or overwrite
+`discovery/config.yml` to switch customers.
+
+```sh
+./itp profile list
+./itp profile init-secrets mlc
+./itp profile validate mlc
+./itp profile up mlc
+./itp profile status mlc
+```
+
+MLC and SBC ship as tracked profiles; credentials and runtime state remain
+ignored and isolated. See [deployment profiles](docs/deployment-profiles.md) for
+creation, concurrent operation, updates, migration, backup and troubleshooting.
+
 ## Quick start
 
 ```sh
@@ -153,10 +170,13 @@ docker compose logs --tail=200 discovery collector telegraf
 ```
 
 Open Grafana at `http://localhost:${GRAFANA_PORT}`. The dashboard provider
-recreates the operations-first hierarchy from `dashboards/`, including Network,
-Compute, Printing, Services, Inventory, Collectors, Operations, and Vendor.
-Start with **Infrastructure Overview** and use the Mist and FortiGate dashboards
-under Vendor for engineering drill-down. Use **Operations Wallboard**
+creates the capability-aware folders Operations, Infrastructure, Security,
+Wireless, Printing, Compute, Identity, and Vendor. Collector manifests advertise
+capabilities and dashboard packs; disabled collector dashboards are omitted.
+See the [Dashboard Platform](docs/dashboard-platform.md).
+
+Start with **Infrastructure Overview** and use enabled vendor dashboards for
+engineering drill-down. Use **Operations Wallboard**
 (`itp-operations-wallboard`) for
 a dense 1920 × 1080 kiosk display; see [wallboard guidance](docs/operations-wallboard.md).
 See [dashboard navigation](docs/DASHBOARDS.md).

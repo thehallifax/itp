@@ -49,8 +49,23 @@ sites:
 ```
 
 Enable `collectors.paloalto` in `discovery/config.yml`, using that canonical ID
-for `site`. `expected_interfaces` is the only source of actionable interface-down
-findings; other down interfaces remain neutral observations.
+for `site`. WAN classification is operator-owned and explicit:
+
+```yaml
+wan_interfaces:
+  - name: ethernet1/5
+    role: primary
+    display_name: Primary Internet
+  - name: ethernet1/6
+    role: backup
+    display_name: Backup Internet
+```
+
+Valid roles are `primary`, `secondary`, `tertiary`, `backup`, `cellular`,
+`mpls`, `internet`, and `other`. Names must exist in the discovered PAN-OS
+interfaces. Duplicate names and multiple primary roles are rejected. With no
+configuration, Internet health remains Unknown; interface numbers, names,
+traffic, and default routes never imply a WAN role.
 
 ## Commands
 
@@ -66,6 +81,23 @@ docker compose exec collector python -m collectors wallboard generate
 
 Identity is mandatory. HA, interfaces, resources and licences are optional:
 capability-specific failure produces partial health while retaining the asset.
+
+Operational commands and parsed paths:
+
+| Command | Confirmed PAN-OS paths |
+|---|---|
+| `show system info` | `system/*`, content `*-version`/`*-release-date`, `device-certificate-status` |
+| `show high-availability state` | `enabled`, `group/local-info/state`, `group/peer-info/state` |
+| `show interface all` | `ifnet/entry/{name,state,speed,duplex}` |
+| `show counter interface all` | `entry/{ibytes,obytes,ipackets,opackets,ierrors,idrops,tx-error}` |
+| `show system resources` | top CPU idle and memory total/used |
+| `show running resource-monitor second last 1` | per-core `coreid/value`, packet-buffer `name/value` |
+| `show session info` | `num-active`, `num-max`, `num-tcp`, `num-udp` |
+| `request license info` | `licenses/entry/{feature,status,expires,expired}` |
+
+Interface counters remain cumulative. Grafana derives rates and discards
+negative deltas after a reboot or counter reset. Optional missing counters do
+not fail collection.
 
 Local read-only smoke test:
 
@@ -96,3 +128,37 @@ no outdated claim is made without an approved baseline.
 
 Safe troubleshooting categories include `credential`, `permission`, `tls`,
 `timeout`, `unreachable`, `unsupported`, `malformed_xml`, and `empty_result`.
+
+## Licence, content, and service-health semantics
+
+Expired licences have `remaining_days=0` and a positive `expired_days`;
+perpetual and malformed values are distinct states. Content timestamps use
+the firewall-provided AWST timezone where present. Unknown timestamps omit age
+instead of becoming zero.
+
+Internet health uses only configured WAN interfaces. All configured uplinks
+down is Critical; primary down with a working backup is Warning; stale,
+missing, invalid, or unconfigured evidence is Unknown. Security health uses
+firewall availability, subscription expiry, and device-certificate state.
+Content age does not become Critical without an explicit policy.
+
+## Dashboard regeneration
+
+Generate the classic dashboard with:
+
+```sh
+python3 scripts/generate_paloalto_dashboard.py
+```
+
+```sh
+docker compose build collector
+docker compose up -d --no-deps --force-recreate collector
+docker compose exec collector python -m collectors dashboards generate
+docker compose restart grafana
+```
+
+The dashboard consumes canonical `device`, `firewall`, `performance`,
+`interface`, `license`, `content_package`, and `collector_health`
+measurements. PAN-OS 10.2 does not currently expose a trustworthy
+`tx_discards_total` or `link_flaps_total` in the confirmed command output, so
+those fields remain absent.

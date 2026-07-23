@@ -1,13 +1,19 @@
 # Dashboard navigation
 
+Dashboard selection and folder provisioning are capability-aware. See
+[Dashboard Platform](dashboard-platform.md) for manifest and ownership details.
+
 ITP dashboards are operations-first. Begin with **Infrastructure Overview** to
 identify service impact, unhealthy infrastructure, active issues, and emerging
 risks. Move into the relevant operational domain for investigation, then use a
 vendor dashboard only when collector-specific detail is required.
 
 Use **Operations Wallboard** for a continuous 16:9 kiosk display. It provides a
-dense canonical estate or selected-site view and links back to the interactive
-overview and vendor drill-downs. See [Operations Wallboard](operations-wallboard.md).
+restrained, exception-driven estate or selected-site view without scrolling and
+uses canonical service health for overall and domain status. Inventory is used
+only for vendor-neutral counts, not service-state calculation. Links lead only
+to applicable provisioned detail dashboards. See
+[Operations Wallboard](operations-wallboard.md).
 
 Canonical summary panels use the supported generated-dashboard projection
 described in [Dashboard Data Binding](dashboard-data-binding.md). Runtime JSON is
@@ -15,25 +21,23 @@ never treated as a Grafana-readable datasource.
 
 ## Information architecture
 
-The first column below is the provisioned Grafana folder. Indented entries are
-the dashboards planned for that folder; only Infrastructure Overview and the
-two preserved Vendor drill-downs are delivered in OPS-001.
+The first column below is a normalized provisioned folder. Packs appear only
+when enabled collector capabilities support them.
 
 ```text
-Infrastructure Overview
-Network/{Network Health, Switching, Wireless, Firewalls, WAN}
-Compute/{Servers, Storage, Virtualisation}
-Printing/{Fleet, Consumables, Faults}
-Services/{Active Directory, DNS, DHCP, Certificates}
-Inventory/{Assets, Discovery, Lifecycle, Changes}
-Collectors/{Health, Performance}
-Operations/{Operations Wallboard, Active Alerts, Risks, Recommendations}
-Vendor/{Mist, FortiGate}
+Operations/{Operations Wallboard, Collector Health}
+Infrastructure/{Infrastructure Overview}
+Security/{future capability packs}
+Wireless/{future capability packs}
+Printing/{future capability packs}
+Compute/{future capability packs}
+Identity/{future capability packs}
+Vendor/{enabled vendor drill-downs}
 ```
 
-Grafana file provisioning mirrors this repository hierarchy automatically. The
-Mist and FortiGate dashboards remain engineering drill-down dashboards and keep
-their existing UIDs and queries.
+The registry materializes selected dashboards into a dedicated managed runtime
+namespace. Mist, FortiGate, and Palo Alto dashboards retain stable UIDs and
+queries but appear only when their collectors are enabled.
 
 ## Dashboard design order
 
@@ -45,8 +49,11 @@ The Infrastructure Overview reads device counts, Infrastructure Health,
 Observability Health, and actionable warnings from the flat canonical-state
 summary. It also displays total, healthy, warning, and critical canonical sites.
 Its `$site` variable uses stable registry IDs and is populated by the generated
-dashboard. Active Issues, Operational Risks, and Recommendations are rendered from
-the deterministic [Operations Engine](operations-engine.md) output. Clearly
+dashboard. Active Issues, Operational Risks, and Recommendations are rendered
+as canonical-site-partitioned frames from the deterministic
+[Operations Engine](operations-engine.md) output. Findings join only through
+`site_id`; display names are labels, never join keys. All Sites uses an explicit
+estate scope. Clearly
 labelled TODO panels remain only where telemetry does not exist. Future dashboards
 should consume vendor-neutral telemetry and analysis outputs; vendor-specific
 measurements belong only in Vendor drill-downs.
@@ -62,11 +69,29 @@ Palo Alto firewalls therefore enter generic Firewall and Security/Edge panels
 through canonical classification. COL-PA-001 adds no vendor dashboard and does
 not alter FortiGate panels.
 
+The generated **Palo Alto Operational Overview** source is written to
+`runtime/dashboard/grafana/paloalto-overview.json`; the registry copies its
+managed dashboard pack into the normalized Vendor folder:
+
+```sh
+python3 scripts/generate_paloalto_dashboard.py
+docker compose exec collector python -m collectors dashboards generate
+docker compose restart grafana
+```
+
+It queries only confirmed canonical `device`, `firewall`, `interface`, and
+`collector_health` fields. Panels explicitly say “not collected” where the
+current telemetry contract has no safe query.
+
 ## Upgrade note
 
-The fixed `itp-folder-overview`, `itp-folder-network`, `itp-folder-compute`, and
-`itp-folder-vendor` UIDs are retained for existing installations. Grafana does
-not rename a previously provisioned folder when its display name changes, so an
-upgraded instance may continue to label Infrastructure Overview as `Overview`.
-The dashboard itself and both Vendor dashboards are relocated correctly. A new
-deployment receives the complete folder names from this provisioning file.
+Managed dashboards are replaced by stable UID and disabled packs are removed.
+User-created dashboards remain in Grafana storage and are never written into the
+managed runtime directory. Legacy empty folders from older provisioning layouts
+can remain in an upgraded Grafana database; they contain no managed dashboards
+and may be removed after confirming they contain no user dashboards.
+The Palo Alto operational dashboard uses canonical resource, session,
+interface-counter, subscription, content-package, certificate, and collector
+diagnostic telemetry. Run `python -m collectors dashboards generate` after
+collector or dashboard upgrades; managed files remain replaceable and preserve
+the stable `paloalto-operational-overview` UID.

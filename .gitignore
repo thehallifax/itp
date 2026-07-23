@@ -9,12 +9,15 @@ runtime/inventory/.inventory.lock
 telegraf/telegraf.d/generated/*.conf
 
 # Local service credentials
-secrets/*.env
-!secrets/*.env.example
+secrets/**/*.env
+!secrets/**/*.env.example
 
 # Runtime and generated state
 runtime/
 backups/
+profiles/*/*.local.yml
+profiles/*/.env
+*.compose.override.yml
 
 # Local backup files
 *.backup

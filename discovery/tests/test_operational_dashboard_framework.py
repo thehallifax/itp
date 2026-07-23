@@ -54,6 +54,8 @@ def test_vendor_dashboards_retain_titles_uids_and_classic_schema():
             ("Mist Infrastructure Overview", "mist-infrastructure-overview"),
         "Vendor/fortigate-overview.json":
             ("FortiGate Infrastructure Overview", "fortigate-infrastructure-overview"),
+        "Vendor/paloalto-overview.json":
+            ("Palo Alto Operational Overview", "paloalto-operational-overview"),
     }
     for relative, (title, uid) in expected.items():
         dashboard = json.loads((ROOT / "dashboards" / relative).read_text())
@@ -68,7 +70,7 @@ def test_provisioning_creates_fixed_operational_folders():
         (ROOT / "grafana/provisioning/dashboards/dashboards.yml").read_text()
     )
     providers = config["providers"]
-    expected = {"Infrastructure Overview", "Network", "Compute", "Printing", "Services",
-                "Inventory", "Collectors", "Operations", "Vendor"}
+    expected = {"Operations", "Infrastructure", "Security", "Wireless", "Printing",
+                "Compute", "Identity", "Vendor"}
     assert {provider["folder"] for provider in providers} == expected
     assert all(provider["folderUid"].startswith("itp-folder-") for provider in providers)

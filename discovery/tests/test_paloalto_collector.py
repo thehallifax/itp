@@ -9,7 +9,8 @@ import pytest
 from analysis.infrastructure.adapters import AdapterResult
 from analysis.infrastructure.fusion import FusionEngine
 from collectors.paloalto.api import PaloAltoClient
-from collectors.paloalto.collector import PaloAltoCollector, validate_settings
+from collectors.paloalto.collector import (PaloAltoCollector, _add_wan_rate_samples,
+                                            validate_settings)
 from collectors.paloalto.mapper import map_snapshot
 from collectors.paloalto.models import (CapabilityResult, PaloAltoCredentialError,
                                         Snapshot)
@@ -38,6 +39,18 @@ INTERFACES = """<response status="success"><result><ifnet>
 <entry name="ethernet1/1.10"><type>layer3</type><state>up</state><status>up</status>
 <aggregate-group>ae1</aggregate-group><zone>trusted</zone></entry>
 </ifnet></result></response>"""
+INTERFACE_COUNTERS = """<response status="success"><result><ifnet><entry>
+<name>ethernet1/1</name><ibytes>1000</ibytes><obytes>2000</obytes>
+<ipackets>10</ipackets><opackets>20</opackets><ierrors>2</ierrors><idrops>3</idrops>
+</entry><entry><name>ethernet1/2</name><ibytes>50</ibytes><obytes>60</obytes>
+<ipackets>5</ipackets><opackets>6</opackets></entry></ifnet></result></response>"""
+SESSIONS = """<response status="success"><result><num-active>250</num-active>
+<num-max>1000</num-max><num-tcp>150</num-tcp><num-udp>100</num-udp></result></response>"""
+RESOURCE_MONITOR = """<response status="success"><result>
+<cpu-load-average><entry><coreid>0</coreid><value>20</value></entry>
+<entry><coreid>1</coreid><value>40</value></entry></cpu-load-average>
+<resource-utilization><entry><name>packet buffer</name><value>7</value></entry>
+</resource-utilization></result></response>"""
 LICENSES = """<response status="success"><result><licenses>
 <entry name="Threat Prevention"><expires>2024-01-01</expires><expired>yes</expired></entry>
 <entry name="WildFire"><expires>2099-01-01</expires><expired>no</expired></entry>
@@ -75,11 +88,21 @@ def test_parser_identity_ha_interfaces_licences_and_resources():
         now=datetime(2026, 1, 1, tzinfo=timezone.utc))
     assert licences[0]["expired"] is True
     assert parser.resources(result(
-        '<response status="success"><result>CPU load 17% memory used 62% sessions 1,234</result></response>'
-    )) == {"management_cpu_percent": 17.0, "memory_percent": 62.0,
-           "session_count": 1234.0}
+        '<response status="success"><result>%Cpu(s): 10 us, 25 id '
+        'MiB Mem : 1000 total, 100 free, 600 used, 300 buff/cache</result></response>'
+    )) == {"management_cpu_percent": 75.0, "memory_used_percent": 60.0}
     assert parser.resources(result(
         '<response status="success"><result>not structured on this release</result></response>')) == {}
+    assert parser.interface_counters(result(INTERFACE_COUNTERS))[0] == {
+        "name": "ethernet1/1", "rx_bytes_total": 1000, "tx_bytes_total": 2000,
+        "rx_packets_total": 10, "tx_packets_total": 20,
+        "rx_errors_total": 2, "rx_discards_total": 3}
+    assert parser.sessions(result(SESSIONS)) == {
+        "sessions_active": 250, "sessions_max": 1000,
+        "session_utilisation_percent": 25.0,
+        "sessions_tcp": 150, "sessions_udp": 100}
+    assert parser.resource_monitor(result(RESOURCE_MONITOR)) == {
+        "dataplane_cpu_percent": 30.0, "packet_buffer_used_percent": 7.0}
 
 
 def test_mapper_is_canonical_and_does_not_create_ha_peer(monkeypatch):
@@ -174,7 +197,9 @@ class FakeWriter:
 
 class FakeClient:
     api_requests = 0; retry_count = 0; base_url = "https://192.0.2.1"
-    def __init__(self, optional_failure=False): self.optional_failure = optional_failure
+    def __init__(self, optional_failure=False):
+        self.optional_failure = optional_failure
+        self.command_diagnostics = []
     async def op(self, name):
         self.api_requests += 1
         return result(SYSTEM)
@@ -183,8 +208,12 @@ class FakeClient:
         if self.optional_failure and name == "licenses":
             return CapabilityResult(name, available=False, category="permission",
                                     message="safe permission error")
-        fixtures = {"ha": HA_HEALTHY, "interfaces": INTERFACES, "resources":
-                    '<response status="success"><result>CPU load 17%</result></response>',
+        fixtures = {"ha": HA_HEALTHY, "interfaces": INTERFACES,
+                    "interface_counters": INTERFACE_COUNTERS,
+                    "resources": '<response status="success"><result>'
+                    '%Cpu(s): 10 us, 80 id MiB Mem : 1000 total, 100 free, '
+                    '500 used, 400 buff/cache</result></response>',
+                    "resource_monitor": RESOURCE_MONITOR, "sessions": SESSIONS,
                     "licenses": LICENSES}
         return CapabilityResult(name, data=result(fixtures[name]))
     async def close(self): pass
@@ -207,3 +236,72 @@ def test_partial_collection_and_clean_idempotent_inventory(tmp_path, monkeypatch
     assets = json.loads((tmp_path / "assets.json").read_text())["assets"]
     assert len(assets) == 1
     assert assets[0]["collector"] == "paloalto"
+
+
+def test_wan_configuration_is_explicit_and_validated(monkeypatch):
+    monkeypatch.setenv("PALOALTO_API_KEY", "fake")
+    settings = validate_settings(config(wan_interfaces=[
+        {"name": "ethernet1/1", "role": "primary",
+         "display_name": "Primary Internet"},
+        {"name": "ethernet1/2", "role": "backup",
+         "display_name": "Backup Internet"},
+    ]))
+    assert [(value.name, value.role) for value in settings.wan_interfaces] == [
+        ("ethernet1/1", "primary"), ("ethernet1/2", "backup")]
+    with pytest.raises(ValueError, match="duplicate interface"):
+        validate_settings(config(wan_interfaces=[
+            {"name": "ethernet1/1", "role": "primary"},
+            {"name": "ethernet1/1", "role": "backup"}]))
+    with pytest.raises(ValueError, match="only one primary"):
+        validate_settings(config(wan_interfaces=[
+            {"name": "ethernet1/1", "role": "primary"},
+            {"name": "ethernet1/2", "role": "primary"}]))
+
+
+def test_expired_perpetual_and_malformed_licence_semantics():
+    xml = """<response status="success"><result><licenses>
+    <entry name="Expired"><expires>January 01, 2024</expires></entry>
+    <entry name="Perpetual"><expires>Never</expires></entry>
+    <entry name="Malformed"><expires>sometime</expires></entry>
+    </licenses></result></response>"""
+    values = {value["name"]: value for value in parser.licenses(
+        result(xml), now=datetime(2026, 1, 1, tzinfo=timezone.utc))}
+    assert values["Expired"]["expired"] is True
+    assert values["Expired"]["days_remaining"] == 0
+    assert values["Expired"]["expired_days"] > 0
+    assert values["Perpetual"]["perpetual"] is True
+    assert values["Perpetual"]["expiry_state"] == "perpetual"
+    assert values["Malformed"]["expiry_state"] == "malformed"
+
+
+def test_content_timestamp_and_device_certificate_parsing():
+    identity = parser.system(result("""<response status="success"><result><system>
+    <hostname>pa</hostname><device-certificate-status>Valid</device-certificate-status>
+    <app-version>1-2</app-version><app-release-date>2026/07/21 06:37:32 AWST</app-release-date>
+    <av-version>3-4</av-version><av-release-date>unknown</av-release-date>
+    </system></result></response>"""))
+    values = {value["package_name"]: value for value in parser.content_packages(
+        identity, now=datetime(2026, 7, 23, tzinfo=timezone.utc))}
+    assert identity["device_certificate_status"] == "Valid"
+    assert values["applications"]["release_time"].endswith("Z")
+    assert values["applications"]["age_days"] == 2
+    assert values["antivirus"]["release_time"] is None
+    assert values["antivirus"]["age_days"] is None
+
+
+def test_wan_rate_samples_are_bounded_and_counter_resets_are_omitted():
+    previous = {"extensions": {"wan_interfaces": [{
+        "interface_name": "ethernet1/5", "observed_at": "2026-07-23T00:00:00Z",
+        "rx_bytes_total": 100, "tx_bytes_total": 200,
+        "samples": [{"time": "2026-07-22T23:59:00Z", "rx_bps": 8, "tx_bps": 16}],
+    }]}}
+    current = {"extensions": {"wan_interfaces": [{
+        "interface_name": "ethernet1/5", "observed_at": "2026-07-23T00:01:00Z",
+        "rx_bytes_total": 160, "tx_bytes_total": 170,
+    }]}}
+    _add_wan_rate_samples(current, previous)
+    samples = current["extensions"]["wan_interfaces"][0]["samples"]
+    assert samples[-1] == {
+        "time": "2026-07-23T00:01:00Z", "rx_bps": 8.0,
+    }
+    assert samples[0]["tx_bps"] == 16

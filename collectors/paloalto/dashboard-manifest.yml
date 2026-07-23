@@ -1,0 +1,14 @@
+collector: paloalto
+version: 1
+capabilities:
+  - firewall
+  - internet
+  - inventory
+  - telemetry
+requires: []
+dashboards:
+  - uid: paloalto-operational-overview
+    source: dashboards/Vendor/paloalto-overview.json
+    folder: Vendor
+    tags: [paloalto, firewall]
+    requires_capabilities: [firewall]

@@ -1,0 +1,104 @@
+# Deployment profiles
+
+An ITP profile is one independently operated customer deployment. Profiles share
+application code but never runtime state, secrets, site aliases, containers,
+volumes, dashboards, or telemetry databases.
+
+## Layout
+
+Tracked configuration lives in `profiles/<id>/`: `profile.yml`, `discovery.yml`,
+`sites.yml`, `dashboards.yml`, and `env.example`. Credentials live in ignored
+`secrets/<id>/*.env`; generated state lives in ignored `runtime/<id>/`.
+Profile IDs are stable lowercase identifiers. Customer display names and
+canonical site names remain separate.
+
+## Quick start
+
+```sh
+./itp profile list
+./itp profile init-secrets mlc
+# Edit secrets/mlc/*.env without changing variable names.
+./itp profile validate mlc
+./itp profile up mlc
+./itp profile status mlc
+```
+
+Operational commands include:
+
+```sh
+./itp profile down mlc
+./itp profile restart mlc
+./itp profile logs mlc
+./itp profile shell mlc
+./itp profile collect mlc paloalto
+./itp profile dashboards mlc
+./itp profile services mlc
+```
+
+The direct framework equivalents are:
+
+```sh
+python -m collectors --profile mlc validate
+python -m collectors --profile mlc run
+python -m collectors --profile mlc dashboards generate
+python -m collectors --profile mlc services generate
+```
+
+No arbitrary profile is selected automatically. `ITP_PROFILE=mlc` is supported
+for direct Compose use, but `./itp` is preferred because it resolves and prints
+the selected paths.
+
+## Secrets
+
+Only enabled collectors require credentials. Validation detects missing, empty,
+and common placeholder values without printing values. `init-secrets` creates
+missing files from `.env.example` templates and never overwrites existing files.
+Vendor credentials belong only in `secrets/<id>/`.
+
+## Isolation model
+
+Each profile uses Compose project `itp-<id>`, profile-scoped containers, network,
+InfluxDB and Grafana volumes, host ports, telemetry database, runtime directory,
+site registry, and managed-dashboard output. Dashboard UIDs remain stable because
+each profile has a separate Grafana instance.
+
+Every native and Telegraf point includes `deployment_id`; canonical `site_id`
+remains independent. Separate databases are the primary isolation boundary.
+MLC defaults to ports 3000/8181 and SBC to 3100/8281, allowing concurrent stacks.
+
+## Creating a profile
+
+```sh
+./itp profile create customer-id
+./itp profile init-secrets customer-id
+```
+
+Creation uses generic placeholders and a disabled-collector baseline, and refuses
+to overwrite an existing profile. Configure the customer name, canonical sites,
+ports, scopes, collectors and credentials before validation.
+
+## Legacy migration
+
+The legacy `discovery/config.yml`, `config/sites.yml`, global `runtime/`, and
+global `secrets/*.env` remain a deprecated compatibility mode only when no
+profile is selected. They are not a second source of truth for profile
+deployments. Existing untagged telemetry remains readable in its legacy
+database; new profiles use their own database and add `deployment_id`.
+
+## Updates, rollback and backup
+
+```sh
+git pull --ff-only
+./itp profile validate mlc
+./itp profile restart mlc
+./itp profile status mlc
+```
+
+Repeat for every profile. Back up `profiles/<id>/`, `secrets/<id>/`,
+`runtime/<id>/`, and Compose volumes bearing the profile project prefix. Roll
+back by restoring the last known-good code and only that profile’s volumes and
+runtime backup. Never restore one customer’s state into another profile.
+
+`profile status` reports paths, containers, collectors, assets, services,
+dashboard count and endpoints. `profile logs` provides diagnostics without
+printing secret values.

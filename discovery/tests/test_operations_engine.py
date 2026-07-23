@@ -1,9 +1,11 @@
 import csv
+import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from analysis.operations import OperationsEngine, Rule
+from analysis.operations.renderer import render_dashboard
 
 
 NOW = datetime(2026, 7, 23, tzinfo=timezone.utc)
@@ -63,6 +65,7 @@ def fixture(tmp_path):
         dashboard_output=output / "dashboard/infrastructure-overview.json",
         infrastructure_state=tmp_path / "infrastructure/state.json",
         infrastructure_summary=tmp_path / "dashboard/infrastructure-summary.json",
+        capability_registry=tmp_path / "missing-registry.json",
         settings={"collector_overdue_seconds": 900}), output
 
 
@@ -97,9 +100,10 @@ def test_outputs_and_runtime_dashboard_are_generated(tmp_path):
     assert len(rows) == sum(len(result[key]) for key in ("issues", "risks", "recommendations"))
     dashboard = json.loads((output / "dashboard/infrastructure-overview.json").read_text())
     panels = {panel["title"]: panel for panel in dashboard["panels"]}
-    assert "Top 10 Active Issues" in panels["Active Issues"]["options"]["content"]
-    assert "Top 10 Operational Risks" in panels["Operational Risks"]["options"]["content"]
-    assert "Top 10 Recommendations" in panels["Recommendations"]["options"]["content"]
+    for title in ("Active Issues", "Operational Risks", "Recommendations"):
+        assert panels[title]["type"] == "table"
+        assert panels[title]["targets"][0]["scenarioId"] == "csv_content"
+        assert "scope" in panels[title]["targets"][0]["csvContent"].splitlines()[0]
     assert panels["Devices Online"]["type"] == "stat"
     assert panels["Devices Online"]["targets"][0]["csvContent"] == "value\n1"
     assert panels["Switches"]["targets"][0]["csvContent"] == "value\n1"
@@ -108,3 +112,61 @@ def test_outputs_and_runtime_dashboard_are_generated(tmp_path):
         "Actionable Warnings", "Collectors Healthy", "Switches", "Access Points",
         "Firewalls", "Servers", "Printers"))
     assert dashboard["uid"] == "itp-infrastructure-overview"
+
+
+def test_infrastructure_overview_findings_are_canonical_site_scoped(tmp_path):
+    def finding(item_id, site_id, site, title):
+        return {"id": item_id, "priority": 80, "severity": "High",
+            "title": title, "device": title.split()[0], "site_id": site_id,
+            "site": site}
+    result = {"generated_at": "2026-07-23T14:00:00Z",
+        "issues": [
+            finding("mlc-pa", "site:mlc", "Methodist Ladies College",
+                    "MLC-PA licence expired"),
+            finding("sbc-ap", "site:st-brigids",
+                    "St Brigid's College, Lesmurdie", "SBC-AP offline"),
+            finding("sbc-forti", "site:st-brigids",
+                    "St Brigid's College, Lesmurdie", "SBC-Forti unavailable")],
+        "risks": [
+            finding("mlc-risk", "site:mlc", "Methodist Ladies College",
+                    "MLC-PA security risk"),
+            finding("sbc-risk", "site:st-brigids",
+                    "St Brigid's College, Lesmurdie", "SBC-AP capacity risk")],
+        "recommendations": [
+            finding("mlc-rec", "site:mlc", "Methodist Ladies College",
+                    "MLC-PA renew licence"),
+            finding("sbc-rec", "site:st-brigids",
+                    "St Brigid's College, Lesmurdie", "SBC-AP investigate")]}
+    scopes = [{"scope": "all"}, {"scope": "site:mlc"},
+              {"scope": "site:st-brigids"}]
+    summary = {"site_options": [
+        {"site_id": "site:mlc", "display_name": "Methodist Ladies College"},
+        {"site_id": "site:st-brigids",
+         "display_name": "St Brigid's College, Lesmurdie"}],
+        "scopes": scopes}
+    output = tmp_path / "infrastructure-overview.json"
+    render_dashboard(ROOT / "dashboards/Infrastructure Overview/infrastructure-overview.json",
+                     output, result, summary)
+    panels = {value["title"]: value for value in json.loads(output.read_text())["panels"]}
+    for title in ("Active Issues", "Operational Risks", "Recommendations"):
+        values = list(csv.DictReader(io.StringIO(
+            panels[title]["targets"][0]["csvContent"])))
+        mlc = [value for value in values if value["scope"] == "site:mlc"]
+        st = [value for value in values if value["scope"] == "site:st-brigids"]
+        assert mlc and st
+        assert all("SBC" not in value["item"] for value in mlc)
+        assert all("MLC" not in value["item"] for value in st)
+    all_issues = [value for value in list(csv.DictReader(io.StringIO(
+        panels["Active Issues"]["targets"][0]["csvContent"])))
+        if value["scope"] == "all"]
+    assert len(all_issues) == 3
+
+
+def test_disabled_collector_health_does_not_generate_operations_findings(tmp_path):
+    engine, _ = fixture(tmp_path)
+    write(tmp_path / "registry.json", {"enabled_collectors": ["snmp"]})
+    engine.capability_registry = tmp_path / "registry.json"
+    result = engine.evaluate(NOW)
+    assert not any(value.get("device") == "mist"
+                   for kind in ("issues", "risks", "recommendations")
+                   for value in result[kind])

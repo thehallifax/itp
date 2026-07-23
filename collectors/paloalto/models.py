@@ -52,6 +52,16 @@ class PaloAltoConfig:
     collect_licenses: bool = True
     collect_content_versions: bool = True
     licence_expiry_days: int = 30
+    wan_interfaces: tuple["WanInterface", ...] = ()
+    content_warning_days: int = 30
+    content_critical_days: int = 90
+
+
+@dataclass(frozen=True)
+class WanInterface:
+    name: str
+    role: str
+    display_name: str
 
 
 @dataclass
@@ -61,6 +71,8 @@ class CapabilityResult:
     available: bool = True
     category: str = "success"
     message: str = ""
+    duration_ms: int = 0
+    retries: int = 0
 
 
 @dataclass

@@ -64,7 +64,8 @@ def test_four_existing_output_adapters_register_and_clean_bootstrap(tmp_path):
     assert [adapter.name for adapter in SignalAdapter.registered(tmp_path)] == [
         "fortigate", "inventory", "mist", "paloalto", "snmp"]
     state = InfrastructureStateEngine(tmp_path / "missing", tmp_path / "operations",
-                                      tmp_path / "state", tmp_path / "dashboard").run(NOW)
+                                      tmp_path / "state", tmp_path / "dashboard",
+                                      sites_output=tmp_path / "sites").run(NOW)
     assert state["summary"]["devices"] == 0 and state["collectors"] == []
     assert state["summary"]["infrastructure_health"] == "Unknown"
     assert json.loads((tmp_path / "state/state.json").read_text()) == state
@@ -157,6 +158,9 @@ def test_site_aggregation_health_separation_and_renderer_schema(tmp_path):
     assert summary["infrastructure_health"] == "Warning"
     assert summary["observability_health"] == "Warning"
     assert summary["collectors_healthy"] == 1 and summary["collectors_failed"] == 1
+    collectors = {value["collector"]: value for value in first["collectors"]}
+    assert collectors["mist"]["site_ids"] == ["site:hq"]
+    assert collectors["snmp"]["site_ids"] == ["site:branch"]
     assert [site["site_id"] for site in first["sites"]] == ["site:branch", "site:hq"]
     state = engine.run(NOW)
     flat = json.loads((tmp_path / "dashboard/infrastructure-summary.json").read_text())

@@ -25,6 +25,17 @@ def _scope_value(state, scope, display_name, assets):
                      and value.get("canonical_id") in canonical_ids
                      for value in state.get("validation_findings", []))
     summary = state["summary"]
+    if scope == "all":
+        scoped_collectors = state.get("collectors", [])
+    else:
+        scoped_collectors = [value for value in state.get("collectors", [])
+                             if value.get("shared") is True
+                             or scope in value.get("site_ids", [])]
+    collector_failed = sum(value.get("status") == "failed" for value in scoped_collectors)
+    collector_healthy = sum(value.get("status") == "healthy" for value in scoped_collectors)
+    observability = ("Warning" if collector_failed else
+        "Healthy" if scoped_collectors and collector_healthy == len(scoped_collectors)
+        else "Warning" if scoped_collectors else "Unknown")
     scope_health = summary["infrastructure_health"] if scope == "all" else site_state.get("infrastructure_health", "Unknown")
     return {"scope": scope, "display_name": display_name,
         "sites": len(state["sites"]) if scope == "all" else 1,
@@ -35,9 +46,9 @@ def _scope_value(state, scope, display_name, assets):
         "actionable_warnings": summary["actionable_warnings"] if scope == "all" else actionable,
         "data_quality_findings": summary["data_quality_findings"] if scope == "all" else 0,
         "infrastructure_health": scope_health,
-        "observability_health": summary["observability_health"],
-        "collectors_healthy": summary["collectors_healthy"],
-        "collectors_failed": summary["collectors_failed"],
+        "observability_health": observability,
+        "collectors_healthy": collector_healthy,
+        "collectors_failed": collector_failed,
         "switches_total": len(switches), "switches_online": sum(state_of(value) == "online" for value in switches),
         "switches_offline": sum(state_of(value) == "offline" for value in switches),
         "aps_total": len(aps), "aps_online": sum(state_of(value) == "online" for value in aps),

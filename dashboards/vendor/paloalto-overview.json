@@ -1,0 +1,1975 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Read-only operational view of canonical Palo Alto Networks PAN-OS telemetry.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "panels": [],
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "/^Hostname$/",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT hostname AS \"Hostname\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT hostname AS \"Hostname\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Hostname",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "/^Model$/",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT model AS \"Model\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT model AS \"Model\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Model",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "/^PAN-OS Version$/",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT firmware AS \"PAN-OS Version\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT firmware AS \"PAN-OS Version\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "PAN-OS Version",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "Latest uptime returned by PAN-OS.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT uptime_seconds AS uptime FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT uptime_seconds AS uptime FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Uptime",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 6,
+      "panels": [],
+      "title": "Health",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 6
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "/^HA Status$/",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT ha_status AS \"HA Status\" FROM firewall WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT ha_status AS \"HA Status\" FROM firewall WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "HA Status",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "Failed"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "Healthy"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 6
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Collector Status",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 6
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "/^Device Certificate Status$/",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT device_certificate_status AS \"Device Certificate Status\" FROM firewall WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT device_certificate_status AS \"Device Certificate Status\" FROM firewall WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Device Certificate Status",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 6
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "/^Platform Family$/",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT platform_family AS \"Platform Family\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT platform_family AS \"Platform Family\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Platform Family",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "id": 11,
+      "panels": [],
+      "title": "Resources",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 11
+      },
+      "id": 12,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT management_cpu_percent AS management_cpu FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT management_cpu_percent AS management_cpu FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Management CPU",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 11
+      },
+      "id": 13,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT dataplane_cpu_percent AS dataplane_cpu FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT dataplane_cpu_percent AS dataplane_cpu FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Data Plane CPU",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 11
+      },
+      "id": 14,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT memory_used_percent AS memory_used FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT memory_used_percent AS memory_used FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Memory Used",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 15,
+        "y": 11
+      },
+      "id": 15,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT sessions_active AS active_sessions FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT sessions_active AS active_sessions FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Sessions",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 11
+      },
+      "id": 16,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT session_utilisation_percent AS session_utilisation FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT session_utilisation_percent AS session_utilisation FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Session Utilisation",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 17,
+      "panels": [],
+      "title": "Interfaces",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "Latest state per selected firewall and interface. Blank logical-interface state is unavailable.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "id": 18,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "WITH latest AS (SELECT interface_name, admin_status, operational_status, speed, duplex, logical, wan_classified, wan_role, wan_display_name, rx_errors_total, rx_discards_total, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_name AS \"Interface\", admin_status AS \"Admin\", operational_status AS \"Operational\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_display_name AS \"WAN Name\", wan_role AS \"WAN Role\", rx_errors_total AS \"RX Errors\", rx_discards_total AS \"RX Discards\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (SELECT interface_name, admin_status, operational_status, speed, duplex, logical, wan_classified, wan_role, wan_display_name, rx_errors_total, rx_discards_total, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_name AS \"Interface\", admin_status AS \"Admin\", operational_status AS \"Operational\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_display_name AS \"WAN Name\", wan_role AS \"WAN Role\", rx_errors_total AS \"RX Errors\", rx_discards_total AS \"RX Discards\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
+          "refId": "A"
+        }
+      ],
+      "title": "Interface Status",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "Rates derived from cumulative counters; negative deltas after reset are omitted.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 17
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "WITH samples AS (SELECT time, interface_name, rx_bytes_total, tx_bytes_total, LAG(time) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, interface_name, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS rx_bps, CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS tx_bps FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
+          "rawQuery": true,
+          "rawSql": "WITH samples AS (SELECT time, interface_name, rx_bytes_total, tx_bytes_total, LAG(time) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, interface_name, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS rx_bps, CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS tx_bps FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "WAN RX / TX",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "Cumulative counters. Missing PAN-OS counters remain null.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 17
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT time, interface_name, rx_errors_total, tx_errors_total, rx_discards_total FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time",
+          "rawQuery": true,
+          "rawSql": "SELECT time, interface_name, rx_errors_total, tx_errors_total, rx_discards_total FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Interface Fault Counters",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 21,
+      "panels": [],
+      "title": "Licensing",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 22,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "WITH latest AS (SELECT subscription_name, status, expiry_date, remaining_days, expired_days, expired, perpetual, expiry_state, time, ROW_NUMBER() OVER (PARTITION BY hostname, subscription_name ORDER BY time DESC) AS rn FROM license WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT subscription_name AS \"Subscription\", expiry_state AS \"State\", status AS \"Status\", expiry_date AS \"Expiry\", remaining_days AS \"Days Remaining\", expired_days AS \"Days Expired\", perpetual AS \"Perpetual\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY subscription_name",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (SELECT subscription_name, status, expiry_date, remaining_days, expired_days, expired, perpetual, expiry_state, time, ROW_NUMBER() OVER (PARTITION BY hostname, subscription_name ORDER BY time DESC) AS rn FROM license WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT subscription_name AS \"Subscription\", expiry_state AS \"State\", status AS \"Status\", expiry_date AS \"Expiry\", remaining_days AS \"Days Remaining\", expired_days AS \"Days Expired\", perpetual AS \"Perpetual\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY subscription_name",
+          "refId": "A"
+        }
+      ],
+      "title": "Subscriptions and Expiry",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "id": 23,
+      "panels": [],
+      "title": "Content Updates",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "id": 24,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "WITH latest AS (SELECT package_name, version, release_time, release_time_raw, age_days, time, ROW_NUMBER() OVER (PARTITION BY hostname, package_name ORDER BY time DESC) AS rn FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT package_name AS \"Package\", version AS \"Version\", release_time AS \"Release Time\", age_days AS \"Age (days)\", release_time_raw AS \"Raw Release Time\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY package_name",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (SELECT package_name, version, release_time, release_time_raw, age_days, time, ROW_NUMBER() OVER (PARTITION BY hostname, package_name ORDER BY time DESC) AS rn FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT package_name AS \"Package\", version AS \"Version\", release_time AS \"Release Time\", age_days AS \"Age (days)\", release_time_raw AS \"Raw Release Time\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY package_name",
+          "refId": "A"
+        }
+      ],
+      "title": "Installed Content Packages",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "id": 25,
+      "panels": [],
+      "title": "Inventory",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "Management IP is explicit unavailable text because it is not present in the device measurement.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "id": 26,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "WITH latest AS (SELECT hostname, serial, model, management_ip, firmware, platform, platform_family, time, ROW_NUMBER() OVER (PARTITION BY hostname ORDER BY time DESC) AS rn FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS \"Hostname\", serial AS \"Serial\", model AS \"Model\", management_ip AS \"Management IP\", firmware AS \"Software Version\", platform AS \"Platform\", platform_family AS \"Platform Family\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY hostname",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (SELECT hostname, serial, model, management_ip, firmware, platform, platform_family, time, ROW_NUMBER() OVER (PARTITION BY hostname ORDER BY time DESC) AS rn FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS \"Hostname\", serial AS \"Serial\", model AS \"Model\", management_ip AS \"Management IP\", firmware AS \"Software Version\", platform AS \"Platform\", platform_family AS \"Platform Family\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY hostname",
+          "refId": "A"
+        }
+      ],
+      "title": "Firewall Inventory",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 27,
+      "panels": [],
+      "title": "Collector Diagnostics",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "dateTimeAsIso"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 48
+      },
+      "id": 28,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT time AS last_collection FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT time AS last_collection FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Last Collection",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 48
+      },
+      "id": 29,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Collection Duration",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 48
+      },
+      "id": 30,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Points Written",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 48
+      },
+      "id": 31,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT api_requests FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT api_requests FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "API Requests",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 48
+      },
+      "id": 32,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Max API Duration",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 48
+      },
+      "id": 33,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Partial",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 48
+      },
+      "id": 34,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT error_count FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT error_count FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "Failed"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "Successful"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 52
+      },
+      "id": 35,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Collector Result",
+      "transformations": [],
+      "type": "stat"
+    }
+  ],
+  "refresh": "2m",
+  "schemaVersion": 41,
+  "tags": [
+    "itp",
+    "paloalto",
+    "firewall",
+    "operations"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": "'%'",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ffsu5ap2kr5dse"
+        },
+        "definition": "SELECT DISTINCT customer FROM device WHERE collector = 'paloalto' ORDER BY customer",
+        "includeAll": true,
+        "label": "Customer",
+        "name": "customer",
+        "options": [],
+        "query": "SELECT DISTINCT customer FROM device WHERE collector = 'paloalto' ORDER BY customer",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": "'%'",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ffsu5ap2kr5dse"
+        },
+        "definition": "SELECT DISTINCT site FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} ORDER BY site",
+        "includeAll": true,
+        "label": "Site",
+        "name": "site",
+        "options": [],
+        "query": "SELECT DISTINCT site FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} ORDER BY site",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": "'%'",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ffsu5ap2kr5dse"
+        },
+        "definition": "SELECT DISTINCT hostname FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "includeAll": true,
+        "label": "Device",
+        "name": "device",
+        "options": [],
+        "query": "SELECT DISTINCT hostname FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Palo Alto Operational Overview",
+  "uid": "paloalto-operational-overview",
+  "version": 1,
+  "weekStart": ""
+}

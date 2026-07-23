@@ -119,12 +119,52 @@ class InfrastructureStateEngine:
         for result in sorted(results, key=lambda value: (-value.priority, value.name)):
             for value in result.collectors: collector_values.setdefault(value["collector"], value)
         collectors = [collector_values[key] for key in sorted(collector_values)]
+        for collector in collectors:
+            name = collector["collector"]
+            site_ids = sorted({asset.get("site", {}).get("site_id")
+                               for asset in assets
+                               if name in asset.get("sources", [])
+                               and asset.get("site", {}).get("site_id")})
+            collector["site_ids"] = site_ids
+            collector["site_names"] = [
+                self.site_registry.definition(site_id).display_name
+                for site_id in site_ids if self.site_registry.definition(site_id)]
         switch = _count(assets, lambda value: "switch" in asset_kind(value))
         aps = _count(assets, lambda value: "access-point" in asset_kind(value) or "wireless" in asset_kind(value))
         firewall = _count(assets, lambda value: "firewall" in asset_kind(value) or "security-appliance" in asset_kind(value))
         servers = _count(assets, lambda value: "server" in asset_kind(value))
         printers = _count(assets, lambda value: "print" in asset_kind(value))
         signals = _read(self.operations_dir / "signals.json", {})
+        signals = dict(signals)
+        wan_signals = list(signals.get("wan") or [])
+        security_signals = list(signals.get("security") or [])
+        for asset in assets:
+            extensions = asset.get("extensions") or {}
+            if not isinstance(extensions, dict):
+                continue
+            site = asset.get("site") or {}
+            site_id = site.get("site_id") if isinstance(site, dict) else asset.get("site_id")
+            site_name = site.get("display_name") if isinstance(site, dict) else site
+            for value in extensions.get("wan_interfaces") or []:
+                wan_signals.append({**value, "site_id": site_id, "site": site_name})
+            certificate = extensions.get("device_certificate") or {}
+            licenses = extensions.get("licenses") or []
+            content = extensions.get("content_packages") or []
+            if certificate or licenses or content:
+                security_signals.append({
+                    "device": asset.get("hostname") or asset.get("display_name"),
+                    "site_id": site_id, "site": site_name,
+                    "observed_at": asset.get("last_seen_at"),
+                    "device_certificate": certificate,
+                    "licenses": licenses, "content_packages": content,
+                })
+        if wan_signals:
+            signals["wan"] = sorted(wan_signals, key=lambda value: (
+                str(value.get("site_id", "")), str(value.get("role", "")),
+                str(value.get("interface_name") or value.get("name", ""))))
+        if security_signals:
+            signals["security"] = sorted(security_signals, key=lambda value: (
+                str(value.get("site_id", "")), str(value.get("device", ""))))
         reconciliations = _read(self.inventory_dir / "reconciliation.json",
                                 {"reconciliations": []}).get("reconciliations", [])
         wan = signals.get("wan")

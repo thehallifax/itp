@@ -25,20 +25,26 @@ class OperationsEngine:
                  dashboard_output="/app/runtime/dashboard/grafana/infrastructure-overview.json",
                  infrastructure_state="/app/runtime/infrastructure/state.json",
                  infrastructure_summary="/app/runtime/dashboard/infrastructure-summary.json",
-                 settings=None, sites_config="/app/config/sites.yml"):
+                 settings=None, sites_config="/app/config/sites.yml",
+                 capability_registry="/app/runtime/dashboard/managed/registry.json"):
         self.inventory_dir = Path(inventory_dir); self.output_dir = Path(output_dir)
         self.dashboard_template = Path(dashboard_template); self.settings = settings or {}
         self.dashboard_output = Path(dashboard_output)
         self.infrastructure_state = Path(infrastructure_state)
         self.infrastructure_summary = Path(infrastructure_summary)
+        self.capability_registry = Path(capability_registry)
         self.site_registry = SiteRegistry.load(sites_config)
 
     def context(self, now=None):
         now = now or datetime.now(timezone.utc)
         state = _read(self.infrastructure_state, {"assets": [], "collectors": [],
                                                   "reconciliations": [], "signals": {}})
+        registry = _read(self.capability_registry, {})
+        enabled = set(registry.get("enabled_collectors", []))
         sources = {}
         for collector in state.get("collectors", []):
+            if enabled and collector.get("collector") not in enabled:
+                continue
             status = collector.get("status")
             sources[collector["collector"]] = {
                 "consecutive_failures": collector.get("failures", 0),

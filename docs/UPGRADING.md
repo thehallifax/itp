@@ -1,5 +1,18 @@
 # Upgrading ITP
 
+For customer-profile deployments:
+
+```sh
+git pull --ff-only
+./itp profile validate mlc
+./itp profile restart mlc
+./itp profile status mlc
+```
+
+Repeat for each local profile. Runtime and credentials are ignored, so routine
+generation does not block `git pull --ff-only`. See
+`docs/deployment-profiles.md` for rollback and profile-volume backup guidance.
+
 Back up `.env`, `secrets/`, `runtime/inventory/`, and Docker volumes before a production
 upgrade. Runtime files are intentionally not version-controlled.
 

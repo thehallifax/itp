@@ -54,6 +54,42 @@ def _markdown(title, items):
     return "\n".join(lines)
 
 
+def _finding_table(panel, title, items, site_values):
+    scopes = [("all", "All"), *[(value["site_id"], value["display_name"])
+                                for value in site_values]]
+    rows = []
+    for scope, _ in scopes:
+        selected = items if scope == "all" else [
+            value for value in items if value.get("site_id") == scope]
+        if selected:
+            for value in selected[:10]:
+                rows.append({"scope": scope, "priority": value.get("priority", 0),
+                    "severity": value.get("severity", "Info"),
+                    "item": value.get("title", ""),
+                    "device": value.get("device", ""),
+                    "site": value.get("site", "")})
+        else:
+            rows.append({"scope": scope, "priority": "", "severity": "Info",
+                "item": f"No current {title.lower()}", "device": "", "site": ""})
+    stream = io.StringIO()
+    fields = ("scope", "priority", "severity", "item", "device", "site")
+    writer = csv.DictWriter(stream, fieldnames=fields); writer.writeheader()
+    for row in rows: writer.writerow(row)
+    datasource = {"type": "grafana-testdata-datasource", "uid": "itp-runtime-values"}
+    panel["type"] = "table"; panel["datasource"] = datasource
+    panel["targets"] = [{"refId": "A", "scenarioId": "csv_content",
+        "csvContent": stream.getvalue().rstrip(), "datasource": datasource}]
+    panel["transformations"] = [{"id": "filterByValue", "options": {"filters": [{
+        "config": {"id": "equal", "options": {"value": "${site}"}},
+        "fieldName": "scope"}], "match": "all", "type": "include"}},
+        {"id": "organize", "options": {"excludeByName": {"scope": True}}}]
+    panel["fieldConfig"] = {"defaults": {"custom": {"align": "auto",
+        "cellOptions": {"type": "auto"}, "filterable": False,
+        "inspect": False}}, "overrides": []}
+    panel["options"] = {"cellHeight": "sm", "footer": {"show": False},
+                        "showHeader": True}
+
+
 def _metric_content(title, definition, summary):
     primary, label, secondary = definition; value = summary.get(primary)
     if value is None: return f"## {title}\n\nState unavailable"
@@ -133,6 +169,6 @@ def render_dashboard(template_path, output_path, result, infrastructure_summary=
         panel = next((value for value in dashboard.get("panels", []) if value.get("title") == title), None)
         if panel is None: raise ValueError(f"dashboard template is missing {title} panel")
         panel["description"] = f"Generated from operations.json by deterministic rules at {result['generated_at']}."
-        panel.setdefault("options", {})["content"] = _markdown(title, result[collection])
+        _finding_table(panel, title, result[collection], site_values)
     dashboard["version"] = int(dashboard.get("version", 0)) + 1
     atomic_write(output_path, json.dumps(dashboard, indent=2, sort_keys=True) + "\n")

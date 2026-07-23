@@ -15,7 +15,7 @@ def test_platform_and_schema_metadata_are_stable():
     assert (ROOT / "SCHEMA_VERSION").read_text().strip() == str(SCHEMA_VERSION) == "1"
     assert set(MEASUREMENTS) == {
         "device", "availability", "performance", "interface", "wireless",
-        "firewall", "collector_health",
+        "firewall", "collector_health", "license", "content_package",
     }
     assert all(CollectorRegistry.get(name).schema_version == 1
                for name in CollectorRegistry.names())
@@ -23,7 +23,8 @@ def test_platform_and_schema_metadata_are_stable():
 
 def test_canonical_schema_documents_exist():
     expected = {"device", "availability", "performance", "interface", "wireless",
-                "firewall", "server", "inventory", "relationship", "collector_health"}
+                "firewall", "server", "inventory", "relationship", "collector_health",
+                "license", "content_package"}
     assert {path.stem for path in (ROOT / "docs/schema").glob("*.md")} == expected
     for name in expected:
         text = (ROOT / f"docs/schema/{name}.md").read_text().lower()
@@ -32,9 +33,8 @@ def test_canonical_schema_documents_exist():
 
 
 def test_dashboard_folders_and_uids_are_fixed():
-    folders = {"Infrastructure Overview", "Network", "Compute", "Printing", "Services",
-               "Inventory", "Collectors", "Operations", "Vendor"}
-    assert all((ROOT / "dashboards" / folder).is_dir() for folder in folders)
+    folders = {"Operations", "Infrastructure", "Security", "Wireless", "Printing",
+               "Compute", "Identity", "Vendor"}
     provision = yaml.safe_load((ROOT / "grafana/provisioning/dashboards/dashboards.yml").read_text())
     providers = provision["providers"]
     assert {provider["folder"] for provider in providers} == folders
@@ -45,7 +45,8 @@ def test_dashboard_folders_and_uids_are_fixed():
     assert len(dashboard_uids) == len(set(dashboard_uids))
     assert set(dashboard_uids) == {
         "itp-infrastructure-overview", "mist-infrastructure-overview",
-        "fortigate-infrastructure-overview", "itp-operations-wallboard",
+        "fortigate-infrastructure-overview", "paloalto-operational-overview",
+        "itp-operations-wallboard", "itp-collector-health",
     }
 
 
