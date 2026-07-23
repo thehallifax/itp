@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import OperationalContext
 from .renderer import render_dashboard, write_outputs
 from .rules import Rule
+from analysis.sites import SiteRegistry
 
 
 def _read(path, fallback):
@@ -23,12 +25,13 @@ class OperationsEngine:
                  dashboard_output="/app/runtime/dashboard/grafana/infrastructure-overview.json",
                  infrastructure_state="/app/runtime/infrastructure/state.json",
                  infrastructure_summary="/app/runtime/dashboard/infrastructure-summary.json",
-                 settings=None):
+                 settings=None, sites_config="/app/config/sites.yml"):
         self.inventory_dir = Path(inventory_dir); self.output_dir = Path(output_dir)
         self.dashboard_template = Path(dashboard_template); self.settings = settings or {}
         self.dashboard_output = Path(dashboard_output)
         self.infrastructure_state = Path(infrastructure_state)
         self.infrastructure_summary = Path(infrastructure_summary)
+        self.site_registry = SiteRegistry.load(sites_config)
 
     def context(self, now=None):
         now = now or datetime.now(timezone.utc)
@@ -51,6 +54,14 @@ class OperationsEngine:
     def evaluate(self, now=None):
         context = self.context(now); items = []
         for rule in Rule.registered(): items.extend(rule.evaluate(context))
+        resolved = []
+        for value in items:
+            if value.site_id or not value.site:
+                resolved.append(value); continue
+            site = self.site_registry.resolver.resolve(value.site)
+            resolved.append(replace(value, site_id=site.site_id or "",
+                                    site=site.display_name or value.site))
+        items = resolved
         unique = {value.id: value for value in items}
         ordered = sorted(unique.values(), key=lambda value: (-value.priority, value.title, value.id))
         result = {"generated_at": context.now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),

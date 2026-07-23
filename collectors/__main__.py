@@ -15,6 +15,8 @@ from .scheduler import Scheduler
 from .writer import InfluxWriter
 from analysis.operations import OperationsEngine, Rule
 from analysis.infrastructure import InfrastructureStateEngine, SignalAdapter
+from analysis.sites import SiteRegistry
+from analysis.wallboard import WallboardEngine
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -120,6 +122,12 @@ async def _validate(config):
     except Exception:
         valid_dashboards = False; uids = []
     check("dashboard UIDs", valid_dashboards, ", ".join(str(value) for value in uids))
+    registry = SiteRegistry.load(os.getenv("SITES_CONFIG", "/app/config/sites.yml"))
+    site_findings = registry.validation()
+    blocking = [value for value in site_findings
+                if value["type"] in {"duplicate_alias", "ambiguous_alias"}]
+    check("canonical site registry", bool(registry.sites) and not blocking,
+          f"sites={len(registry.sites)} aliases={registry.statistics()['aliases_loaded']} conflicts={len(blocking)}")
     inventory_path = Path(os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json"))
     check("inventory location", inventory_path.parent.exists() and os.access(inventory_path.parent, os.W_OK),
           str(inventory_path.parent))
@@ -162,6 +170,28 @@ async def _run(args):
             print(f"Generated {len(result['issues'])} issues, {len(result['risks'])} risks, "
                   f"and {len(result['recommendations'])} recommendations")
         return
+    if args.command == "sites":
+        registry = SiteRegistry.load(os.getenv("SITES_CONFIG", "/app/config/sites.yml"))
+        state = json.loads(Path(os.getenv("INFRASTRUCTURE_STATE", "/app/runtime/infrastructure/state.json")).read_text())
+        operations_path = Path(os.getenv("OPERATIONS_STATE", "/app/runtime/operations/operations.json"))
+        operations = json.loads(operations_path.read_text()) if operations_path.exists() else {}
+        payload, _ = registry.write(os.getenv("SITES_OUTPUT", "/app/runtime/sites"),
+            os.getenv("DASHBOARD_OUTPUT", "/app/runtime/dashboard"), state, operations,
+            state.get("site_validation", []), state.get("site_registry_statistics", {}))
+        print(f"Generated canonical estate for {len(payload['sites'])} sites")
+        return
+    if args.command == "wallboard":
+        settings = config.get("wallboard", {})
+        result = WallboardEngine(
+            infrastructure_state=settings.get("infrastructure_state", "/app/runtime/infrastructure/state.json"),
+            operations_state=settings.get("operations_state", "/app/runtime/operations/operations.json"),
+            sites_state=settings.get("sites_state", "/app/runtime/sites/sites.json"),
+            dashboard_template=settings.get("dashboard_template", "/app/dashboards/Operations/operations-wallboard.json"),
+            summary_output=settings.get("summary_output", "/app/runtime/dashboard/wallboard-summary.json"),
+            dashboard_output=settings.get("dashboard_output", "/app/runtime/dashboard/operations/operations-wallboard.json"),
+            freshness_seconds=settings.get("freshness_seconds", 900)).run()
+        print(f"Generated Operations Wallboard for {len(result['site_options'])} canonical sites")
+        return
     if args.command == "infrastructure":
         settings = config.get("infrastructure", {})
         engine = InfrastructureStateEngine(
@@ -169,7 +199,9 @@ async def _run(args):
             operations_dir=settings.get("operations_path", "/app/runtime/operations"),
             output_dir=settings.get("output_path", "/app/runtime/infrastructure"),
             dashboard_dir=settings.get("dashboard_path", "/app/runtime/dashboard"),
-            status_freshness_seconds=settings.get("status_freshness_seconds", 300))
+            status_freshness_seconds=settings.get("status_freshness_seconds", 300),
+            sites_config=settings.get("sites_config", "/app/config/sites.yml"),
+            sites_output=settings.get("sites_output", "/app/runtime/sites"))
         if args.action == "adapters":
             for adapter in SignalAdapter.registered(engine.inventory_dir):
                 print(f"{adapter.name}\t{adapter.priority}")
@@ -301,12 +333,15 @@ async def _run(args):
         return
     operations_settings = config.get("operations", {})
     infrastructure_settings = config.get("infrastructure", {})
+    wallboard_settings = config.get("wallboard", {})
     infrastructure = InfrastructureStateEngine(
         inventory_dir=infrastructure_settings.get("inventory_path", "/app/runtime/inventory"),
         operations_dir=infrastructure_settings.get("operations_path", "/app/runtime/operations"),
         output_dir=infrastructure_settings.get("output_path", "/app/runtime/infrastructure"),
         dashboard_dir=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard"),
-        status_freshness_seconds=infrastructure_settings.get("status_freshness_seconds", 300)) \
+        status_freshness_seconds=infrastructure_settings.get("status_freshness_seconds", 300),
+        sites_config=infrastructure_settings.get("sites_config", "/app/config/sites.yml"),
+        sites_output=infrastructure_settings.get("sites_output", "/app/runtime/sites")) \
         if infrastructure_settings.get("enabled", True) else None
     operations = OperationsEngine(
         inventory_dir=operations_settings.get("inventory_path", "/app/runtime/inventory"),
@@ -316,12 +351,22 @@ async def _run(args):
         infrastructure_state=infrastructure_settings.get("output_path", "/app/runtime/infrastructure") + "/state.json",
         infrastructure_summary=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard") + "/infrastructure-summary.json",
         settings=operations_settings) if operations_settings.get("enabled", True) else None
+    wallboard = WallboardEngine(
+        infrastructure_state=wallboard_settings.get("infrastructure_state", "/app/runtime/infrastructure/state.json"),
+        operations_state=wallboard_settings.get("operations_state", "/app/runtime/operations/operations.json"),
+        sites_state=wallboard_settings.get("sites_state", "/app/runtime/sites/sites.json"),
+        dashboard_template=wallboard_settings.get("dashboard_template", "/app/dashboards/Operations/operations-wallboard.json"),
+        summary_output=wallboard_settings.get("summary_output", "/app/runtime/dashboard/wallboard-summary.json"),
+        dashboard_output=wallboard_settings.get("dashboard_output", "/app/runtime/dashboard/operations/operations-wallboard.json"),
+        freshness_seconds=wallboard_settings.get("freshness_seconds", 900)) \
+        if wallboard_settings.get("enabled", True) else None
     await Scheduler(collectors, os.getenv("COLLECTOR_HEALTH_PATH", "/tmp/collector-health"),
                     inventory_engine=engine,
                     lifecycle_interval=inventory_settings.get(
                         "lifecycle_evaluation_interval_seconds", 3600),
                     infrastructure_engine=infrastructure,
                     operations_engine=operations,
+                    wallboard_engine=wallboard,
                     operations_interval=operations_settings.get("interval_seconds", 300)).run()
 
 
@@ -352,6 +397,10 @@ def main():
     infrastructure = sub.add_parser("infrastructure")
     infrastructure.add_argument("action", choices=("generate", "adapters", "fusion-report"),
                                 default="generate", nargs="?")
+    sites = sub.add_parser("sites")
+    sites.add_argument("action", choices=("generate",), default="generate", nargs="?")
+    wallboard = sub.add_parser("wallboard")
+    wallboard.add_argument("action", choices=("generate",), default="generate", nargs="?")
     args = parser.parse_args()
     if args.command == "inventory" and args.action in ("show", "retire", "restore") and not args.asset_id:
         parser.error(f"inventory {args.action} requires asset_id")

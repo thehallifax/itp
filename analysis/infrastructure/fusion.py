@@ -10,7 +10,8 @@ from .policy import STATUS_FRESHNESS_SECONDS, VENDOR_SOURCES, source_priority
 
 
 CONFIDENCE_RANK = {"unmerged": 0, "low": 1, "medium": 2, "high": 3, "exact": 4}
-FUSION_FIELDS = ("hostname", "serial_number", "management_ip", "site", "device_type",
+FUSION_FIELDS = ("hostname", "serial_number", "management_ip", "site", "site_id",
+    "site_display_name", "device_type",
     "device_role", "vendor", "model", "firmware_version", "lifecycle_state", "managed",
     "customer", "location", "last_seen_at")
 
@@ -183,13 +184,15 @@ class FusionEngine:
             key = (_source(record), str(record.get("source_asset_id") or record.get("asset_id") or ""))
             if key in seen: continue
             seen.add(key); source_records.append({"source": key[0], "source_asset_id": key[1],
-                "observed_at": record.get("source_last_seen_at") or record.get("last_seen_at")})
+                "observed_at": record.get("source_last_seen_at") or record.get("last_seen_at"),
+                "site_value": record.get("_site_source_value")})
         result["source_records"] = source_records
         status, status_provenance, status_conflicts = self._status(records)
         result["status"] = status; result["online"] = True if status == "online" else False if status == "offline" else None
         if status_provenance: provenance["status"] = status_provenance
         conflicts.extend(status_conflicts)
         checks = (("serial_number", normalize_serial, "Critical"), ("management_ip", normalize_ip, "Medium"),
+                  ("site_id", lambda value: str(value or "").lower() or None, "High"),
                   ("site", normalize_site, "Medium"), ("device_type", normalize_device_type, "High"),
                   ("vendor", lambda value: str(value or "").lower() or None, "Low"),
                   ("model", lambda value: str(value or "").lower() or None, "Low"))

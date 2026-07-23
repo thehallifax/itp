@@ -30,6 +30,15 @@ def fuse(*results, freshness=300):
 
 def engine_fixture(tmp_path):
     inventory = tmp_path / "inventory"; operations = tmp_path / "operations"
+    sites = tmp_path / "sites.yml"
+    sites.write_text("""sites:
+  - id: hq
+    display_name: HQ
+    aliases: [HQ]
+  - id: branch
+    display_name: Branch
+    aliases: [Branch]
+""")
     write(inventory / "assets.json", {"assets": [
         asset("mist", "inv-switch", serial_number="SW1", hostname="CORE-1",
               device_type="switch", online=True, site="HQ", management_ip="10.0.0.1", vendor="juniper"),
@@ -47,7 +56,8 @@ def engine_fixture(tmp_path):
             "started_at": "2026-07-22T23:58:00Z", "completed_at": "2026-07-23T00:00:00Z"}},
     }})
     write(operations / "operations.json", {"issues": [{"site": "HQ"}], "risks": [{"site": "Branch"}]})
-    return InfrastructureStateEngine(inventory, operations, tmp_path / "state", tmp_path / "dashboard")
+    return InfrastructureStateEngine(inventory, operations, tmp_path / "state", tmp_path / "dashboard",
+                                     sites_config=sites, sites_output=tmp_path / "sites")
 
 
 def test_four_existing_output_adapters_register_and_clean_bootstrap(tmp_path):
@@ -147,7 +157,7 @@ def test_site_aggregation_health_separation_and_renderer_schema(tmp_path):
     assert summary["infrastructure_health"] == "Warning"
     assert summary["observability_health"] == "Warning"
     assert summary["collectors_healthy"] == 1 and summary["collectors_failed"] == 1
-    assert [site["site"] for site in first["sites"]] == ["Branch", "HQ"]
+    assert [site["site_id"] for site in first["sites"]] == ["site:branch", "site:hq"]
     state = engine.run(NOW)
     flat = json.loads((tmp_path / "dashboard/infrastructure-summary.json").read_text())
     assert flat["infrastructure_health"] == "Warning" and flat["observability_health"] == "Warning"
@@ -155,6 +165,7 @@ def test_site_aggregation_health_separation_and_renderer_schema(tmp_path):
     assert len(rows) == 3
     assert set(("canonical_id", "sources", "merge_confidence", "matched_on", "conflict_count")) <= rows[0].keys()
     assert json.loads((tmp_path / "state/state.json").read_text()) == state
+    assert json.loads((tmp_path / "sites/sites.json").read_text())["sites"][0]["site_id"] == "site:branch"
 
 
 def test_operations_uses_only_fused_canonical_assets(tmp_path):

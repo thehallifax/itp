@@ -45,7 +45,7 @@ def test_dashboard_folders_and_uids_are_fixed():
     assert len(dashboard_uids) == len(set(dashboard_uids))
     assert set(dashboard_uids) == {
         "itp-infrastructure-overview", "mist-infrastructure-overview",
-        "fortigate-infrastructure-overview",
+        "fortigate-infrastructure-overview", "itp-operations-wallboard",
     }
 
 

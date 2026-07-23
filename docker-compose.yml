@@ -56,6 +56,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./discovery/config.yml:/app/config.yml:ro
+      - ./config/sites.yml:/app/config/sites.yml:ro
       - ./runtime/inventory:/app/runtime/inventory
       - ./telegraf/telegraf.d/generated:/app/generated
     command:
@@ -82,9 +83,11 @@ services:
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
     volumes:
       - ./discovery/config.yml:/app/config.yml:ro
+      - ./config/sites.yml:/app/config/sites.yml:ro
       - ./runtime/inventory:/app/runtime/inventory
       - ./runtime/operations:/app/runtime/operations
       - ./runtime/infrastructure:/app/runtime/infrastructure
+      - ./runtime/sites:/app/runtime/sites
       - ./runtime/dashboard:/app/runtime/dashboard
     command:
       - python

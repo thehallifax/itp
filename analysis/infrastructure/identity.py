@@ -52,7 +52,7 @@ def normalized(record):
         "management_ip": normalize_ip(record.get("management_ip") or record.get("device_ip") or record.get("ip")),
         "management_mac": normalize_mac(record.get("management_mac") or record.get("mac_address") or record.get("mac")),
         "chassis_id": normalize_mac(record.get("chassis_mac") or record.get("chassis_id")),
-        "site": normalize_site(record.get("site")), "device_type": kind}
+        "site": normalize_site(record.get("site_id") or record.get("site")), "device_type": kind}
 
 
 def compatible_types(left, right):

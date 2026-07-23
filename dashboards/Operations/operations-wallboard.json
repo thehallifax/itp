@@ -1,0 +1,54 @@
+{
+  "annotations": {"list": []},
+  "description": "Dense, site-aware operational wallboard generated from canonical ITP runtime state.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {"asDropdown": true, "icon": "external link", "includeVars": true, "keepTime": true, "tags": [], "targetBlank": false, "title": "Infrastructure Overview", "tooltip": "Open the interactive operational dashboard", "type": "link", "url": "/d/itp-infrastructure-overview"},
+    {"asDropdown": true, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Mist Infrastructure Overview", "type": "link", "url": "/d/mist-infrastructure-overview"},
+    {"asDropdown": true, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "FortiGate Infrastructure Overview", "type": "link", "url": "/d/fortigate-infrastructure-overview"}
+  ],
+  "liveNow": false,
+  "panels": [
+    {"gridPos": {"h": 3, "w": 8, "x": 0, "y": 0}, "id": 1, "options": {"content": "# Operations Wallboard\n\nWaiting for canonical runtime state.", "mode": "markdown"}, "title": "Operations Wallboard", "transparent": true, "type": "text"},
+    {"gridPos": {"h": 3, "w": 2, "x": 8, "y": 0}, "id": 2, "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}, "targets": [], "title": "Infrastructure Health", "type": "stat"},
+    {"gridPos": {"h": 3, "w": 2, "x": 10, "y": 0}, "id": 3, "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}, "targets": [], "title": "Observability Health", "type": "stat"},
+    {"gridPos": {"h": 3, "w": 2, "x": 12, "y": 0}, "id": 4, "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}, "targets": [], "title": "Sites", "type": "stat"},
+    {"gridPos": {"h": 3, "w": 2, "x": 14, "y": 0}, "id": 5, "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}, "targets": [], "title": "Devices Online", "type": "stat"},
+    {"gridPos": {"h": 3, "w": 2, "x": 16, "y": 0}, "id": 6, "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}, "targets": [], "title": "Devices Offline", "type": "stat"},
+    {"gridPos": {"h": 3, "w": 2, "x": 18, "y": 0}, "id": 7, "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}, "targets": [], "title": "Actionable Warnings", "type": "stat"},
+    {"gridPos": {"h": 3, "w": 2, "x": 20, "y": 0}, "id": 8, "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}, "targets": [], "title": "Active Issues", "type": "stat"},
+    {"gridPos": {"h": 3, "w": 2, "x": 22, "y": 0}, "id": 9, "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}, "targets": [], "title": "Collectors Healthy", "type": "stat"},
+
+    {"gridPos": {"h": 4, "w": 4, "x": 0, "y": 3}, "id": 10, "targets": [], "title": "Network", "type": "table"},
+    {"gridPos": {"h": 4, "w": 4, "x": 4, "y": 3}, "id": 11, "targets": [], "title": "Wireless", "type": "table"},
+    {"gridPos": {"h": 4, "w": 4, "x": 8, "y": 3}, "id": 12, "targets": [], "title": "Security and Edge", "type": "table"},
+    {"gridPos": {"h": 4, "w": 4, "x": 12, "y": 3}, "id": 13, "targets": [], "title": "Compute", "type": "table"},
+    {"gridPos": {"h": 4, "w": 4, "x": 16, "y": 3}, "id": 14, "targets": [], "title": "Printing", "type": "table"},
+    {"gridPos": {"h": 4, "w": 4, "x": 20, "y": 3}, "id": 15, "targets": [], "title": "Services", "type": "table"},
+
+    {"description": "Logical aggregate hierarchy by canonical device class. This is not discovered physical topology.", "gridPos": {"h": 9, "w": 8, "x": 0, "y": 7}, "id": 16, "targets": [], "title": "Logical Infrastructure View", "type": "table"},
+    {"gridPos": {"h": 9, "w": 6, "x": 8, "y": 7}, "id": 17, "targets": [], "title": "Top Active Issues", "type": "table"},
+    {"gridPos": {"h": 9, "w": 5, "x": 14, "y": 7}, "id": 18, "targets": [], "title": "Top Operational Risks", "type": "table"},
+    {"gridPos": {"h": 9, "w": 5, "x": 19, "y": 7}, "id": 19, "targets": [], "title": "Top Recommendations", "type": "table"},
+
+    {"description": "No arbitrary interfaces are selected.", "gridPos": {"h": 5, "w": 8, "x": 0, "y": 16}, "id": 20, "options": {"content": "## Awaiting telemetry", "mode": "markdown"}, "title": "Primary and Secondary WAN Traffic", "type": "text"},
+    {"description": "Requires reliable canonical uplink classification.", "gridPos": {"h": 5, "w": 8, "x": 8, "y": 16}, "id": 21, "options": {"content": "## Awaiting telemetry", "mode": "markdown"}, "title": "Core and Internet-Bound Traffic", "type": "text"},
+    {"description": "Requires WAN latency and packet-loss time series.", "gridPos": {"h": 5, "w": 8, "x": 16, "y": 16}, "id": 22, "options": {"content": "## Awaiting telemetry", "mode": "markdown"}, "title": "WAN Quality", "type": "text"},
+
+    {"gridPos": {"h": 6, "w": 24, "x": 0, "y": 21}, "id": 23, "targets": [], "title": "Collector Health and Data Freshness", "type": "table"}
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": ["itp", "operations", "wallboard"],
+  "templating": {"list": [{"allValue": "all", "current": {"selected": true, "text": "All Sites", "value": "all"}, "hide": 0, "includeAll": true, "label": "Site", "multi": false, "name": "site", "options": [{"selected": true, "text": "All Sites", "value": "all"}], "query": "", "skipUrlSync": false, "type": "custom"}]},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Operations Wallboard",
+  "uid": "itp-operations-wallboard",
+  "version": 1,
+  "weekStart": ""
+}

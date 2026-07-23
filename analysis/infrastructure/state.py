@@ -13,6 +13,7 @@ from .models import asset_kind, asset_name, health_of, state_of
 from .policy import (finding, infrastructure_health, management_ip_required,
                      observability_health)
 from .renderer import write_state
+from analysis.sites import SiteRegistry
 
 
 def _read(path, fallback):
@@ -34,10 +35,28 @@ class InfrastructureStateEngine:
     def __init__(self, inventory_dir="/app/runtime/inventory",
                  operations_dir="/app/runtime/operations",
                  output_dir="/app/runtime/infrastructure",
-                 dashboard_dir="/app/runtime/dashboard", status_freshness_seconds=300):
+                 dashboard_dir="/app/runtime/dashboard", status_freshness_seconds=300,
+                 sites_config="/app/config/sites.yml", sites_output="/app/runtime/sites"):
         self.inventory_dir = Path(inventory_dir); self.operations_dir = Path(operations_dir)
         self.output_dir = Path(output_dir); self.dashboard_dir = Path(dashboard_dir)
         self.fusion = FusionEngine(status_freshness_seconds)
+        self.site_registry = SiteRegistry.load(sites_config)
+        self.sites_output = Path(sites_output)
+
+    def _canonicalize_sites(self, assets):
+        for asset in assets:
+            site_id = asset.get("site_id"); definition = self.site_registry.definition(site_id)
+            source_values = []
+            for record in asset.get("source_records", []):
+                value = record.pop("site_value", None)
+                if value not in (None, ""):
+                    candidate = {"source": record["source"], "value": value}
+                    if candidate not in source_values: source_values.append(candidate)
+            source_values.sort(key=lambda value: (value["source"], str(value["value"])))
+            display = definition.display_name if definition else str(asset.get("site") or "")
+            asset["site"] = {"site_id": site_id, "display_name": display,
+                             "source_values": source_values}
+        return assets
 
     def _merge(self, results):
         assets, _, low = self.fusion.fuse(results)
@@ -54,7 +73,10 @@ class InfrastructureStateEngine:
         hostname_groups = defaultdict(list)
         for asset in assets:
             canonical = asset["canonical_id"]
-            if not asset.get("site"):
+            site = asset.get("site") or {}
+            site_id = site.get("site_id") if isinstance(site, dict) else None
+            site_display = site.get("display_name") if isinstance(site, dict) else str(site)
+            if not site_id:
                 values.append(finding("missing_site", canonical, f"{asset_name(asset)} has no site.",
                     severity="Medium", actionable=True,
                     explanation="Site assignment is required for operational aggregation."))
@@ -64,7 +86,7 @@ class InfrastructureStateEngine:
                     f"{asset_name(asset)} has no management IP.",
                     severity="Medium" if required else "Info", actionable=required,
                     suppressed=not required, explanation=explanation))
-            key = (short_hostname(asset.get("hostname")), normalize_site(asset.get("site")))
+            key = (short_hostname(asset.get("hostname")), normalize_site(site_id or site_display))
             if all(key): hostname_groups[key].append(asset)
             for conflict in asset.get("merge", {}).get("conflicts", []):
                 actionable = conflict["severity"] in {"Critical", "High"}
@@ -87,8 +109,12 @@ class InfrastructureStateEngine:
         for adapter in SignalAdapter.registered(self.inventory_dir):
             try: results.append(adapter.collect())
             except FileNotFoundError: continue
+        results, used_aliases, unknown_sites = self.site_registry.resolve_records(results)
         assets, fusion_statistics, low_candidates = self.fusion.fuse(results)
+        assets = self._canonicalize_sites(assets)
         findings = self._validate(assets, low_candidates)
+        site_validation = self.site_registry.validation(used_aliases, unknown_sites)
+        site_statistics = self.site_registry.statistics(used_aliases)
         collector_values = {}
         for result in sorted(results, key=lambda value: (-value.priority, value.name)):
             for value in result.collectors: collector_values.setdefault(value["collector"], value)
@@ -108,27 +134,38 @@ class InfrastructureStateEngine:
             value.get("percent_remaining") is not None and float(value["percent_remaining"]) <= 15
             for value in consumable_signals)
         operations = _read(self.operations_dir / "operations.json", {"issues": [], "risks": []})
-        by_site_issues = Counter(value.get("site") for value in operations.get("issues", []) if value.get("site"))
-        by_site_risks = Counter(value.get("site") for value in operations.get("risks", []) if value.get("site"))
+        by_site_issues = Counter(value.get("site_id") for value in operations.get("issues", []) if value.get("site_id"))
+        by_site_risks = Counter(value.get("site_id") for value in operations.get("risks", []) if value.get("site_id"))
         site_assets = defaultdict(list)
-        for asset in assets: site_assets[str(asset.get("site") or "Unassigned")].append(asset)
+        for asset in assets: site_assets[str(asset.get("site", {}).get("site_id") or "site:unassigned")].append(asset)
         sites = []
-        for site, values in sorted(site_assets.items()):
+        for site_id, values in sorted(site_assets.items()):
             states = Counter(state_of(value) for value in values)
-            sites.append({"site": site, "devices": len(values), "online": states["online"],
+            site_health = Counter(health_of(value) for value in values)
+            overall = "Critical" if site_health["critical"] else \
+                "Warning" if site_health["offline"] or site_health["warning"] else \
+                "Healthy" if values else "Unknown"
+            definition = self.site_registry.definition(site_id)
+            display = definition.display_name if definition else "Unassigned"
+            sites.append({"site_id": site_id, "display_name": display, "site": display,
+                "devices": len(values), "online": states["online"],
                 "offline": states["offline"],
+                "infrastructure_health": overall,
                 "collectors": sorted({source for value in values for source in value.get("sources", [])}),
-                "issues": by_site_issues[site], "risks": by_site_risks[site]})
+                "issues": by_site_issues[site_id], "risks": by_site_risks[site_id]})
         states = Counter(state_of(value) for value in assets); health = Counter(health_of(value) for value in assets)
         actionable = [value for value in findings if value["actionable"] and not value["suppressed"]]
         informational = [value for value in findings if not value["actionable"] and not value["suppressed"]]
         suppressed = [value for value in findings if value["suppressed"]]
         infra_health = infrastructure_health(assets, actionable, wan_status)
         obs_health = observability_health(collectors, bool(assets))
+        site_health = Counter(value["infrastructure_health"] for value in sites)
         summary = {"sites": len(sites), "devices": len(assets), "online": states["online"],
             "offline": states["offline"], "actionable_warnings": len(actionable),
             "data_quality_findings": len(informational), "suppressed_findings": len(suppressed),
             "infrastructure_health": infra_health, "observability_health": obs_health,
+            "healthy_sites": site_health["Healthy"], "warning_sites": site_health["Warning"],
+            "critical_sites": site_health["Critical"],
             "warnings": len(actionable), "critical": health["critical"],
             "collectors_healthy": sum(value["status"] == "healthy" for value in collectors),
             "collectors_failed": sum(value["status"] == "failed" for value in collectors)}
@@ -147,8 +184,13 @@ class InfrastructureStateEngine:
                          "warning": printers["warning"], "consumables": consumables,
                          "offline": printers["offline"]},
             "collectors": collectors, "warnings": findings, "validation_findings": findings,
+            "site_validation": site_validation, "site_registry_statistics": site_statistics,
             "fusion_statistics": fusion_statistics, "assets": assets,
             "reconciliations": reconciliations, "signals": signals}
 
     def run(self, now=None):
-        state = self.evaluate(now); write_state(self.output_dir, self.dashboard_dir, state); return state
+        state = self.evaluate(now); write_state(self.output_dir, self.dashboard_dir, state)
+        operations = _read(self.operations_dir / "operations.json", {"issues": [], "risks": [], "recommendations": []})
+        self.site_registry.write(self.sites_output, self.dashboard_dir, state, operations,
+                                 state.get("site_validation", []), state.get("site_registry_statistics", {}))
+        return state

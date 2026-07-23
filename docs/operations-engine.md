@@ -7,7 +7,8 @@ contains no machine learning, language model, remote API, or probabilistic score
 
 Asset rules evaluate only fused Infrastructure State records. Their findings
 carry `canonical_id` and source provenance, so multiple collector observations
-of one device cannot create duplicate operational issues.
+of one device cannot create duplicate operational issues. Findings also carry
+canonical `site_id`; `site` remains the registry display name for operators.
 
 ## Architecture and rule flow
 
@@ -29,6 +30,10 @@ Evaluation runs every five minutes by default and can be run immediately with:
 docker compose exec collector python -m collectors operations generate
 docker compose exec collector python -m collectors operations rules
 ```
+
+After Operations evaluation, the scheduler regenerates Operations Wallboard.
+Its attention tables preserve deterministic priority ordering and show at most
+five items for the current site scope.
 
 ## Output schema
 

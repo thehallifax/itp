@@ -12,13 +12,21 @@ Collectors → Signal Adapters → Infrastructure State
                                   └─ Future API
 ```
 
+Before fusion, the [Canonical Site Registry](site-registry.md) resolves exact
+configured aliases to stable `site_id` values. Assets retain the original value
+from every source in their site provenance.
+
 ## Outputs and schema
 
 The scheduled engine atomically creates `runtime/infrastructure/state.json`,
-`state.csv`, and the intentionally flat
+`state.csv`, the canonical estate files under `runtime/sites/`, and the intentionally flat
 `runtime/dashboard/infrastructure-summary.json`. State contains `generated_at`,
 sites, summary, network, wireless, firewalls, servers, printers, collectors,
 validation warnings, and the deduplicated canonical assets.
+
+The presentation-only Wallboard Engine derives scoped domain totals and logical
+aggregate topology from this state. It does not create a second asset registry or
+feed presentation values back into Infrastructure State.
 
 Counts are derived only from explicit inventory values. Unknown online state is
 kept unknown. Wireless clients, failed authentication, printer consumables, and

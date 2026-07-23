@@ -13,7 +13,7 @@ async def _resolve(value):
 class Scheduler:
     def __init__(self, collectors, health_path=None, *, inventory_engine=None,
                  lifecycle_interval=3600, infrastructure_engine=None,
-                 operations_engine=None, operations_interval=300):
+                 operations_engine=None, wallboard_engine=None, operations_interval=300):
         self.collectors = list(collectors)
         self.health_path = Path(health_path) if health_path else None
         self._locks = {collector: asyncio.Lock() for collector in self.collectors}
@@ -22,6 +22,7 @@ class Scheduler:
         self._lifecycle_lock = asyncio.Lock()
         self.operations_engine = operations_engine
         self.infrastructure_engine = infrastructure_engine
+        self.wallboard_engine = wallboard_engine
         self.operations_interval = max(1, int(operations_interval))
         self._operations_lock = asyncio.Lock()
 
@@ -86,6 +87,8 @@ class Scheduler:
                     if self.infrastructure_engine:
                         await asyncio.to_thread(self.infrastructure_engine.run)
                     result = await asyncio.to_thread(self.operations_engine.run)
+                    if self.wallboard_engine:
+                        await asyncio.to_thread(self.wallboard_engine.run)
                     logger.info("operations result=success issues=%d risks=%d recommendations=%d",
                         len(result["issues"]), len(result["risks"]), len(result["recommendations"]))
                     if self.health_path: self.health_path.touch()

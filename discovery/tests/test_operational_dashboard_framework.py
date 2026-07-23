@@ -15,7 +15,7 @@ def test_infrastructure_overview_is_classic_json_with_stable_uid():
     assert isinstance(dashboard["panels"], list)
     assert "elements" not in dashboard
     assert "layout" not in dashboard
-    assert len({panel["id"] for panel in dashboard["panels"]}) == 26
+    assert len({panel["id"] for panel in dashboard["panels"]}) == 31
 
 
 def test_overview_contains_required_operational_panels_and_honest_placeholders():
@@ -28,6 +28,7 @@ def test_overview_contains_required_operational_panels_and_honest_placeholders()
         "WAN Packet Loss", "WAN Bandwidth", "DNS", "DHCP", "Active Directory",
         "PaperCut", "Certificates", "Active Issues", "Operational Risks",
         "Recommendations",
+        "Sites", "Healthy Sites", "Warning Sites", "Critical Sites",
     }
     assert required <= panels.keys()
     operations_generated = {"Active Issues", "Operational Risks", "Recommendations"}
@@ -35,6 +36,7 @@ def test_overview_contains_required_operational_panels_and_honest_placeholders()
         "Infrastructure Health", "Devices Online", "Devices Offline",
         "Observability Health", "Actionable Warnings", "Collectors Healthy",
         "Switches", "Access Points", "Firewalls", "Servers", "Printers",
+        "Sites", "Healthy Sites", "Warning Sites", "Critical Sites",
     }
     for title in required - operations_generated - state_generated:
         panel = panels[title]

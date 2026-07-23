@@ -5,6 +5,14 @@ identify service impact, unhealthy infrastructure, active issues, and emerging
 risks. Move into the relevant operational domain for investigation, then use a
 vendor dashboard only when collector-specific detail is required.
 
+Use **Operations Wallboard** for a continuous 16:9 kiosk display. It provides a
+dense canonical estate or selected-site view and links back to the interactive
+overview and vendor drill-downs. See [Operations Wallboard](operations-wallboard.md).
+
+Canonical summary panels use the supported generated-dashboard projection
+described in [Dashboard Data Binding](dashboard-data-binding.md). Runtime JSON is
+never treated as a Grafana-readable datasource.
+
 ## Information architecture
 
 The first column below is the provisioned Grafana folder. Indented entries are
@@ -19,7 +27,7 @@ Printing/{Fleet, Consumables, Faults}
 Services/{Active Directory, DNS, DHCP, Certificates}
 Inventory/{Assets, Discovery, Lifecycle, Changes}
 Collectors/{Health, Performance}
-Operations/{Active Alerts, Risks, Recommendations}
+Operations/{Operations Wallboard, Active Alerts, Risks, Recommendations}
 Vendor/{Mist, FortiGate}
 ```
 
@@ -35,7 +43,9 @@ when their telemetry does not yet exist, but the order should remain consistent.
 
 The Infrastructure Overview reads device counts, Infrastructure Health,
 Observability Health, and actionable warnings from the flat canonical-state
-summary. Active Issues, Operational Risks, and Recommendations are rendered from
+summary. It also displays total, healthy, warning, and critical canonical sites.
+Its `$site` variable uses stable registry IDs and is populated by the generated
+dashboard. Active Issues, Operational Risks, and Recommendations are rendered from
 the deterministic [Operations Engine](operations-engine.md) output. Clearly
 labelled TODO panels remain only where telemetry does not exist. Future dashboards
 should consume vendor-neutral telemetry and analysis outputs; vendor-specific

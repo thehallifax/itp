@@ -64,6 +64,18 @@ infrastructure:
   output_path: /app/runtime/infrastructure
   dashboard_path: /app/runtime/dashboard
   status_freshness_seconds: 300
+  sites_config: /app/config/sites.yml
+  sites_output: /app/runtime/sites
+
+wallboard:
+  enabled: true
+  freshness_seconds: 900
+  infrastructure_state: /app/runtime/infrastructure/state.json
+  operations_state: /app/runtime/operations/operations.json
+  sites_state: /app/runtime/sites/sites.json
+  dashboard_template: /app/dashboards/Operations/operations-wallboard.json
+  summary_output: /app/runtime/dashboard/wallboard-summary.json
+  dashboard_output: /app/runtime/dashboard/operations/operations-wallboard.json
 
 collectors:
   snmp:

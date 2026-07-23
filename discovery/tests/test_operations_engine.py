@@ -103,4 +103,8 @@ def test_outputs_and_runtime_dashboard_are_generated(tmp_path):
     assert panels["Devices Online"]["type"] == "stat"
     assert panels["Devices Online"]["targets"][0]["csvContent"] == "value\n1"
     assert panels["Switches"]["targets"][0]["csvContent"] == "value\n1"
+    assert all(panels[title]["targets"][0]["scenarioId"] == "csv_content" for title in (
+        "Infrastructure Health", "Observability Health", "Devices Online", "Devices Offline",
+        "Actionable Warnings", "Collectors Healthy", "Switches", "Access Points",
+        "Firewalls", "Servers", "Printers"))
     assert dashboard["uid"] == "itp-infrastructure-overview"

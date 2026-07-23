@@ -5,6 +5,9 @@ operations, or dashboard evaluation. Fusion is deterministic and offline: the
 same observations always produce the same `canonical_id`, fields, provenance,
 conflicts, and ordering.
 
+Configured site aliases are resolved to stable canonical site IDs before this
+identity evaluation. Original source labels remain under `site.source_values`.
+
 ## Identity and confidence
 
 Identity evidence is evaluated from strongest to weakest: serial number,
@@ -38,8 +41,9 @@ confidence, matched evidence, and structured conflicts.
 ### Worked Mist and SNMP example
 
 Mist reports `coreedge.example.edu` at the full customer site name. SNMP reports
-`COREDGE` at the site's configured discovery alias. Compatible hostname and
-management-IP evidence allows a high-confidence merge. Mist owns current status
+`COREDGE` at the site's configured discovery alias. The registry resolves both
+labels to one `site_id`, then compatible hostname and management-IP evidence
+allows a high-confidence merge. Mist owns current status
 and vendor fields; SNMP may fill a missing management field. Both source records
 remain visible and the resulting ID is stable.
 

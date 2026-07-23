@@ -79,7 +79,7 @@ providers:
     disableDeletion: false
     allowUiUpdates: true
     updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Operations}
+    options: {path: /var/lib/grafana/runtime-dashboard/operations}
 
   - name: ITP Vendor
     orgId: 1

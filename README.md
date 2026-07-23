@@ -69,6 +69,10 @@ Infrastructure State, operational rules, or Grafana. This prevents duplicate
 physical devices from producing duplicate health counts and issues while keeping
 source evidence and field provenance inspectable.
 
+Platform-wide estate names and aliases live in `config/sites.yml`. The
+[Canonical Site Registry](docs/site-registry.md) resolves them before asset
+fusion without changing collector behavior.
+
 ## Configuration and credentials
 
 - Root `.env`: Docker Compose interpolation, InfluxDB, Grafana, Telegraf, and
@@ -131,6 +135,12 @@ place for deployment compatibility.
 
 ## Typical operations
 
+Regenerate the canonical site estate after changing site aliases:
+
+```sh
+docker compose exec collector python -m collectors sites generate
+```
+
 ```sh
 python -m collectors list
 docker compose run --rm discovery python /app/discover.py once --config /app/config.yml
@@ -143,7 +153,13 @@ Open Grafana at `http://localhost:${GRAFANA_PORT}`. The dashboard provider
 recreates the operations-first hierarchy from `dashboards/`, including Network,
 Compute, Printing, Services, Inventory, Collectors, Operations, and Vendor.
 Start with **Infrastructure Overview** and use the Mist and FortiGate dashboards
-under Vendor for engineering drill-down. See [dashboard navigation](docs/DASHBOARDS.md).
+under Vendor for engineering drill-down. Use **Operations Wallboard**
+(`itp-operations-wallboard`) for
+a dense 1920 × 1080 kiosk display; see [wallboard guidance](docs/operations-wallboard.md).
+See [dashboard navigation](docs/DASHBOARDS.md).
+Canonical summary dashboards use a generated, supported
+[data-binding projection](docs/dashboard-data-binding.md); Grafana does not read
+runtime JSON files directly.
 Live overview counts come from the deterministic
 [Infrastructure State](docs/infrastructure-state.md); operational issues, risks,
 and recommendations come from the [Operations Engine](docs/operations-engine.md).
