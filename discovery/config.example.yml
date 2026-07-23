@@ -63,6 +63,7 @@ infrastructure:
   operations_path: /app/runtime/operations
   output_path: /app/runtime/infrastructure
   dashboard_path: /app/runtime/dashboard
+  status_freshness_seconds: 300
 
 collectors:
   snmp:

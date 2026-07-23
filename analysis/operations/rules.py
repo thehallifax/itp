@@ -13,9 +13,10 @@ def _kind(asset):
 
 
 def item(rule, kind, title, severity, *, device="", site="", summary="", action="",
-         impact="", reason="", evidence=None, weight=0):
+         impact="", reason="", evidence=None, weight=0, canonical_id=""):
     return OperationalItem(kind=kind, rule_id=rule.id, title=title, category=rule.category,
-        severity=severity, priority=priority(severity, weight), device=device, site=site,
+        severity=severity, priority=priority(severity, weight), canonical_id=canonical_id,
+        device=device, site=site,
         summary=summary, recommended_action=action, impact=impact, reason=reason,
         suggested_action=action, evidence=evidence or {})
 
@@ -89,11 +90,13 @@ class DeviceOfflineRule(Rule):
             category = "Printing" if "print" in kind else "Server" if "server" in kind else "Network"
             rule = type("Bound", (), {"id": self.id, "category": category})()
             result.append(item(rule, "issue", f"Device offline: {_name(asset)}", "High",
+                canonical_id=asset.get("canonical_id", ""),
                 device=_name(asset), site=asset.get("site", ""), summary="Inventory reports the device offline.",
                 reason="The latest complete observation explicitly reported online=false.",
                 impact="The device may be unavailable to users or dependent services.",
                 action="Confirm power and network reachability, then inspect the device.",
-                evidence={"asset_id": asset.get("asset_id"), "online": False}))
+                evidence={"canonical_id": asset.get("canonical_id"), "online": False,
+                          "sources": asset.get("sources", [])}))
         return result
 
 
@@ -122,8 +125,8 @@ class FirmwareUnsupportedRule(Rule):
             if not current or not target or current.startswith(str(target)): continue
             reason = f"Running {current}; approved release is {target}."
             result.extend([
-                item(self, "risk", f"Unsupported firmware: {_name(asset)}", "High", device=_name(asset), site=asset.get("site", ""), summary=reason, reason=reason, impact="Security fixes and vendor support may be unavailable.", action=f"Plan an upgrade to approved release {target}.", evidence={"running": current, "approved": target}),
-                item(self, "recommendation", f"Upgrade firmware on {_name(asset)}", "High", device=_name(asset), site=asset.get("site", ""), summary="Move the device to an approved release.", reason=reason, impact="Restores supportability and security maintenance.", action=f"Validate and schedule upgrade to {target}.", evidence={"running": current, "approved": target})])
+                item(self, "risk", f"Unsupported firmware: {_name(asset)}", "High", canonical_id=asset.get("canonical_id", ""), device=_name(asset), site=asset.get("site", ""), summary=reason, reason=reason, impact="Security fixes and vendor support may be unavailable.", action=f"Plan an upgrade to approved release {target}.", evidence={"running": current, "approved": target, "sources": asset.get("sources", [])}),
+                item(self, "recommendation", f"Upgrade firmware on {_name(asset)}", "High", canonical_id=asset.get("canonical_id", ""), device=_name(asset), site=asset.get("site", ""), summary="Move the device to an approved release.", reason=reason, impact="Restores supportability and security maintenance.", action=f"Validate and schedule upgrade to {target}.", evidence={"running": current, "approved": target, "sources": asset.get("sources", [])})])
         return result
 
 
@@ -186,7 +189,14 @@ class UnknownInventoryRule(Rule):
         for asset in context.assets:
             missing = [key for key in ("vendor", "device_type") if not asset.get(key)]
             if not missing: continue
-            result.append(item(self, "risk", f"Unknown inventory: {_name(asset)}", "Low", device=_name(asset), site=asset.get("site", ""), summary="Asset classification is incomplete.", reason="Missing required inventory attributes: " + ", ".join(missing) + ".", impact="Ownership, lifecycle, and health rules may be incomplete.", action="Run discovery and enrich the asset identity.", evidence={"missing_fields": missing}))
+            result.append(item(self, "risk", f"Unknown inventory: {_name(asset)}", "Low",
+                canonical_id=asset.get("canonical_id", ""), device=_name(asset), site=asset.get("site", ""),
+                summary="Asset classification is incomplete.",
+                reason="Missing required inventory attributes: " + ", ".join(missing) + ".",
+                impact="Ownership, lifecycle, and health rules may be incomplete.",
+                action="Run discovery and enrich the asset identity.",
+                evidence={"canonical_id": asset.get("canonical_id"), "missing_fields": missing,
+                          "sources": asset.get("sources", [])}))
         return result
 
 
@@ -197,7 +207,10 @@ class LifecycleStaleRule(Rule):
         for asset in context.assets:
             days = context.age_days(asset.get("last_seen_at"))
             if days is None or days < 30 or asset.get("lifecycle_state") == "retired": continue
-            name = _name(asset); common = dict(device=name, site=asset.get("site", ""), evidence={"days_not_seen": int(days), "last_seen_at": asset.get("last_seen_at")})
+            name = _name(asset); common = dict(canonical_id=asset.get("canonical_id", ""), device=name,
+                site=asset.get("site", ""), evidence={"canonical_id": asset.get("canonical_id"),
+                "days_not_seen": int(days), "last_seen_at": asset.get("last_seen_at"),
+                "sources": asset.get("sources", [])})
             result.append(item(self, "risk", f"Device not seen for {int(days)} days: {name}", "Medium", summary="The asset has not been observed for at least 30 days.", reason=f"Last seen {int(days)} days ago.", impact="Inventory may include an absent or unmanaged device.", action="Run discovery and confirm whether the asset still exists.", **common))
             if days >= 60:
                 result.append(item(self, "recommendation", f"Review asset for archival: {name}", "Low", summary="Review this long-unseen asset for retirement.", reason=f"The asset has not been seen for {int(days)} days.", impact="Archiving confirmed removals improves inventory accuracy.", action="Confirm decommissioning, then retire the asset through the inventory CLI.", **common))
@@ -212,10 +225,13 @@ class TypedOfflineRule(Rule):
             if asset.get("online") is not False or self.match not in _kind(asset): continue
             name = _name(asset)
             result.append(item(self, "issue", f"{self.title_word} offline: {name}", self.severity,
+                canonical_id=asset.get("canonical_id", ""),
                 device=name, site=asset.get("site", ""), summary=f"{self.title_word} is explicitly offline.",
                 reason="The latest complete inventory observation reported online=false.",
                 impact=f"Services dependent on this {self.title_word.lower()} may be unavailable.",
-                action="Confirm power, uplink, and management reachability.", evidence={"asset_id": asset.get("asset_id"), "online": False}, weight=5))
+                action="Confirm power, uplink, and management reachability.",
+                evidence={"canonical_id": asset.get("canonical_id"), "online": False,
+                          "sources": asset.get("sources", [])}, weight=5))
         return result
 
 

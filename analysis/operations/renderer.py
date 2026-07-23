@@ -10,15 +10,15 @@ from collectors.writer import atomic_write
 
 
 CSV_FIELDS = ("kind", "id", "rule_id", "title", "category", "severity", "priority",
-              "device", "site", "summary", "impact", "reason", "suggested_action")
+              "canonical_id", "device", "site", "summary", "impact", "reason", "suggested_action")
 PANEL_TITLES = {"issues": "Active Issues", "risks": "Operational Risks",
                 "recommendations": "Recommendations"}
 METRIC_PANELS = {
     "Infrastructure Health": ("infrastructure_health", "critical / warnings", ("critical", "warnings")),
+    "Observability Health": ("observability_health", "healthy / failed collectors", ("collectors_healthy", "collectors_failed")),
     "Devices Online": ("devices_online", "devices total", "devices"),
     "Devices Offline": ("devices_offline", "devices total", "devices"),
-    "Critical Alerts": ("critical", "devices total", "devices"),
-    "Warnings": ("warnings", "devices total", "devices"),
+    "Actionable Warnings": ("actionable_warnings", "data quality findings", "data_quality_findings"),
     "Collectors Healthy": ("collectors_healthy", "collectors failed", "collectors_failed"),
     "Switches": ("switches_total", "online / offline", ("switches_online", "switches_offline")),
     "Access Points": ("aps_total", "online / offline", ("aps_online", "aps_offline")),
@@ -59,15 +59,48 @@ def _metric_content(title, definition, summary):
     return f"# {value}\n\n**{label}:** {detail}"
 
 
+def _stat_panel(panel, title, definition, summary):
+    primary, label, secondary = definition; value = summary.get(primary)
+    if isinstance(secondary, tuple): detail = " / ".join(str(summary.get(key, 0)) for key in secondary)
+    else: detail = str(summary.get(secondary, 0))
+    if title == "Devices Online" and summary.get("devices"):
+        detail += f" ({100 * value / summary['devices']:.1f}%)"
+    if title == "Collectors Healthy":
+        total = summary.get("collectors_healthy", 0) + summary.get("collectors_failed", 0)
+        if total: detail += f" ({100 * value / total:.1f}% healthy)"
+    panel["type"] = "stat"
+    panel["datasource"] = {"type": "grafana-testdata-datasource", "uid": "itp-runtime-values"}
+    panel["targets"] = [{"refId": "A", "scenarioId": "csv_metric_values",
+        "csvContent": "value\n" + (str(value) if value is not None else "Unknown"),
+        "datasource": panel["datasource"]}]
+    panel["description"] = ("Generated from runtime/dashboard/infrastructure-summary.json. "
+                            f"{label.capitalize()}: {detail}.")
+    health_mapping = {name: {"color": color, "index": index, "text": name}
+        for index, (name, color) in enumerate((("Healthy", "green"), ("Warning", "orange"),
+                                               ("Critical", "red"), ("Unknown", "gray")))}
+    concerning = title in {"Devices Offline", "Actionable Warnings"}
+    panel["fieldConfig"] = {"defaults": {
+        "color": {"mode": "thresholds"},
+        "mappings": [{"type": "value", "options": health_mapping}]
+            if title in {"Infrastructure Health", "Observability Health"} else [],
+        "thresholds": {"mode": "absolute", "steps": ([{"color": "green", "value": None},
+            {"color": "red" if title == "Devices Offline" else "orange", "value": 1}]
+            if concerning else [{"color": "green" if title in {"Devices Online", "Collectors Healthy"}
+                                  else "blue", "value": None}])}}, "overrides": []}
+    panel["options"] = {"colorMode": "background" if title in {
+        "Infrastructure Health", "Observability Health", "Devices Offline", "Actionable Warnings"} else "value",
+        "graphMode": "none", "justifyMode": "auto", "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+        "textMode": "auto", "wideLayout": True}
+
+
 def render_dashboard(template_path, output_path, result, infrastructure_summary=None):
     dashboard = json.loads(Path(template_path).read_text())
     infrastructure_summary = infrastructure_summary or {}
     for title, definition in METRIC_PANELS.items():
         panel = next((value for value in dashboard.get("panels", []) if value.get("title") == title), None)
         if panel is None: raise ValueError(f"dashboard template is missing {title} panel")
-        panel["type"] = "text"; panel.pop("fieldConfig", None); panel.pop("targets", None)
-        panel["description"] = "Generated from runtime/dashboard/infrastructure-summary.json."
-        panel["options"] = {"mode": "markdown", "content": _metric_content(title, definition, infrastructure_summary)}
+        _stat_panel(panel, title, definition, infrastructure_summary)
     for collection, title in PANEL_TITLES.items():
         panel = next((value for value in dashboard.get("panels", []) if value.get("title") == title), None)
         if panel is None: raise ValueError(f"dashboard template is missing {title} panel")

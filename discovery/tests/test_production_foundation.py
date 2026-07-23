@@ -53,7 +53,8 @@ def test_flightsql_datasource_is_provisioned_with_dashboard_uid():
     provision = yaml.safe_load(
         (ROOT / "grafana/provisioning/datasources/influxdb.yml").read_text()
     )
-    datasource = provision["datasources"][0]
+    datasource = next(value for value in provision["datasources"]
+                      if value["uid"] == "ffsu5ap2kr5dse")
     assert datasource["uid"] == "ffsu5ap2kr5dse"
     assert datasource["type"] == "influxdb"
     assert datasource["jsonData"] == {

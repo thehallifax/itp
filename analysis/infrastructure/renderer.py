@@ -11,14 +11,16 @@ from collectors.writer import atomic_write
 
 def flat_summary(state):
     summary = state["summary"]
-    health = ("Critical" if summary["critical"] or summary["collectors_failed"] else
-              "Warning" if summary["offline"] or summary["warnings"] else "Healthy")
     return {
         "generated_at": state["generated_at"],
-        "infrastructure_health": health,
+        "infrastructure_health": summary["infrastructure_health"],
+        "observability_health": summary["observability_health"],
         "sites": summary["sites"], "devices": summary["devices"],
         "devices_online": summary["online"], "devices_offline": summary["offline"],
-        "warnings": summary["warnings"], "critical": summary["critical"],
+        "warnings": summary["actionable_warnings"],
+        "actionable_warnings": summary["actionable_warnings"],
+        "data_quality_findings": summary["data_quality_findings"],
+        "critical": summary["critical"],
         "collectors_healthy": summary["collectors_healthy"],
         "collectors_failed": summary["collectors_failed"],
         "switches_total": state["network"]["switches"]["total"],
@@ -42,10 +44,16 @@ def flat_summary(state):
 def write_state(output_dir, dashboard_dir, state):
     output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(output_dir / "state.json", json.dumps(state, indent=2, sort_keys=True) + "\n")
-    fields = ("asset_id", "hostname", "device_type", "site", "management_ip", "online",
-              "health", "collector", "serial_number")
+    fields = ("canonical_id", "hostname", "site", "device_type", "serial_number",
+              "management_ip", "status", "sources", "merge_confidence", "matched_on",
+              "conflict_count")
     stream = io.StringIO(); writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
-    writer.writeheader(); writer.writerows(state["assets"])
+    writer.writeheader()
+    for asset in state["assets"]:
+        writer.writerow({**asset, "sources": ";".join(asset.get("sources", [])),
+            "merge_confidence": asset.get("merge", {}).get("confidence", "unmerged"),
+            "matched_on": ";".join(asset.get("merge", {}).get("matched_on", [])),
+            "conflict_count": len(asset.get("merge", {}).get("conflicts", []))})
     atomic_write(output_dir / "state.csv", stream.getvalue())
     summary = flat_summary(state)
     atomic_write(Path(dashboard_dir) / "infrastructure-summary.json",

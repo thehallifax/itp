@@ -33,11 +33,13 @@ Operational dashboards should progress through **Summary**, **Health**,
 **Performance**, **Problems**, and **Historical Trends**. Sections may be omitted
 when their telemetry does not yet exist, but the order should remain consistent.
 
-The Infrastructure Overview retains clearly labelled TODO panels where telemetry
-does not exist. Active Issues, Operational Risks, and Recommendations are rendered
-from the deterministic [Operations Engine](operations-engine.md) output. Future
-dashboards should consume vendor-neutral telemetry and analysis outputs;
-vendor-specific measurements belong only in Vendor drill-downs.
+The Infrastructure Overview reads device counts, Infrastructure Health,
+Observability Health, and actionable warnings from the flat canonical-state
+summary. Active Issues, Operational Risks, and Recommendations are rendered from
+the deterministic [Operations Engine](operations-engine.md) output. Clearly
+labelled TODO panels remain only where telemetry does not exist. Future dashboards
+should consume vendor-neutral telemetry and analysis outputs; vendor-specific
+measurements belong only in Vendor drill-downs.
 
 ## Expansion
 

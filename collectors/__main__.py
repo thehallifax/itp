@@ -168,14 +168,25 @@ async def _run(args):
             inventory_dir=settings.get("inventory_path", "/app/runtime/inventory"),
             operations_dir=settings.get("operations_path", "/app/runtime/operations"),
             output_dir=settings.get("output_path", "/app/runtime/infrastructure"),
-            dashboard_dir=settings.get("dashboard_path", "/app/runtime/dashboard"))
+            dashboard_dir=settings.get("dashboard_path", "/app/runtime/dashboard"),
+            status_freshness_seconds=settings.get("status_freshness_seconds", 300))
         if args.action == "adapters":
             for adapter in SignalAdapter.registered(engine.inventory_dir):
                 print(f"{adapter.name}\t{adapter.priority}")
         else:
             result = engine.run()
-            print(f"Generated infrastructure state for {result['summary']['devices']} devices "
-                  f"across {result['summary']['sites']} sites")
+            if args.action == "fusion-report":
+                stats = result["fusion_statistics"]; summary = result["summary"]
+                for label, value in (("Source records", stats["source_records"]),
+                    ("Canonical assets", stats["canonical_assets"]),
+                    ("Records fused", stats["records_fused"]), ("Conflicts", stats["conflicts"]),
+                    ("Low-confidence candidates", stats["low_confidence_candidates"]),
+                    ("Suppressed findings", summary["suppressed_findings"]),
+                    ("Actionable warnings", summary["actionable_warnings"])):
+                    print(f"{label}: {value}")
+            else:
+                print(f"Generated infrastructure state for {result['summary']['devices']} devices "
+                      f"across {result['summary']['sites']} sites")
         return
     if args.command == "inventory":
         inventory_path = os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json")
@@ -294,7 +305,8 @@ async def _run(args):
         inventory_dir=infrastructure_settings.get("inventory_path", "/app/runtime/inventory"),
         operations_dir=infrastructure_settings.get("operations_path", "/app/runtime/operations"),
         output_dir=infrastructure_settings.get("output_path", "/app/runtime/infrastructure"),
-        dashboard_dir=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard")) \
+        dashboard_dir=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard"),
+        status_freshness_seconds=infrastructure_settings.get("status_freshness_seconds", 300)) \
         if infrastructure_settings.get("enabled", True) else None
     operations = OperationsEngine(
         inventory_dir=operations_settings.get("inventory_path", "/app/runtime/inventory"),
@@ -338,7 +350,8 @@ def main():
     operations = sub.add_parser("operations")
     operations.add_argument("action", choices=("generate", "rules"), default="generate", nargs="?")
     infrastructure = sub.add_parser("infrastructure")
-    infrastructure.add_argument("action", choices=("generate", "adapters"), default="generate", nargs="?")
+    infrastructure.add_argument("action", choices=("generate", "adapters", "fusion-report"),
+                                default="generate", nargs="?")
     args = parser.parse_args()
     if args.command == "inventory" and args.action in ("show", "retire", "restore") and not args.asset_id:
         parser.error(f"inventory {args.action} requires asset_id")

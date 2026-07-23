@@ -1,14 +1,18 @@
 # Operations Engine
 
-The Operations Engine converts inventory, lifecycle state, collector run history,
-and explicit operational signals into deterministic issues, risks, and
+The Operations Engine converts canonical assets, lifecycle state, collector run
+history, and explicit operational signals into deterministic issues, risks, and
 recommendations. It is an offline reasoning layer, not an alerting system. It
 contains no machine learning, language model, remote API, or probabilistic score.
 
+Asset rules evaluate only fused Infrastructure State records. Their findings
+carry `canonical_id` and source provenance, so multiple collector observations
+of one device cannot create duplicate operational issues.
+
 ## Architecture and rule flow
 
-`OperationsEngine` loads `runtime/inventory/assets.json`, `source_runs.json`,
-`reconciliation.json`, and the optional `runtime/operations/signals.json` input.
+`OperationsEngine` loads `runtime/infrastructure/state.json` and evaluates its
+canonical assets, collector state, reconciliation data, and optional signals.
 It evaluates every registered `Rule`, deduplicates stable item IDs, orders each
 collection by priority, and atomically writes:
 

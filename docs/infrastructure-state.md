@@ -24,7 +24,7 @@ Counts are derived only from explicit inventory values. Unknown online state is
 kept unknown. Wireless clients, failed authentication, printer consumables, and
 WAN state are `null` when the existing outputs do not provide them.
 
-## Merge rules
+## Canonical fusion
 
 Adapters are evaluated using fixed precedence:
 
@@ -32,15 +32,17 @@ Adapters are evaluated using fixed precedence:
 2. Vendor collectors—Mist and FortiGate (`200`)
 3. SNMP discovery (`100`)
 
-Identity uses serial number, then hostname, then management IP, then asset ID.
-The highest-priority record owns populated values; lower-priority records may
-only fill missing fields. Conflicting explicit online states create a warning and
-never override the higher-priority value. Assets and warnings are sorted by stable
-keys, so identical inputs produce byte-equivalent logical output apart from the
-requested generation timestamp.
+Identity uses serial, chassis ID, management MAC, hostname/site, IP/site, then a
+source-native ID. The highest-priority source owns populated values and lower
+priority sources fill gaps. Status additionally considers observation freshness
+and vendor authority. Conflicts remain explicit. See
+[Canonical Asset Model](canonical-asset-model.md) for the confidence model,
+provenance, collision safeguards, and worked example.
 
-Validation warnings cover duplicate serials, duplicate hostnames, conflicting
-states, missing sites, and missing management IPs. They are evidence, not alerts.
+Validation covers remaining duplicate identities, conflicting states, missing
+sites, and device-aware management-IP gaps. Findings are classified as
+actionable, data quality, or suppressed. State separately reports Infrastructure
+Health and Observability Health.
 
 ## Adapter API
 

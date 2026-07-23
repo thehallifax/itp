@@ -63,6 +63,12 @@ Collectors must not contain dashboard logic, depend on Grafana, know about
 other collectors, or invent collector-specific storage paths. See
 [Architecture](docs/architecture.md) for the enforced boundaries.
 
+Collector observations pass through deterministic signal adapters and the
+[canonical asset model](docs/canonical-asset-model.md) before they reach
+Infrastructure State, operational rules, or Grafana. This prevents duplicate
+physical devices from producing duplicate health counts and issues while keeping
+source evidence and field provenance inspectable.
+
 ## Configuration and credentials
 
 - Root `.env`: Docker Compose interpolation, InfluxDB, Grafana, Telegraf, and

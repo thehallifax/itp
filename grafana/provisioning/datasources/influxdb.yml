@@ -1,6 +1,12 @@
 apiVersion: 1
 
 datasources:
+  - name: ITP Runtime Values
+    uid: itp-runtime-values
+    type: grafana-testdata-datasource
+    access: proxy
+    editable: false
+
   - name: influxdb
     uid: ffsu5ap2kr5dse
     type: influxdb

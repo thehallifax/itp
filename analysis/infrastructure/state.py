@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .adapters import SignalAdapter
+from .fusion import FusionEngine
+from .identity import normalize_site, short_hostname
 from .models import asset_kind, asset_name, health_of, state_of
+from .policy import (finding, infrastructure_health, management_ip_required,
+                     observability_health)
 from .renderer import write_state
 
 
@@ -15,16 +19,6 @@ def _read(path, fallback):
     try: return json.loads(Path(path).read_text())
     except FileNotFoundError: return fallback
     except json.JSONDecodeError as exc: raise ValueError(f"{Path(path).name} contains malformed JSON") from exc
-
-
-def _identity(asset):
-    serial = str(asset.get("serial_number") or "").strip().upper()
-    if serial: return "serial:" + serial
-    hostname = str(asset.get("hostname") or asset.get("display_name") or "").strip().lower()
-    if hostname: return "hostname:" + hostname
-    management = str(asset.get("management_ip") or "").strip()
-    if management: return "management-ip:" + management
-    return "asset:" + str(asset.get("asset_id") or "unknown")
 
 
 def _count(assets, predicate):
@@ -40,46 +34,52 @@ class InfrastructureStateEngine:
     def __init__(self, inventory_dir="/app/runtime/inventory",
                  operations_dir="/app/runtime/operations",
                  output_dir="/app/runtime/infrastructure",
-                 dashboard_dir="/app/runtime/dashboard"):
+                 dashboard_dir="/app/runtime/dashboard", status_freshness_seconds=300):
         self.inventory_dir = Path(inventory_dir); self.operations_dir = Path(operations_dir)
         self.output_dir = Path(output_dir); self.dashboard_dir = Path(dashboard_dir)
+        self.fusion = FusionEngine(status_freshness_seconds)
 
     def _merge(self, results):
-        merged = {}; owners = {}; warnings = []; serials = defaultdict(list); hostnames = defaultdict(list)
-        for result in sorted(results, key=lambda value: (-value.priority, value.name)):
-            for record in sorted(result.assets, key=lambda value: (_identity(value), str(value.get("asset_id", "")))):
-                value = dict(record); identity = _identity(value)
-                serial = str(value.get("serial_number") or "").strip().upper()
-                hostname = str(value.get("hostname") or "").strip().lower()
-                if serial: serials[serial].append(str(value.get("asset_id") or identity))
-                if hostname: hostnames[hostname].append(str(value.get("asset_id") or identity))
-                if identity not in merged:
-                    merged[identity] = value; owners[identity] = result.name
-                    continue
-                existing = merged[identity]
-                if (existing.get("online") is not None and value.get("online") is not None and
-                        existing.get("online") != value.get("online")):
-                    warnings.append({"type": "conflicting_device_state", "identity": identity,
-                        "message": f"Conflicting online state from {owners[identity]} and {result.name}."})
-                for key, item in value.items():
-                    if existing.get(key) in (None, "", []): existing[key] = item
-        for serial, ids in sorted(serials.items()):
-            unique = sorted(set(ids))
-            if len(unique) > 1: warnings.append({"type": "duplicate_serial", "value": serial, "assets": unique})
-        for hostname, ids in sorted(hostnames.items()):
-            unique = sorted(set(ids))
-            if len(unique) > 1: warnings.append({"type": "duplicate_hostname", "value": hostname, "assets": unique})
-        assets = []
-        for identity, value in sorted(merged.items()):
-            value["identity"] = identity; value["state"] = state_of(value); value["health"] = health_of(value)
-            if not value.get("site"):
-                warnings.append({"type": "missing_site", "identity": identity,
-                    "message": f"{asset_name(value)} has no site."})
-            if not value.get("management_ip"):
-                warnings.append({"type": "missing_management_ip", "identity": identity,
-                    "message": f"{asset_name(value)} has no management IP."})
-            assets.append(value)
-        return assets, sorted(warnings, key=lambda value: (value["type"], value.get("identity", ""), value.get("value", "")))
+        assets, _, low = self.fusion.fuse(results)
+        return assets, self._validate(assets, low)
+
+    def _validate(self, assets, low_candidates):
+        values = []
+        for candidate in low_candidates:
+            left = str(candidate["left"].get("asset_id") or "unknown")
+            right = str(candidate["right"].get("asset_id") or "unknown")
+            values.append(finding("low_confidence_identity", min(left, right),
+                f"Possible duplicate retained separately: {min(left, right)} and {max(left, right)}.",
+                severity="Low", actionable=True, explanation=candidate["reason"]))
+        hostname_groups = defaultdict(list)
+        for asset in assets:
+            canonical = asset["canonical_id"]
+            if not asset.get("site"):
+                values.append(finding("missing_site", canonical, f"{asset_name(asset)} has no site.",
+                    severity="Medium", actionable=True,
+                    explanation="Site assignment is required for operational aggregation."))
+            if not asset.get("management_ip"):
+                required, explanation = management_ip_required(asset)
+                values.append(finding("missing_management_ip", canonical,
+                    f"{asset_name(asset)} has no management IP.",
+                    severity="Medium" if required else "Info", actionable=required,
+                    suppressed=not required, explanation=explanation))
+            key = (short_hostname(asset.get("hostname")), normalize_site(asset.get("site")))
+            if all(key): hostname_groups[key].append(asset)
+            for conflict in asset.get("merge", {}).get("conflicts", []):
+                actionable = conflict["severity"] in {"Critical", "High"}
+                values.append(finding("identity_conflict", canonical,
+                    f"{asset_name(asset)} has conflicting {conflict['field'].replace('_', ' ')} values.",
+                    severity=conflict["severity"], actionable=actionable,
+                    explanation=conflict["explanation"]))
+        for (hostname, site), group in sorted(hostname_groups.items()):
+            if len(group) > 1:
+                for asset in group:
+                    values.append(finding("duplicate_hostname", asset["canonical_id"],
+                        f"Hostname {hostname} remains duplicated in site {site}.", severity="Medium",
+                        actionable=True, explanation="Canonical identity evidence was insufficient for safe fusion."))
+        deduplicated = {value["id"]: value for value in values}
+        return sorted(deduplicated.values(), key=lambda value: (value["type"], value["canonical_id"], value["id"]))
 
     def evaluate(self, now=None):
         now = now or datetime.now(timezone.utc)
@@ -87,7 +87,8 @@ class InfrastructureStateEngine:
         for adapter in SignalAdapter.registered(self.inventory_dir):
             try: results.append(adapter.collect())
             except FileNotFoundError: continue
-        assets, warnings = self._merge(results)
+        assets, fusion_statistics, low_candidates = self.fusion.fuse(results)
+        findings = self._validate(assets, low_candidates)
         collector_values = {}
         for result in sorted(results, key=lambda value: (-value.priority, value.name)):
             for value in result.collectors: collector_values.setdefault(value["collector"], value)
@@ -116,13 +117,19 @@ class InfrastructureStateEngine:
             states = Counter(state_of(value) for value in values)
             sites.append({"site": site, "devices": len(values), "online": states["online"],
                 "offline": states["offline"],
-                "collectors": sorted({str(value.get("collector") or value.get("source")) for value in values
-                                      if value.get("collector") or value.get("source")}),
+                "collectors": sorted({source for value in values for source in value.get("sources", [])}),
                 "issues": by_site_issues[site], "risks": by_site_risks[site]})
         states = Counter(state_of(value) for value in assets); health = Counter(health_of(value) for value in assets)
+        actionable = [value for value in findings if value["actionable"] and not value["suppressed"]]
+        informational = [value for value in findings if not value["actionable"] and not value["suppressed"]]
+        suppressed = [value for value in findings if value["suppressed"]]
+        infra_health = infrastructure_health(assets, actionable, wan_status)
+        obs_health = observability_health(collectors, bool(assets))
         summary = {"sites": len(sites), "devices": len(assets), "online": states["online"],
-            "offline": states["offline"], "warnings": health["warning"] + len(warnings),
-            "critical": health["critical"],
+            "offline": states["offline"], "actionable_warnings": len(actionable),
+            "data_quality_findings": len(informational), "suppressed_findings": len(suppressed),
+            "infrastructure_health": infra_health, "observability_health": obs_health,
+            "warnings": len(actionable), "critical": health["critical"],
             "collectors_healthy": sum(value["status"] == "healthy" for value in collectors),
             "collectors_failed": sum(value["status"] == "failed" for value in collectors)}
         return {"generated_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -139,7 +146,8 @@ class InfrastructureStateEngine:
             "printers": {"total": printers["total"], "healthy": printers["healthy"],
                          "warning": printers["warning"], "consumables": consumables,
                          "offline": printers["offline"]},
-            "collectors": collectors, "warnings": warnings, "assets": assets,
+            "collectors": collectors, "warnings": findings, "validation_findings": findings,
+            "fusion_statistics": fusion_statistics, "assets": assets,
             "reconciliations": reconciliations, "signals": signals}
 
     def run(self, now=None):

@@ -47,8 +47,10 @@ def fixture(tmp_path):
         "signals": json.loads((output / "signals.json").read_text()),
     })
     write(tmp_path / "dashboard/infrastructure-summary.json", {
-        "infrastructure_health": "Critical", "devices": 3, "devices_online": 1,
+        "infrastructure_health": "Critical", "observability_health": "Warning",
+        "devices": 3, "devices_online": 1,
         "devices_offline": 2, "critical": 1, "warnings": 2,
+        "actionable_warnings": 2, "data_quality_findings": 1,
         "collectors_healthy": 0, "collectors_failed": 1,
         "switches_total": 1, "switches_online": 0, "switches_offline": 1,
         "aps_total": 1, "aps_online": 0, "aps_offline": 1,
@@ -98,7 +100,7 @@ def test_outputs_and_runtime_dashboard_are_generated(tmp_path):
     assert "Top 10 Active Issues" in panels["Active Issues"]["options"]["content"]
     assert "Top 10 Operational Risks" in panels["Operational Risks"]["options"]["content"]
     assert "Top 10 Recommendations" in panels["Recommendations"]["options"]["content"]
-    assert panels["Devices Online"]["type"] == "text"
-    assert panels["Devices Online"]["options"]["content"].startswith("# 1")
-    assert panels["Switches"]["options"]["content"].startswith("# 1")
+    assert panels["Devices Online"]["type"] == "stat"
+    assert panels["Devices Online"]["targets"][0]["csvContent"] == "value\n1"
+    assert panels["Switches"]["targets"][0]["csvContent"] == "value\n1"
     assert dashboard["uid"] == "itp-infrastructure-overview"
