@@ -84,6 +84,8 @@ services:
       - ./discovery/config.yml:/app/config.yml:ro
       - ./runtime/inventory:/app/runtime/inventory
       - ./runtime/operations:/app/runtime/operations
+      - ./runtime/infrastructure:/app/runtime/infrastructure
+      - ./runtime/dashboard:/app/runtime/dashboard
     command:
       - python
       - -m
@@ -107,7 +109,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./dashboards:/var/lib/grafana/dashboards:ro
-      - ./runtime/operations:/var/lib/grafana/operations:ro
+      - ./runtime/dashboard:/var/lib/grafana/runtime-dashboard:ro
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}

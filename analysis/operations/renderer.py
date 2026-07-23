@@ -13,6 +13,19 @@ CSV_FIELDS = ("kind", "id", "rule_id", "title", "category", "severity", "priorit
               "device", "site", "summary", "impact", "reason", "suggested_action")
 PANEL_TITLES = {"issues": "Active Issues", "risks": "Operational Risks",
                 "recommendations": "Recommendations"}
+METRIC_PANELS = {
+    "Infrastructure Health": ("infrastructure_health", "critical / warnings", ("critical", "warnings")),
+    "Devices Online": ("devices_online", "devices total", "devices"),
+    "Devices Offline": ("devices_offline", "devices total", "devices"),
+    "Critical Alerts": ("critical", "devices total", "devices"),
+    "Warnings": ("warnings", "devices total", "devices"),
+    "Collectors Healthy": ("collectors_healthy", "collectors failed", "collectors_failed"),
+    "Switches": ("switches_total", "online / offline", ("switches_online", "switches_offline")),
+    "Access Points": ("aps_total", "online / offline", ("aps_online", "aps_offline")),
+    "Firewalls": ("firewalls_total", "healthy / offline", ("firewalls_healthy", "firewalls_offline")),
+    "Servers": ("servers_total", "healthy / offline", ("servers_healthy", "servers_offline")),
+    "Printers": ("printers_total", "healthy / offline", ("printers_healthy", "printers_offline")),
+}
 
 
 def write_outputs(output_dir, result):
@@ -37,8 +50,24 @@ def _markdown(title, items):
     return "\n".join(lines)
 
 
-def render_dashboard(template_path, output_path, result):
+def _metric_content(title, definition, summary):
+    primary, label, secondary = definition; value = summary.get(primary)
+    if value is None: return f"## {title}\n\nState unavailable"
+    if isinstance(secondary, tuple):
+        detail = " / ".join(str(summary.get(key, 0)) for key in secondary)
+    else: detail = str(summary.get(secondary, 0))
+    return f"# {value}\n\n**{label}:** {detail}"
+
+
+def render_dashboard(template_path, output_path, result, infrastructure_summary=None):
     dashboard = json.loads(Path(template_path).read_text())
+    infrastructure_summary = infrastructure_summary or {}
+    for title, definition in METRIC_PANELS.items():
+        panel = next((value for value in dashboard.get("panels", []) if value.get("title") == title), None)
+        if panel is None: raise ValueError(f"dashboard template is missing {title} panel")
+        panel["type"] = "text"; panel.pop("fieldConfig", None); panel.pop("targets", None)
+        panel["description"] = "Generated from runtime/dashboard/infrastructure-summary.json."
+        panel["options"] = {"mode": "markdown", "content": _metric_content(title, definition, infrastructure_summary)}
     for collection, title in PANEL_TITLES.items():
         panel = next((value for value in dashboard.get("panels", []) if value.get("title") == title), None)
         if panel is None: raise ValueError(f"dashboard template is missing {title} panel")

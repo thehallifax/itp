@@ -138,6 +138,9 @@ recreates the operations-first hierarchy from `dashboards/`, including Network,
 Compute, Printing, Services, Inventory, Collectors, Operations, and Vendor.
 Start with **Infrastructure Overview** and use the Mist and FortiGate dashboards
 under Vendor for engineering drill-down. See [dashboard navigation](docs/DASHBOARDS.md).
+Live overview counts come from the deterministic
+[Infrastructure State](docs/infrastructure-state.md); operational issues, risks,
+and recommendations come from the [Operations Engine](docs/operations-engine.md).
 
 ### Inventory operations
 

@@ -9,7 +9,7 @@ providers:
     disableDeletion: false
     allowUiUpdates: true
     updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/operations/dashboard}
+    options: {path: /var/lib/grafana/runtime-dashboard/grafana}
 
   - name: ITP Network
     orgId: 1

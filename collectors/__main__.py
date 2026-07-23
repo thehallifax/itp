@@ -14,6 +14,7 @@ from .inventory import InventoryManager
 from .scheduler import Scheduler
 from .writer import InfluxWriter
 from analysis.operations import OperationsEngine, Rule
+from analysis.infrastructure import InfrastructureStateEngine, SignalAdapter
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -161,6 +162,21 @@ async def _run(args):
             print(f"Generated {len(result['issues'])} issues, {len(result['risks'])} risks, "
                   f"and {len(result['recommendations'])} recommendations")
         return
+    if args.command == "infrastructure":
+        settings = config.get("infrastructure", {})
+        engine = InfrastructureStateEngine(
+            inventory_dir=settings.get("inventory_path", "/app/runtime/inventory"),
+            operations_dir=settings.get("operations_path", "/app/runtime/operations"),
+            output_dir=settings.get("output_path", "/app/runtime/infrastructure"),
+            dashboard_dir=settings.get("dashboard_path", "/app/runtime/dashboard"))
+        if args.action == "adapters":
+            for adapter in SignalAdapter.registered(engine.inventory_dir):
+                print(f"{adapter.name}\t{adapter.priority}")
+        else:
+            result = engine.run()
+            print(f"Generated infrastructure state for {result['summary']['devices']} devices "
+                  f"across {result['summary']['sites']} sites")
+        return
     if args.command == "inventory":
         inventory_path = os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json")
         engine = InventoryManager(inventory_path, config.get("inventory")).engine
@@ -273,15 +289,26 @@ async def _run(args):
         await _run_idle()
         return
     operations_settings = config.get("operations", {})
+    infrastructure_settings = config.get("infrastructure", {})
+    infrastructure = InfrastructureStateEngine(
+        inventory_dir=infrastructure_settings.get("inventory_path", "/app/runtime/inventory"),
+        operations_dir=infrastructure_settings.get("operations_path", "/app/runtime/operations"),
+        output_dir=infrastructure_settings.get("output_path", "/app/runtime/infrastructure"),
+        dashboard_dir=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard")) \
+        if infrastructure_settings.get("enabled", True) else None
     operations = OperationsEngine(
         inventory_dir=operations_settings.get("inventory_path", "/app/runtime/inventory"),
         output_dir=operations_settings.get("output_path", "/app/runtime/operations"),
         dashboard_template=operations_settings.get("dashboard_template", "/app/dashboards/Infrastructure Overview/infrastructure-overview.json"),
+        dashboard_output=operations_settings.get("dashboard_output", "/app/runtime/dashboard/grafana/infrastructure-overview.json"),
+        infrastructure_state=infrastructure_settings.get("output_path", "/app/runtime/infrastructure") + "/state.json",
+        infrastructure_summary=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard") + "/infrastructure-summary.json",
         settings=operations_settings) if operations_settings.get("enabled", True) else None
     await Scheduler(collectors, os.getenv("COLLECTOR_HEALTH_PATH", "/tmp/collector-health"),
                     inventory_engine=engine,
                     lifecycle_interval=inventory_settings.get(
                         "lifecycle_evaluation_interval_seconds", 3600),
+                    infrastructure_engine=infrastructure,
                     operations_engine=operations,
                     operations_interval=operations_settings.get("interval_seconds", 300)).run()
 
@@ -310,6 +337,8 @@ def main():
     sub.add_parser("validate")
     operations = sub.add_parser("operations")
     operations.add_argument("action", choices=("generate", "rules"), default="generate", nargs="?")
+    infrastructure = sub.add_parser("infrastructure")
+    infrastructure.add_argument("action", choices=("generate", "adapters"), default="generate", nargs="?")
     args = parser.parse_args()
     if args.command == "inventory" and args.action in ("show", "retire", "restore") and not args.asset_id:
         parser.error(f"inventory {args.action} requires asset_id")

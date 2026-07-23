@@ -54,7 +54,15 @@ operations:
   inventory_path: /app/runtime/inventory
   output_path: /app/runtime/operations
   dashboard_template: /app/dashboards/Infrastructure Overview/infrastructure-overview.json
+  dashboard_output: /app/runtime/dashboard/grafana/infrastructure-overview.json
   collector_overdue_seconds: 900
+
+infrastructure:
+  enabled: true
+  inventory_path: /app/runtime/inventory
+  operations_path: /app/runtime/operations
+  output_path: /app/runtime/infrastructure
+  dashboard_path: /app/runtime/dashboard
 
 collectors:
   snmp:

@@ -39,9 +39,29 @@ def fixture(tmp_path):
         "printer_consumables": [{"device": "PRN-1", "supply": "black toner", "percent_remaining": 4}],
         "wan": [{"name": "Primary", "site": "HQ", "available": False, "packet_loss_percent": 12}],
     })
+    write(tmp_path / "infrastructure/state.json", {
+        "assets": json.loads((inventory / "assets.json").read_text())["assets"],
+        "collectors": [{"collector": "mist", "status": "failed", "failures": 2,
+                        "last_run": "2026-07-22T20:00:00Z", "last_successful_run": None}],
+        "reconciliations": [{"status": "ambiguous", "asset_ids": ["ap-1", "switch-1"]}],
+        "signals": json.loads((output / "signals.json").read_text()),
+    })
+    write(tmp_path / "dashboard/infrastructure-summary.json", {
+        "infrastructure_health": "Critical", "devices": 3, "devices_online": 1,
+        "devices_offline": 2, "critical": 1, "warnings": 2,
+        "collectors_healthy": 0, "collectors_failed": 1,
+        "switches_total": 1, "switches_online": 0, "switches_offline": 1,
+        "aps_total": 1, "aps_online": 0, "aps_offline": 1,
+        "firewalls_total": 0, "firewalls_healthy": 0, "firewalls_offline": 0,
+        "servers_total": 0, "servers_healthy": 0, "servers_offline": 0,
+        "printers_total": 0, "printers_healthy": 0, "printers_offline": 0,
+    })
     return OperationsEngine(inventory, output,
         ROOT / "dashboards/Infrastructure Overview/infrastructure-overview.json",
-        {"collector_overdue_seconds": 900}), output
+        dashboard_output=output / "dashboard/infrastructure-overview.json",
+        infrastructure_state=tmp_path / "infrastructure/state.json",
+        infrastructure_summary=tmp_path / "dashboard/infrastructure-summary.json",
+        settings={"collector_overdue_seconds": 900}), output
 
 
 def test_fourteen_rules_are_auto_registered_and_stable():
@@ -78,4 +98,7 @@ def test_outputs_and_runtime_dashboard_are_generated(tmp_path):
     assert "Top 10 Active Issues" in panels["Active Issues"]["options"]["content"]
     assert "Top 10 Operational Risks" in panels["Operational Risks"]["options"]["content"]
     assert "Top 10 Recommendations" in panels["Recommendations"]["options"]["content"]
+    assert panels["Devices Online"]["type"] == "text"
+    assert panels["Devices Online"]["options"]["content"].startswith("# 1")
+    assert panels["Switches"]["options"]["content"].startswith("# 1")
     assert dashboard["uid"] == "itp-infrastructure-overview"

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_platform_and_schema_metadata_are_stable():
-    assert (ROOT / "VERSION").read_text().strip() == "0.1.0"
+    assert (ROOT / "VERSION").read_text().strip() == "0.2.0"
     assert (ROOT / "SCHEMA_VERSION").read_text().strip() == str(SCHEMA_VERSION) == "1"
     assert set(MEASUREMENTS) == {
         "device", "availability", "performance", "interface", "wireless",

@@ -14,9 +14,10 @@ collection by priority, and atomically writes:
 
 - `runtime/operations/operations.json`
 - `runtime/operations/operations.csv`
-- `runtime/operations/dashboard/infrastructure-overview.json`
+- `runtime/dashboard/grafana/infrastructure-overview.json`
 
-Grafana provisions the generated dashboard copy. The source dashboard under
+Infrastructure State runs first and provides the canonical asset view and flat
+summary. Grafana provisions the generated dashboard copy. The source dashboard under
 `dashboards/Infrastructure Overview/` remains a version-controlled template.
 Evaluation runs every five minutes by default and can be run immediately with:
 
