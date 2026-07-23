@@ -48,6 +48,14 @@ inventory:
       - mac_address
       - source_asset_id
 
+operations:
+  enabled: true
+  interval_seconds: 300
+  inventory_path: /app/runtime/inventory
+  output_path: /app/runtime/operations
+  dashboard_template: /app/dashboards/Infrastructure Overview/infrastructure-overview.json
+  collector_overdue_seconds: 900
+
 collectors:
   snmp:
     enabled: true

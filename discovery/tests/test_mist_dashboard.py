@@ -4,7 +4,7 @@ from pathlib import Path
 
 def test_mist_dashboard_is_valid_and_uses_available_metrics():
     root = Path(__file__).resolve().parents[2]
-    dashboard = json.loads((root / "dashboards/vendor/mist-infrastructure-overview.json").read_text())
+    dashboard = json.loads((root / "dashboards/Vendor/mist-infrastructure-overview.json").read_text())
     assert dashboard["title"] == "Mist Infrastructure Overview"
     titles = {panel["title"] for panel in dashboard["panels"]}
     assert {"Total Devices Reporting", "Online Devices", "Offline / Disconnected",

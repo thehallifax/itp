@@ -4,6 +4,7 @@ COPY discovery/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY collectors /app/collectors
 COPY telemetry /app/telemetry
+COPY analysis /app/analysis
 COPY grafana /app/grafana
 COPY dashboards /app/dashboards
 COPY VERSION SCHEMA_VERSION /app/

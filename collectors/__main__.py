@@ -13,6 +13,7 @@ from .config import load_config
 from .inventory import InventoryManager
 from .scheduler import Scheduler
 from .writer import InfluxWriter
+from analysis.operations import OperationsEngine, Rule
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -98,11 +99,19 @@ async def _validate(config):
     try:
         import yaml
         providers = yaml.safe_load(provision.read_text()).get("providers", [])
+        expected_folders = {"Infrastructure Overview", "Network", "Compute", "Printing",
+                            "Services", "Inventory", "Collectors", "Operations", "Vendor"}
         folder_uids = [item.get("folderUid") for item in providers]
-        valid_provisioning = len(providers) == 7 and len(set(folder_uids)) == 7 and all(folder_uids)
+        valid_provisioning = (
+            {item.get("folder") for item in providers} == expected_folders
+            and len(folder_uids) == len(set(folder_uids)) == len(expected_folders)
+            and all(folder_uids)
+            and all(item.get("type") == "file" for item in providers)
+        )
+        provisioning_detail = ", ".join(item.get("folder", "") for item in providers)
     except Exception as exc:
-        valid_provisioning = False; folder_uids = [str(exc)]
-    check("Grafana provisioning", valid_provisioning, ", ".join(folder_uids))
+        valid_provisioning = False; provisioning_detail = str(exc)
+    check("Grafana provisioning", valid_provisioning, provisioning_detail)
     dashboards = list((ROOT / "dashboards").rglob("*.json"))
     try:
         uids = [json.loads(path.read_text()).get("uid") for path in dashboards]
@@ -137,6 +146,20 @@ async def _run(args):
     config = load_config(args.config)
     if args.command == "validate":
         await _validate(config)
+        return
+    if args.command == "operations":
+        settings = config.get("operations", {})
+        engine = OperationsEngine(
+            inventory_dir=settings.get("inventory_path", "/app/runtime/inventory"),
+            output_dir=settings.get("output_path", "/app/runtime/operations"),
+            dashboard_template=settings.get("dashboard_template", "/app/dashboards/Infrastructure Overview/infrastructure-overview.json"),
+            settings=settings)
+        if args.action == "rules":
+            for rule in Rule.registered(): print(f"{rule.id}\t{rule.category}")
+        else:
+            result = engine.run()
+            print(f"Generated {len(result['issues'])} issues, {len(result['risks'])} risks, "
+                  f"and {len(result['recommendations'])} recommendations")
         return
     if args.command == "inventory":
         inventory_path = os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json")
@@ -249,10 +272,18 @@ async def _run(args):
     if not collectors and not engine:
         await _run_idle()
         return
+    operations_settings = config.get("operations", {})
+    operations = OperationsEngine(
+        inventory_dir=operations_settings.get("inventory_path", "/app/runtime/inventory"),
+        output_dir=operations_settings.get("output_path", "/app/runtime/operations"),
+        dashboard_template=operations_settings.get("dashboard_template", "/app/dashboards/Infrastructure Overview/infrastructure-overview.json"),
+        settings=operations_settings) if operations_settings.get("enabled", True) else None
     await Scheduler(collectors, os.getenv("COLLECTOR_HEALTH_PATH", "/tmp/collector-health"),
                     inventory_engine=engine,
                     lifecycle_interval=inventory_settings.get(
-                        "lifecycle_evaluation_interval_seconds", 3600)).run()
+                        "lifecycle_evaluation_interval_seconds", 3600),
+                    operations_engine=operations,
+                    operations_interval=operations_settings.get("interval_seconds", 300)).run()
 
 
 def main():
@@ -277,6 +308,8 @@ def main():
     inventory.add_argument("--json", action="store_true")
     sub.add_parser("run")
     sub.add_parser("validate")
+    operations = sub.add_parser("operations")
+    operations.add_argument("action", choices=("generate", "rules"), default="generate", nargs="?")
     args = parser.parse_args()
     if args.command == "inventory" and args.action in ("show", "retire", "restore") and not args.asset_id:
         parser.error(f"inventory {args.action} requires asset_id")

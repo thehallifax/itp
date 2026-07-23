@@ -32,18 +32,21 @@ def test_canonical_schema_documents_exist():
 
 
 def test_dashboard_folders_and_uids_are_fixed():
-    folders = {"overview", "network", "wireless", "security", "compute", "vendor", "health"}
-    assert folders <= {path.name for path in (ROOT / "dashboards").iterdir() if path.is_dir()}
+    folders = {"Infrastructure Overview", "Network", "Compute", "Printing", "Services",
+               "Inventory", "Collectors", "Operations", "Vendor"}
+    assert all((ROOT / "dashboards" / folder).is_dir() for folder in folders)
     provision = yaml.safe_load((ROOT / "grafana/provisioning/dashboards/dashboards.yml").read_text())
     providers = provision["providers"]
-    assert {item["folder"].lower() for item in providers} == folders
-    folder_uids = [item["folderUid"] for item in providers]
-    assert len(folder_uids) == len(set(folder_uids)) == 7
+    assert {provider["folder"] for provider in providers} == folders
+    folder_uids = [provider["folderUid"] for provider in providers]
+    assert len(folder_uids) == len(set(folder_uids)) == len(folders)
     dashboard_uids = [json.loads(path.read_text())["uid"]
                       for path in (ROOT / "dashboards").rglob("*.json")]
     assert len(dashboard_uids) == len(set(dashboard_uids))
-    assert set(dashboard_uids) == {"mist-infrastructure-overview",
-                                   "fortigate-infrastructure-overview"}
+    assert set(dashboard_uids) == {
+        "itp-infrastructure-overview", "mist-infrastructure-overview",
+        "fortigate-infrastructure-overview",
+    }
 
 
 def test_flightsql_datasource_is_provisioned_with_dashboard_uid():

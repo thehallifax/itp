@@ -133,10 +133,11 @@ docker compose up -d
 docker compose logs --tail=200 discovery collector telegraf
 ```
 
-Open Grafana at `http://localhost:${GRAFANA_PORT}`. Dashboard providers create
-the fixed Overview, Network, Wireless, Security, Compute, Vendor, and Health
-folders automatically. Existing vendor measurements remain available while
-collectors also emit the versioned canonical measurements.
+Open Grafana at `http://localhost:${GRAFANA_PORT}`. The dashboard provider
+recreates the operations-first hierarchy from `dashboards/`, including Network,
+Compute, Printing, Services, Inventory, Collectors, Operations, and Vendor.
+Start with **Infrastructure Overview** and use the Mist and FortiGate dashboards
+under Vendor for engineering drill-down. See [dashboard navigation](docs/DASHBOARDS.md).
 
 ### Inventory operations
 

@@ -1,6 +1,8 @@
 discovery/config.yml
 .env
-discovery/config.yml
+secrets/mist.env
+secrets/fortigate.env
+secrets/snmp.env
 runtime/inventory/*.json
 runtime/inventory/*.lock
 runtime/inventory/.inventory.lock
@@ -12,7 +14,6 @@ secrets/*.env
 
 # Runtime and generated state
 runtime/
-analysis/
 backups/
 
 # Local backup files
@@ -25,7 +26,6 @@ secrets/*.env
 
 # Runtime
 runtime/
-analysis/
 backups/
 
 # Local backup files

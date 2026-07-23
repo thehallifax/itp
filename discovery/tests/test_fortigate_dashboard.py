@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-FORTIGATE_DASHBOARD = ROOT / "dashboards/vendor/fortigate-overview.json"
-MIST_DASHBOARD = ROOT / "dashboards/vendor/mist-infrastructure-overview.json"
+FORTIGATE_DASHBOARD = ROOT / "dashboards/Vendor/fortigate-overview.json"
+MIST_DASHBOARD = ROOT / "dashboards/Vendor/mist-infrastructure-overview.json"
 
 
 def _load(path: Path) -> dict:
