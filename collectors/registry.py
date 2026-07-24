@@ -3,6 +3,16 @@
 
 class CollectorRegistry:
     _collectors = {}
+    _builtins_loaded = False
+
+    @classmethod
+    def _ensure_builtins(cls):
+        if cls._builtins_loaded:
+            return
+        cls._builtins_loaded = True
+        import importlib
+        for module in (".snmp", ".mist", ".fortigate", ".paloalto"):
+            importlib.import_module(module, "collectors")
 
     @classmethod
     def register(cls, collector_class):
@@ -14,10 +24,12 @@ class CollectorRegistry:
 
     @classmethod
     def get(cls, name):
+        cls._ensure_builtins()
         return cls._collectors[name]
 
     @classmethod
     def names(cls):
+        cls._ensure_builtins()
         return tuple(sorted(cls._collectors))
 
     @classmethod
