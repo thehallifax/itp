@@ -31,6 +31,7 @@ from collectors.writer import InfluxWriter
 from collectors.config import load_config
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
 from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
+from itp_profiles.setup import BootstrapWizard, SetupError, SetupOptions
 
 
 SECRET_REQUIREMENTS = {
@@ -450,6 +451,17 @@ def main():
     parser = argparse.ArgumentParser(prog="./itp", description=__doc__)
     commands = parser.add_subparsers(dest="group", required=True)
     commands.add_parser("help")
+    setup_parser = commands.add_parser(
+        "setup", help="prepare a new root Docker Compose deployment")
+    setup_parser.add_argument("--non-interactive", action="store_true")
+    setup_parser.add_argument("--deployment-name")
+    setup_parser.add_argument("--deployment-type",
+                              choices=("Home Lab", "School", "Business",
+                                       "MSP", "Enterprise"))
+    setup_parser.add_argument("--grafana-port", type=int)
+    setup_parser.add_argument("--start", action="store_true", default=None)
+    setup_parser.add_argument("--force", action="store_true")
+    setup_parser.add_argument("--health-timeout", type=int, default=180)
     profile_parser = commands.add_parser("profile")
     actions = profile_parser.add_subparsers(dest="action", required=True)
     actions.add_parser("list")
@@ -467,6 +479,16 @@ def main():
     args = parser.parse_args()
     if args.group == "help":
         parser.print_help()
+        return
+    if args.group == "setup":
+        BootstrapWizard(ROOT).run(SetupOptions(
+            non_interactive=args.non_interactive,
+            deployment_name=args.deployment_name,
+            deployment_type=args.deployment_type,
+            grafana_port=args.grafana_port,
+            start=args.start,
+            force=args.force,
+            health_timeout=args.health_timeout))
         return
     if args.action == "list":
         for value in discover_profiles(ROOT):
@@ -507,6 +529,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ProfileError, subprocess.CalledProcessError, OSError, ValueError) as exc:
+    except (ProfileError, SetupError, subprocess.CalledProcessError,
+            OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(1)
