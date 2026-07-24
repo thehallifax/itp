@@ -5,8 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DASHBOARDS = (
-    ROOT / "dashboards/Vendor/mist-infrastructure-overview.json",
-    ROOT / "dashboards/Vendor/fortigate-overview.json",
+    ROOT / "dashboards/vendor/mist-infrastructure-overview.json",
+    ROOT / "dashboards/vendor/fortigate-overview.json",
 )
 TEXT_VARIABLES = ("site", "customer", "device", "device_type", "status")
 

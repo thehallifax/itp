@@ -149,7 +149,11 @@ def test_dashboard_generation_is_profile_runtime_only(monkeypatch, tmp_path):
     assert not str(output).startswith(str(ROOT / "runtime/sbc"))
 
 
-def test_legacy_configuration_emits_deprecation_warning(monkeypatch):
+def test_legacy_configuration_emits_deprecation_warning(monkeypatch, tmp_path):
     monkeypatch.delenv("ITP_PROFILE", raising=False)
+    discovery = tmp_path / "discovery"
+    discovery.mkdir()
+    config = discovery / "config.yml"
+    config.write_text((ROOT / "discovery/config.example.yml").read_text())
     with pytest.warns(DeprecationWarning, match="deployment profile"):
-        load_config(ROOT / "discovery/config.yml")
+        load_config(config)
