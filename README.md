@@ -126,14 +126,29 @@ Requirements: Git, Docker, and Docker Compose v2.
 ```sh
 git clone https://github.com/thehallifax/itp.git
 cd itp
-cp .env.example .env
-cp discovery/config.example.yml discovery/config.yml
-docker compose config --quiet
-docker compose up -d --build
+./itp setup
 ```
 
-Open Grafana at `http://localhost:${GRAFANA_PORT:-3000}`. Datasources, folders,
-and enabled dashboard packs are provisioned automatically.
+The setup wizard checks Docker, Compose, and required ports; creates `.env` and
+`discovery/config.yml` from tracked templates; validates the result; and can
+start the platform and wait for service health. On Windows, run
+`py scripts/itp.py setup`.
+
+For unattended bootstrap:
+
+```sh
+./itp setup --non-interactive \
+  --deployment-name "ITP Lab" \
+  --deployment-type "Home Lab" \
+  --grafana-port 3000 \
+  --start
+```
+
+Existing configuration is preserved unless an interactive update is confirmed
+or `--force` is supplied. Open Grafana at the URL printed by the wizard.
+Datasources, folders, and enabled dashboard packs are provisioned automatically.
+See the [Quick Start](docs/quick-start.md) for configuration and credential
+next steps.
 
 For a customer-scoped deployment:
 
@@ -179,7 +194,8 @@ docs/                architecture, operator and collector documentation
 - Optional API fields may produce `Unknown` rather than inferred health.
 - Service-impact rules are deliberately conservative.
 - Platform high availability is not included.
-- Configuration and secret bootstrap remain operator-managed.
+- Vendor credentials remain operator-managed and are stored only under
+  `secrets/`; the bootstrap wizard does not request or copy secrets.
 
 ## Roadmap
 
@@ -196,6 +212,6 @@ Later work will expand relationships, lifecycle intelligence, collectors, and
 service coverage without weakening the canonical vendor-neutral architecture.
 
 See the [Alpha 2 release notes](docs/releases/v0.2.0-alpha.2.md),
-[OPS-008 architecture](docs/ops-008-state-history.md),
-[changelog](CHANGELOG.md), [contribution guide](CONTRIBUTING.md), and
+[OPS-008 architecture](docs/ops-008-state-history.md), [changelog](CHANGELOG.md),
+[contribution guide](CONTRIBUTING.md), and
 [security policy](SECURITY.md).
