@@ -85,6 +85,18 @@ Collectors ship with the repository and are enabled through configuration. A
 collector owns authentication, discovery, collection, and adaptation only; it
 must not contain operational or dashboard policy.
 
+Inspect the authoritative connector catalogue without configuration or
+credentials:
+
+```sh
+python -m collectors connectors list
+python -m collectors connectors inspect paloalto --json
+```
+
+The [connector registry](docs/connector-registry.md) records supported domains,
+deployment types, setup maturity, validation/status capabilities, secret
+handling, documentation, and implementation references.
+
 ## Virtualisation
 
 ITP normalises read-only virtualisation evidence into canonical managers,

@@ -80,5 +80,17 @@ The wizard does not request or store credentials. After setup:
 Never commit `.env`, `discovery/config.yml`, populated files under `secrets/`,
 or generated files under `runtime/`.
 
+Inspect all implemented connector boundaries before manual onboarding:
+
+```sh
+python -m collectors connectors list
+python -m collectors connectors inspect mist
+```
+
+OOBE-001 bootstraps the platform. The registry introduced by OOBE-002 supplies
+future onboarding metadata, but Phase 1 does not prompt for vendor credentials.
+Connectors marked manual or profile-only are deliberately not presented as
+guided options.
+
 For multi-customer deployments, continue with
 [deployment profiles](deployment-profiles.md).

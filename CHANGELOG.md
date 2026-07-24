@@ -10,6 +10,9 @@ All notable changes to ITP are documented in this file. The format follows
 - OOBE-001 Phase 1 cross-platform bootstrap wizard with safe template
   generation, Docker and port checks, Compose validation, optional startup,
   service-health waiting, and unattended operation.
+- OOBE-002 Phase 1 declarative connector registry, deterministic inspection
+  CLI, validated maturity and secret-handling metadata, OOBE integration, and
+  contributor completion contract.
 - OPS-008 Phase 1 canonical snapshots, deterministic field-level change
   detection, stable change identifiers, atomic filesystem storage, and
   config-independent CLI processing.

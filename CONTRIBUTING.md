@@ -53,3 +53,15 @@ LLM decisions, probabilistic state, or hidden service-impact inference.
 Tests must run offline without secrets, live infrastructure, Docker services,
 or external collectors. Use sanitized deterministic fixtures, assert stable
 ordering, and keep generated evidence outside profile runtime directories.
+
+## Connector integration
+
+New collection code must include an entry in
+`collectors/connector-registry.yml`. Follow the
+[connector completion contract](docs/connector-registry.md#connector-completion-contract):
+declare stable identity, actual canonical domains, credential indirection,
+documentation, implementation reference, and the honest maturity of setup,
+validation, doctor, status, fixtures, and state-history semantics.
+
+Do not mark unsupported capabilities as available and never place credentials
+or example secret values in registry metadata.

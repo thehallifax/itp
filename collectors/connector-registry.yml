@@ -1,0 +1,144 @@
+schema_version: 1
+connectors:
+  - id: fortigate
+    display_name: FortiGate
+    vendor: Fortinet
+    domains: [firewall, internet, switching]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: supported
+    guided_setup: false
+    configuration_mode: manual
+    credential_fields:
+      - {id: host, env: FORTIGATE_HOST, required: true, secret: false}
+      - {id: api_token, env: FORTIGATE_API_TOKEN, required: true, secret: true}
+    configuration_fields: [collectors.fortigate.host, collectors.fortigate.site]
+    secret_handling:
+      templates: [secrets/fortigate.env.example]
+      scope: root-or-profile
+    capabilities: {validation: true, doctor: false, status: true, demo_fixture: false}
+    documentation: collectors/fortigate/README.md
+    implementation: collectors/fortigate/collector.py:FortiGateCollector
+    aliases: [fortinet, fortios]
+    notes: Native read-only API collector; credential onboarding remains manual.
+
+  - id: hyperv
+    display_name: Microsoft Hyper-V
+    vendor: Microsoft
+    domains: [servers, virtualisation]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: profile-only
+    guided_setup: false
+    configuration_mode: profile-manual
+    credential_fields: []
+    configuration_fields: [virtualisation.endpoints]
+    secret_handling:
+      templates: [secrets/mlc/hyperv.env.example]
+      scope: profile
+    capabilities: {validation: true, doctor: false, status: true, demo_fixture: true}
+    documentation: docs/collectors/hyperv.md
+    implementation: collectors/hyperv/collector.py:HyperVCollector
+    aliases: [hyper-v, microsoft-hyperv]
+    notes: Profile-scoped read-only PowerShell collection; guided setup is unavailable.
+
+  - id: mist
+    display_name: Juniper Mist
+    vendor: Juniper Networks
+    domains: [switching, wireless]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: supported
+    guided_setup: false
+    configuration_mode: manual
+    credential_fields:
+      - {id: organization_id, env: MIST_ORG_ID, required: true, secret: false}
+      - {id: api_token, env: MIST_API_TOKEN, required: true, secret: true}
+    configuration_fields: [collectors.mist.base_url]
+    secret_handling:
+      templates: [secrets/mist.env.example]
+      scope: root-or-profile
+    capabilities: {validation: true, doctor: false, status: true, demo_fixture: false}
+    documentation: collectors/mist/README.md
+    implementation: collectors/mist/collector.py:MistCollector
+    aliases: [juniper-mist]
+    notes: Native read-only cloud API collector; regional endpoint selection is manual.
+
+  - id: paloalto
+    display_name: Palo Alto PAN-OS
+    vendor: Palo Alto Networks
+    domains: [firewall, internet]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: supported
+    guided_setup: false
+    configuration_mode: manual
+    credential_fields:
+      - {id: api_key, env: PALOALTO_API_KEY, required: true, secret: true}
+    configuration_fields: [collectors.paloalto.base_url, collectors.paloalto.site]
+    secret_handling:
+      templates: [secrets/paloalto.env.example]
+      scope: root-or-profile
+    capabilities: {validation: true, doctor: false, status: true, demo_fixture: false}
+    documentation: docs/collectors/paloalto.md
+    implementation: collectors/paloalto/collector.py:PaloAltoCollector
+    aliases: [panos, pan-os, palo-alto]
+    notes: Native read-only PAN-OS XML API collector; guided setup is unavailable.
+
+  - id: proxmox
+    display_name: Proxmox VE
+    vendor: Proxmox Server Solutions
+    domains: [servers, virtualisation]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: profile-only
+    guided_setup: false
+    configuration_mode: profile-manual
+    credential_fields:
+      - {id: token_id, env: PROXMOX_TOKEN_ID, required: true, secret: false}
+      - {id: token_secret, env: PROXMOX_TOKEN_SECRET, required: true, secret: true}
+    configuration_fields: [virtualisation.endpoints]
+    secret_handling:
+      templates: [secrets/mlc/proxmox.env.example]
+      scope: profile
+    capabilities: {validation: true, doctor: false, status: true, demo_fixture: true}
+    documentation: docs/collectors/proxmox.md
+    implementation: collectors/proxmox/collector.py:ProxmoxCollector
+    aliases: [proxmox-ve, pve]
+    notes: Profile-scoped read-only API provider; guided setup is unavailable.
+
+  - id: snmp
+    display_name: SNMP Infrastructure
+    vendor: Multi-vendor
+    domains: [environmental, power, printing, servers, switching, wireless]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: supported
+    guided_setup: false
+    configuration_mode: manual
+    credential_fields:
+      - {id: community, env: NETWORK_SNMP_COMMUNITY, required: true, secret: true}
+    configuration_fields: [networks, exclusions, snmp.version]
+    secret_handling:
+      templates: [secrets/snmp.env.example]
+      scope: root-or-profile
+    capabilities: {validation: false, doctor: false, status: true, demo_fixture: false}
+    documentation: docs/collectors/snmp.md
+    implementation: collectors/snmp/collector.py:SNMPCollector
+    aliases: [snmp-infrastructure, telegraf-snmp]
+    notes: Generic discovery and Telegraf generation; device-specific setup remains manual.
+
+  - id: vmware
+    display_name: VMware vSphere
+    vendor: VMware
+    domains: [servers, virtualisation]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: profile-only
+    guided_setup: false
+    configuration_mode: profile-manual
+    credential_fields:
+      - {id: username, env: VMWARE_USERNAME, required: true, secret: false}
+      - {id: password, env: VMWARE_PASSWORD, required: true, secret: true}
+    configuration_fields: [virtualisation.endpoints]
+    secret_handling:
+      templates: [secrets/mlc/vmware.env.example]
+      scope: profile
+    capabilities: {validation: true, doctor: false, status: true, demo_fixture: true}
+    documentation: docs/collectors/vmware.md
+    implementation: collectors/vmware/collector.py:VMwareCollector
+    aliases: [vsphere, vcenter]
+    notes: Profile-scoped read-only vCenter provider; guided setup is unavailable.

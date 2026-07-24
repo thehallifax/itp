@@ -24,3 +24,6 @@ commit the project to a database or analytics implementation prematurely.
    relationships without collector coupling.
 9. **Additional collectors** — add supported vendors through the existing
    registry, configuration, inventory, and writer contracts.
+10. **OOBE-002 Connector Onboarding** — Phase 1 implemented: authoritative
+    connector metadata and inspection. Phase 2 should add guided onboarding
+    only for connectors whose registry capabilities and validation are ready.

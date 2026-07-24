@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import CollectorRegistry
+from .connector_registry import ConnectorMetadataRegistry
 from .config import load_config
 from .inventory import InventoryManager
 from .scheduler import Scheduler
@@ -166,6 +167,38 @@ async def _validate(config):
 async def _run(args):
     if args.command == "list":
         for name in CollectorRegistry.names(): print(name)
+        return
+    if args.command == "connectors":
+        registry = ConnectorMetadataRegistry.load(ROOT)
+        if args.action == "list":
+            if args.json:
+                print(json.dumps(registry.to_dict(), indent=2, sort_keys=True))
+            else:
+                for connector in registry.all():
+                    print(
+                        f"{connector.id}\t{connector.display_name}\t"
+                        f"domains={','.join(connector.domains)}\t"
+                        f"status={connector.implementation_status}\t"
+                        f"setup={'guided' if connector.guided_setup else connector.configuration_mode}\t"
+                        f"validation={'yes' if connector.capabilities['validation'] else 'no'}\t"
+                        f"docs={connector.documentation}")
+            return
+        try:
+            connector = registry.get(args.connector)
+        except KeyError as exc:
+            raise ValueError(str(exc).strip("'")) from exc
+        if args.json:
+            print(json.dumps(connector.to_dict(), indent=2, sort_keys=True))
+        else:
+            print(f"Connector: {connector.display_name} ({connector.id})")
+            print("Domains: " + ", ".join(connector.domains))
+            print(f"Support: {connector.implementation_status}")
+            print(f"Setup: {'guided' if connector.guided_setup else connector.configuration_mode}")
+            print("Validation: " + (
+                "available" if connector.capabilities["validation"]
+                else "not available"))
+            print(f"Documentation: {connector.documentation}")
+            print(f"Notes: {connector.notes}")
         return
     if args.command == "state-history":
         store = FileStateStore(args.store)
@@ -519,6 +552,10 @@ def main():
     parser.add_argument("--config", default=None)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list")
+    connectors = sub.add_parser("connectors")
+    connectors.add_argument("action", choices=("list", "inspect"))
+    connectors.add_argument("connector", nargs="?")
+    connectors.add_argument("--json", action="store_true")
     for command in ("discover", "collect", "inspect"):
         item = sub.add_parser(command); item.add_argument("name")
     inventory = sub.add_parser("inventory")
@@ -565,6 +602,9 @@ def main():
     paloalto = sub.add_parser("paloalto")
     paloalto.add_argument("action", choices=("validate", "discover", "run"))
     args = parser.parse_args()
+    if (args.command == "connectors" and args.action == "inspect"
+            and not args.connector):
+        parser.error("connectors inspect requires connector ID")
     if args.command == "state-history":
         if args.action in ("process", "capture-run") and not args.input:
             parser.error(f"state-history {args.action} requires --input")

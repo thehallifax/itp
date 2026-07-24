@@ -29,17 +29,10 @@ from collectors.proxmox.client import ProxmoxClient
 from collectors.hyperv.runner import LocalPowerShellRunner
 from collectors.writer import InfluxWriter
 from collectors.config import load_config
+from collectors.connector_registry import ConnectorMetadataRegistry
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
 from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
 from itp_profiles.setup import BootstrapWizard, SetupError, SetupOptions
-
-
-SECRET_REQUIREMENTS = {
-    "snmp": ("NETWORK_SNMP_COMMUNITY",),
-    "mist": ("MIST_ORG_ID", "MIST_API_TOKEN"),
-    "fortigate": ("FORTIGATE_HOST", "FORTIGATE_API_TOKEN"),
-    "paloalto": ("PALOALTO_API_KEY",),
-}
 
 
 def load_root_env():
@@ -87,10 +80,18 @@ def port_available(port):
 
 def required_secrets(config):
     required = {"INFLUXDB_TOKEN"}
+    registry = ConnectorMetadataRegistry.load(ROOT)
     for name, settings in config.get("collectors", {}).items():
         if not isinstance(settings, dict) or not settings.get("enabled"):
             continue
-        required.update(SECRET_REQUIREMENTS.get(name, ()))
+        try:
+            connector = registry.get(name)
+        except KeyError:
+            connector = None
+        if connector:
+            required.update(
+                field["env"] for field in connector.credential_fields
+                if field.get("required") and field.get("env"))
         for key in ("api_key_env", "token_env"):
             if settings.get(key):
                 required.add(str(settings[key]))
@@ -451,6 +452,15 @@ def main():
     parser = argparse.ArgumentParser(prog="./itp", description=__doc__)
     commands = parser.add_subparsers(dest="group", required=True)
     commands.add_parser("help")
+    connector_parser = commands.add_parser(
+        "connectors", help="inspect the connector metadata registry")
+    connector_actions = connector_parser.add_subparsers(
+        dest="connector_action", required=True)
+    connector_list = connector_actions.add_parser("list")
+    connector_list.add_argument("--json", action="store_true")
+    connector_inspect = connector_actions.add_parser("inspect")
+    connector_inspect.add_argument("connector")
+    connector_inspect.add_argument("--json", action="store_true")
     setup_parser = commands.add_parser(
         "setup", help="prepare a new root Docker Compose deployment")
     setup_parser.add_argument("--non-interactive", action="store_true")
@@ -489,6 +499,48 @@ def main():
             start=args.start,
             force=args.force,
             health_timeout=args.health_timeout))
+        return
+    if args.group == "connectors":
+        registry = ConnectorMetadataRegistry.load(ROOT)
+        if args.connector_action == "list":
+            if args.json:
+                print(json.dumps(registry.to_dict(), indent=2, sort_keys=True))
+            else:
+                print("ID\tName\tDomains\tStatus\tSetup\tValidation\tDocumentation")
+                for connector in registry.all():
+                    print(
+                        f"{connector.id}\t{connector.display_name}\t"
+                        f"{','.join(connector.domains)}\t"
+                        f"{connector.implementation_status}\t"
+                        f"{'guided' if connector.guided_setup else connector.configuration_mode}\t"
+                        f"{'yes' if connector.capabilities['validation'] else 'no'}\t"
+                        f"{connector.documentation}")
+            return
+        try:
+            connector = registry.get(args.connector)
+        except KeyError as exc:
+            raise ValueError(str(exc).strip("'")) from exc
+        if args.json:
+            print(json.dumps(connector.to_dict(), indent=2, sort_keys=True))
+        else:
+            print(f"Connector: {connector.display_name} ({connector.id})")
+            print(f"Vendor: {connector.vendor}")
+            print("Domains: " + ", ".join(connector.domains))
+            print(f"Support: {connector.implementation_status}")
+            print("Setup: " + (
+                "guided" if connector.guided_setup
+                else f"{connector.configuration_mode} (manual-only)"))
+            print("Validation: " + (
+                "available" if connector.capabilities["validation"]
+                else "not available"))
+            print("Doctor: " + (
+                "available" if connector.capabilities["doctor"]
+                else "not available"))
+            print("Status: " + (
+                "available" if connector.capabilities["status"]
+                else "not available"))
+            print(f"Documentation: {connector.documentation}")
+            print(f"Notes: {connector.notes}")
         return
     if args.action == "list":
         for value in discover_profiles(ROOT):

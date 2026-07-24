@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from collectors.connector_registry import ConnectorMetadataRegistry
 
 
 DEPLOYMENT_TYPES = ("Home Lab", "School", "Business", "MSP", "Enterprise")
@@ -48,12 +49,14 @@ class BootstrapWizard:
     """Prepare the legacy root Compose deployment without touching secrets."""
 
     def __init__(self, root, *, runner=subprocess.run, input_fn=input,
-                 output_fn=print, sleep_fn=time.sleep):
+                 output_fn=print, sleep_fn=time.sleep, connector_registry=None):
         self.root = Path(root).resolve()
         self.runner = runner
         self.input = input_fn
         self.output = output_fn
         self.sleep = sleep_fn
+        self.connector_registry = connector_registry or \
+            ConnectorMetadataRegistry.load(Path(__file__).resolve().parents[1])
         self.env_path = self.root / ".env"
         self.config_path = self.root / "discovery/config.yml"
         self.env_template = self.root / ".env.example"
@@ -300,4 +303,7 @@ class BootstrapWizard:
         self.output(
             "Next: configure collector credentials under secrets/ and enable "
             "collectors in discovery/config.yml.")
+        self.output(
+            f"Connector catalogue: {len(self.connector_registry.all())} "
+            "registered; guided credential onboarding is not enabled yet.")
         return SetupResult(first_run, created, updated, bool(should_start), url)
