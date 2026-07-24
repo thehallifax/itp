@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import warnings
 from pathlib import Path
 
 import yaml
@@ -35,6 +36,9 @@ from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
 from itp_profiles.setup import BootstrapWizard, SetupError, SetupOptions
 from analysis.doctor import (
     DoctorEngine, DoctorFatalError, DoctorUsageError, render_human, render_json)
+from analysis.operator import (
+    DaemonAlreadyRunningError, OperatorCollectEngine, OperatorDaemon,
+    OperatorStatusEngine, render_collect, render_status, start_background)
 
 
 def load_root_env():
@@ -472,6 +476,17 @@ def main():
     doctor.add_argument("--connector")
     doctor.add_argument("--offline", action="store_true")
     doctor.add_argument("--strict", action="store_true")
+    collect_root = commands.add_parser(
+        "collect", help="run all enabled root-deployment connectors once")
+    collect_root.add_argument("--json", action="store_true")
+    status_root = commands.add_parser(
+        "status", help="show root-deployment collection and service status")
+    status_root.add_argument("--json", action="store_true")
+    daemon = commands.add_parser(
+        "daemon", help="run enabled root-deployment connectors continuously")
+    daemon_mode = daemon.add_mutually_exclusive_group()
+    daemon_mode.add_argument("--foreground", action="store_true")
+    daemon_mode.add_argument("--once", action="store_true")
     setup_parser = commands.add_parser(
         "setup", help="prepare a new root Docker Compose deployment")
     setup_parser.add_argument("--non-interactive", action="store_true")
@@ -518,6 +533,39 @@ def main():
         print(render_json(report, args.strict) if args.json
               else render_human(report, args.strict))
         raise SystemExit(report.exit_code(args.strict))
+
+    if args.group in {"collect", "status", "daemon"}:
+        load_root_env()
+        # These commands intentionally operate on the backwards-compatible
+        # root deployment, so its profile migration warning is not actionable.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            config = load_config(ROOT / "discovery/config.yml")
+        runtime_dir = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
+        if args.group == "collect":
+            result = OperatorCollectEngine(
+                ROOT, config, runtime_dir=runtime_dir).run()
+            print(json.dumps(result, indent=2, sort_keys=True)
+                  if args.json else render_collect(result))
+            if result["summary"]["overall"] in {"failed", "partial"}:
+                raise SystemExit(1)
+        elif args.group == "status":
+            result = OperatorStatusEngine(
+                ROOT, config, runtime_dir=runtime_dir).run()
+            print(json.dumps(result, indent=2, sort_keys=True)
+                  if args.json else render_status(result))
+        elif args.once:
+            result = OperatorDaemon(
+                ROOT, config, runtime_dir=runtime_dir).run(once=True)
+            print(render_collect(result))
+            if result["summary"]["overall"] in {"failed", "partial"}:
+                raise SystemExit(1)
+        elif args.foreground:
+            OperatorDaemon(ROOT, config, runtime_dir=runtime_dir).run()
+        else:
+            start_background(
+                Path(__file__).resolve(), runtime_dir, output=print)
+        return
 
     if args.group == "connectors":
         registry = ConnectorMetadataRegistry.load(ROOT)
@@ -607,7 +655,8 @@ if __name__ == "__main__":
     except DoctorFatalError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(3)
-    except (ProfileError, SetupError, subprocess.CalledProcessError,
+    except (DaemonAlreadyRunningError, ProfileError, SetupError,
+            subprocess.CalledProcessError,
             OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(1)

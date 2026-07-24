@@ -54,9 +54,9 @@ def _enabled_collectors(config):
     for name in ("mist", "fortigate", "paloalto"):
         collector_settings = settings.get(name, {})
         if not collector_settings.get("enabled", False): continue
-        default_execution = CollectorRegistry.metadata(name)["execution"]
-        execution = collector_settings.get("execution", default_execution)
-        if execution not in ("either", runtime_mode):
+        eligible, execution = CollectorRegistry.execution_eligible(
+            name, collector_settings, runtime_mode)
+        if not eligible:
             logging.info("collector=%s result=skipped execution=%s runtime_mode=%s",
                          name, execution, runtime_mode)
             continue

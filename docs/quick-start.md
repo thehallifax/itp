@@ -106,3 +106,61 @@ The first command checks local files without Docker access. The second includes
 containers and known local HTTP health endpoints. Use
 `./itp doctor --json --strict` for support automation. Doctor is read-only and
 reports credential presence without displaying values.
+
+## Collect and inspect status
+
+Run every enabled connector once using the platform scheduler:
+
+```sh
+./itp collect
+./itp collect --json
+```
+
+The summary identifies successful, failed, disabled, and runtime-unavailable
+connectors. Each run records deterministic `PipelineRun` metadata under
+`runtime/pipeline-runs/`; connector result details are restricted to
+non-sensitive operational counters.
+
+Inspect the current deployment without running a connector:
+
+```sh
+./itp status
+./itp status --json
+```
+
+Status combines registry metadata, the latest collection run, and generated
+service health. Connector freshness is reported as `Fresh`, `Stale`, `Unknown`,
+`Never Run`, `Failed`, or `Disabled`. Existing profile-specific workflows
+continue to use `./itp profile status` and `./itp profile collect`.
+
+## Continuous operation
+
+Start scheduled collection in the background:
+
+```sh
+./itp daemon
+./itp status
+```
+
+Each connector uses its existing `discovery_interval_seconds` and
+`collection_interval_seconds` configuration. The daemon uses an exclusive PID
+lock under `runtime/daemon/`, maintains a durable heartbeat, and records
+scheduled collection outcomes as canonical pipeline runs. A failed connector
+does not stop other connectors.
+
+Use foreground mode with a service manager or container:
+
+```sh
+./itp daemon --foreground
+```
+
+`SIGINT` and `SIGTERM` stop scheduling cleanly and persist a final `Stopped`
+state. For automation that needs exactly one lock-protected cycle:
+
+```sh
+./itp daemon --once
+```
+
+Only non-sensitive counters and exception types are written to daemon state,
+pipeline results, or command output. Background runtime logs are written to
+`runtime/daemon/daemon.log`.

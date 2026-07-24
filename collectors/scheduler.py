@@ -40,29 +40,91 @@ class Scheduler:
         return [await _resolve(collector.discover()) for collector in self.collectors]
 
     async def _execute(self, collector, phase):
+        outcome = await self._execute_detailed(
+            collector, phase, log_exception=True)
+        return outcome["value"] if outcome["status"] == "success" else None
+
+    async def _execute_detailed(self, collector, phase, *, log_exception=False):
+        """Execute one phase with structured timing for operator commands."""
+        started = time.monotonic()
         lock = self._locks[collector]
         if lock is None:
             lock = self._locks[collector] = asyncio.Lock()
         if lock.locked():
             logging.getLogger("collector.scheduler").warning(
                 "collector=%s phase=%s result=skipped_overlap", collector.name, phase)
-            return None
+            return {"connector": collector.name, "status": "skipped",
+                    "duration_ms": 0, "value": None,
+                    "exception_type": "", "reason": "overlapping execution"}
         async with lock:
             try:
                 result = await _resolve(getattr(collector, phase)())
                 if self.health_path:
                     self.health_path.touch()
-                return result
-            except Exception:
-                logging.getLogger("collector.scheduler").exception(
-                    "collector=%s phase=%s result=failed", collector.name, phase)
-                return None
+                return {"connector": collector.name, "status": "success",
+                        "duration_ms": int((time.monotonic() - started) * 1000),
+                        "value": result, "exception_type": "", "reason": ""}
+            except Exception as exc:
+                logger = logging.getLogger("collector.scheduler")
+                if log_exception:
+                    logger.exception(
+                        "collector=%s phase=%s result=failed",
+                        collector.name, phase)
+                else:
+                    logger.error(
+                        "collector=%s phase=%s result=failed exception_type=%s",
+                        collector.name, phase, type(exc).__name__)
+                return {"connector": collector.name, "status": "failed",
+                        "duration_ms": int((time.monotonic() - started) * 1000),
+                        "value": None, "exception_type": type(exc).__name__,
+                        "reason": "collector execution failed"}
+
+    async def execute_once(self, phase="collect"):
+        """Execute a phase once for every configured scheduler collector."""
+        outcomes = await asyncio.gather(*(
+            self._execute_detailed(collector, phase)
+            for collector in self.collectors))
+        return tuple(sorted(outcomes, key=lambda value: value["connector"]))
 
     async def _loop(self, collector, phase, interval):
         while True:
             started = time.monotonic()
             await self._execute(collector, phase)
             await asyncio.sleep(max(0.1, interval - (time.monotonic() - started)))
+
+    async def _continuous_loop(self, collector, phase, interval, stop_event,
+                               on_start=None, on_outcome=None):
+        """Run one collector phase at its configured interval until stopped."""
+        while not stop_event.is_set():
+            started = time.monotonic()
+            if on_start:
+                await _resolve(on_start(collector.name, phase))
+            outcome = await self._execute_detailed(collector, phase)
+            if on_outcome:
+                await _resolve(on_outcome(outcome, phase))
+            delay = max(0.1, interval - (time.monotonic() - started))
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=delay)
+            except asyncio.TimeoutError:
+                pass
+
+    async def run_continuous(self, *, stop_event=None, on_start=None,
+                             on_outcome=None, include_discovery=True):
+        """Continuously execute configured collectors using their intervals."""
+        stop_event = stop_event or asyncio.Event()
+        tasks = []
+        for collector in self.collectors:
+            if include_discovery:
+                tasks.append(asyncio.create_task(self._continuous_loop(
+                    collector, "discover", collector.discovery_interval,
+                    stop_event, on_start, on_outcome)))
+            tasks.append(asyncio.create_task(self._continuous_loop(
+                collector, "collect", collector.collection_interval,
+                stop_event, on_start, on_outcome)))
+        if not tasks:
+            await stop_event.wait()
+            return
+        await asyncio.gather(*tasks)
 
     async def _execute_lifecycle(self):
         logger = logging.getLogger("collector.inventory")
