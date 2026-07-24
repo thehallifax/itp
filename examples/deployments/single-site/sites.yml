@@ -1,0 +1,6 @@
+sites:
+  - id: example-campus
+    name: Example College
+    type: school
+    display_order: 10
+    aliases: [example, main-campus]

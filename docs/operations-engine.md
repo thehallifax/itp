@@ -1,14 +1,19 @@
 # Operations Engine
 
-The Operations Engine converts inventory, lifecycle state, collector run history,
-and explicit operational signals into deterministic issues, risks, and
+The Operations Engine converts canonical assets, lifecycle state, collector run
+history, and explicit operational signals into deterministic issues, risks, and
 recommendations. It is an offline reasoning layer, not an alerting system. It
 contains no machine learning, language model, remote API, or probabilistic score.
 
+Asset rules evaluate only fused Infrastructure State records. Their findings
+carry `canonical_id` and source provenance, so multiple collector observations
+of one device cannot create duplicate operational issues. Findings also carry
+canonical `site_id`; `site` remains the registry display name for operators.
+
 ## Architecture and rule flow
 
-`OperationsEngine` loads `runtime/inventory/assets.json`, `source_runs.json`,
-`reconciliation.json`, and the optional `runtime/operations/signals.json` input.
+`OperationsEngine` loads `runtime/infrastructure/state.json` and evaluates its
+canonical assets, collector state, reconciliation data, and optional signals.
 It evaluates every registered `Rule`, deduplicates stable item IDs, orders each
 collection by priority, and atomically writes:
 
@@ -25,6 +30,10 @@ Evaluation runs every five minutes by default and can be run immediately with:
 docker compose exec collector python -m collectors operations generate
 docker compose exec collector python -m collectors operations rules
 ```
+
+After Operations evaluation, the scheduler regenerates Operations Wallboard.
+Its attention tables preserve deterministic priority ordering and show at most
+five items for the current site scope.
 
 ## Output schema
 
@@ -69,6 +78,11 @@ The first rule set covers collector overdue/failure, generic device offline,
 inventory drift, unsupported firmware, certificate expiry, printer consumables,
 WAN packet loss/unavailability, unknown inventory, lifecycle age, and explicit AP,
 switch, and firewall availability.
+
+PAN-OS rules require authoritative evidence: API failure changes observability,
+degraded HA and configured expected-interface failures create issues, and
+licence findings require API-returned expiry. Installed content versions alone
+never produce currency findings.
 
 ## Roadmap
 

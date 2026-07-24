@@ -1,0 +1,25 @@
+sites:
+  - id: example-head-office
+    name: Example Education Head Office
+    type: head_office
+    rollup_group: example-education
+    display_order: 10
+    aliases: [head-office]
+  - id: river-campus
+    name: River Campus
+    type: school
+    parent_id: example-head-office
+    rollup_group: example-education
+    display_order: 10
+    aliases: [river]
+  - id: hills-campus
+    name: Hills Campus
+    type: school
+    parent_id: example-head-office
+    rollup_group: example-education
+    display_order: 20
+    aliases: [hills]
+dependencies:
+  - service: identity
+    provider_site_id: example-head-office
+    consumer_site_ids: [river-campus, hills-campus]

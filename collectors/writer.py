@@ -86,6 +86,11 @@ class InfluxWriter:
         return f"{measurement}{tags} {','.join(fields)}{timestamp}"
 
     def write(self, points):
+        deployment_id = os.getenv("ITP_DEPLOYMENT_ID", "").strip()
+        if deployment_id:
+            points = [{**point, "tags": {
+                **point.get("tags", {}), "deployment_id": deployment_id}}
+                for point in points]
         if self.delegate:
             return self.delegate(points)
         if not self.url or not self.token or not self.database:

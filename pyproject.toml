@@ -26,6 +26,8 @@ dev = [
 [tool.setuptools.packages.find]
 include = [
   "collectors*",
+  "analysis*",
+  "itp_profiles*",
   "telemetry*"
 ]
 

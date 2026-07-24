@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_supported_collectors_register_automatically():
-    assert set(CollectorRegistry.names()) == {"fortigate", "mist", "snmp"}
+    assert set(CollectorRegistry.names()) == {"fortigate", "mist", "paloalto", "snmp"}
 
 
 def test_collectors_do_not_import_grafana_or_each_other():
@@ -25,8 +25,8 @@ def test_collectors_do_not_import_grafana_or_each_other():
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imports.append(node.module)
         assert not any(name.startswith("grafana") for name in imports), path
-        if path.parent.name in {"fortigate", "mist", "snmp"}:
-            others = {"fortigate", "mist", "snmp"} - {path.parent.name}
+        if path.parent.name in {"fortigate", "mist", "paloalto", "snmp"}:
+            others = {"fortigate", "mist", "paloalto", "snmp"} - {path.parent.name}
             assert not any(name.startswith(f"collectors.{other}")
                            for other in others for name in imports), path
 

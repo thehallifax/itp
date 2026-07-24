@@ -5,6 +5,8 @@ from .registry import CollectorRegistry
 from .snmp import SNMPCollector
 from .mist import MistCollector
 from .fortigate import FortiGateCollector
+from .paloalto import PaloAltoCollector
 
 __all__ = ["BaseCollector", "CollectorRegistry", "InventoryAsset", "InventoryEngine",
-           "InventoryManager", "SNMPCollector", "MistCollector", "FortiGateCollector"]
+           "InventoryManager", "SNMPCollector", "MistCollector", "FortiGateCollector",
+           "PaloAltoCollector"]

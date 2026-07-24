@@ -14,23 +14,29 @@ def test_mist_secret_is_optional_and_collector_only():
     collector = compose["services"]["collector"]
     assert "profiles" not in collector
     assert collector["env_file"] == [
-        {"path": "secrets/mist.env", "required": False},
-        {"path": "secrets/fortigate.env", "required": False},
+        ".env",
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/influxdb.env", "required": False},
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/collector.env", "required": False},
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/mist.env", "required": False},
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/fortigate.env", "required": False},
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/paloalto.env", "required": False},
     ]
     environment = "\n".join(collector["environment"])
     assert "MIST_ORG_ID" not in environment and "MIST_API_TOKEN" not in environment
-    assert all(name in environment for name in ("INFLUXDB_HOST", "INFLUXDB_TOKEN", "INFLUXDB_BUCKET"))
+    assert all(name in environment for name in ("INFLUXDB_HOST", "INFLUXDB_BUCKET"))
+    assert "INFLUXDB_TOKEN" not in environment
 
 
 def test_secret_files_are_excluded_from_git_and_docker_context():
     gitignore = (ROOT / ".gitignore").read_text()
     dockerignore = (ROOT / ".dockerignore").read_text().splitlines()
-    assert "secrets/*.env" in gitignore and "!secrets/*.env.example" in gitignore
+    assert "secrets/**/*.env" in gitignore and "!secrets/**/*.env.example" in gitignore
     assert "secrets/" in dockerignore and ".env" in dockerignore and ".env.*" in dockerignore
     assert (ROOT / "secrets/mist.env.example").read_text() == "MIST_ORG_ID=\nMIST_API_TOKEN=\n"
     fortigate = (ROOT / "secrets/fortigate.env.example").read_text()
     assert "FORTIGATE_API_TOKEN=\n" in fortigate
     assert "FORTIGATE_VERIFY_TLS=true\n" in fortigate
+    assert (ROOT / "secrets/paloalto.env.example").read_text() == "PALOALTO_API_KEY=\n"
     assert "MIST_" not in (ROOT / ".env.example").read_text()
 
 

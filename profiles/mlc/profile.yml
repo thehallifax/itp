@@ -1,0 +1,22 @@
+profile:
+  id: mlc
+  name: Methodist Ladies' College
+  environment: production
+  timezone: Australia/Perth
+  runtime_mode: edge
+paths:
+  discovery_config: profiles/mlc/discovery.yml
+  sites_config: profiles/mlc/sites.yml
+  dashboards_config: profiles/mlc/dashboards.yml
+  secrets_dir: secrets/mlc
+  runtime_dir: runtime/mlc
+telemetry:
+  deployment_id: mlc
+  influx_bucket: itp_mlc
+  influx_org: local_org
+grafana:
+  folder_prefix: MLC
+  provisioning_namespace: mlc
+ports:
+  grafana: 3000
+  influxdb: 8181

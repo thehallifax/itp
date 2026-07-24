@@ -29,7 +29,9 @@ class OperationalItem:
     category: str
     severity: str
     priority: int
+    canonical_id: str = ""
     device: str = ""
+    site_id: str = ""
     site: str = ""
     summary: str = ""
     recommended_action: str = ""
@@ -46,7 +48,8 @@ class OperationalItem:
             raise ValueError("operational item has unsupported category or severity")
         object.__setattr__(self, "priority", max(0, min(100, int(self.priority))))
         if not self.id:
-            identity = "|".join((self.rule_id, self.kind, self.device, self.site, self.title))
+            identity = "|".join((self.rule_id, self.kind, self.canonical_id or self.device,
+                                 self.site_id or self.site, self.title))
             object.__setattr__(self, "id", "ops:" + hashlib.sha256(identity.encode()).hexdigest()[:20])
 
     def to_dict(self):

@@ -1,0 +1,37 @@
+schema_version: 1
+customer: st-brigids
+site: st-brigids
+discovery:
+  interval_seconds: 3600
+  concurrency: 40
+  timeout_seconds: 1.5
+  retries: 1
+snmp:
+  version: 2
+  communities:
+    - ${NETWORK_SNMP_COMMUNITY}
+networks:
+  - cidr: 10.30.2.0/24
+    purpose: network
+  - cidr: 10.30.4.0/24
+    purpose: printers
+  - cidr: 10.30.3.0/24
+    purpose: wireless
+exclusions: []
+collectors:
+  snmp:
+    enabled: true
+    execution: edge
+  mist:
+    enabled: true
+    execution: central
+    base_url: https://api.ac2.mist.com
+    organization_id: ${MIST_ORG_ID}
+    api_token: ${MIST_API_TOKEN}
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 120
+    timeout_seconds: 20
+  fortigate:
+    enabled: false
+  paloalto:
+    enabled: false

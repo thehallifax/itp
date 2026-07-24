@@ -1,0 +1,52 @@
+schema_version: 1
+customer: mlc
+site: mlc
+discovery:
+  interval_seconds: 3600
+  concurrency: 40
+  timeout_seconds: 1.5
+  retries: 1
+snmp:
+  version: 2
+  communities:
+    - ${NETWORK_SNMP_COMMUNITY}
+networks:
+  - cidr: 172.16.0.0/25
+    purpose: network
+exclusions: []
+collectors:
+  snmp:
+    enabled: true
+    execution: edge
+  mist:
+    enabled: false
+  fortigate:
+    enabled: false
+  paloalto:
+    enabled: true
+    execution: edge
+    base_url: https://172.16.0.5
+    api_key_env: PALOALTO_API_KEY
+    verify_tls: false
+    timeout_seconds: 20
+    customer: mlc
+    site: mlc
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 120
+    max_retries: 2
+    collect_interfaces: true
+    collect_ha: true
+    collect_system_resources: true
+    collect_licenses: true
+    collect_content_versions: true
+    expected_interfaces: []
+    licence_expiry_warning_days: 30
+    content_warning_days: 30
+    content_critical_days: 90
+    wan_interfaces:
+      - name: ethernet1/5
+        role: internet
+        display_name: Internet ethernet1/5
+      - name: ethernet1/6
+        role: internet
+        display_name: Internet ethernet1/6

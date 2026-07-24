@@ -1,0 +1,21 @@
+collector: platform
+version: 1
+capabilities:
+  - inventory
+  - telemetry
+requires: []
+dashboards:
+  - uid: itp-operations-wallboard
+    source: dashboards/Operations/operations-wallboard.json
+    runtime_source: runtime/dashboard/operations/operations-wallboard.json
+    folder: Operations
+    tags: [operations, wallboard]
+  - uid: itp-infrastructure-overview
+    source: dashboards/Infrastructure Overview/infrastructure-overview.json
+    runtime_source: runtime/dashboard/grafana/infrastructure-overview.json
+    folder: Infrastructure
+    tags: [infrastructure, overview]
+  - uid: itp-collector-health
+    source: dashboards/Collectors/collector-health.json
+    folder: Operations
+    tags: [collectors, health]

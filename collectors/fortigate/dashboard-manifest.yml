@@ -1,0 +1,14 @@
+collector: fortigate
+version: 1
+capabilities:
+  - firewall
+  - internet
+  - inventory
+  - telemetry
+requires: []
+dashboards:
+  - uid: fortigate-infrastructure-overview
+    source: dashboards/Vendor/fortigate-overview.json
+    folder: Vendor
+    tags: [fortigate, firewall]
+    requires_capabilities: [firewall]

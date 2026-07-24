@@ -12,10 +12,21 @@ def _kind(asset):
     return " ".join(str(asset.get(key, "")).lower() for key in ("device_type", "device_role", "platform"))
 
 
-def item(rule, kind, title, severity, *, device="", site="", summary="", action="",
-         impact="", reason="", evidence=None, weight=0):
+def _site(asset):
+    value = asset.get("site") or {}
+    return str(value.get("display_name") or "") if isinstance(value, dict) else str(value)
+
+
+def _site_id(asset):
+    value = asset.get("site") or {}
+    return str(value.get("site_id") or "") if isinstance(value, dict) else str(asset.get("site_id") or "")
+
+
+def item(rule, kind, title, severity, *, device="", site="", site_id="", summary="", action="",
+         impact="", reason="", evidence=None, weight=0, canonical_id=""):
     return OperationalItem(kind=kind, rule_id=rule.id, title=title, category=rule.category,
-        severity=severity, priority=priority(severity, weight), device=device, site=site,
+        severity=severity, priority=priority(severity, weight), canonical_id=canonical_id,
+        device=device, site_id=site_id, site=site,
         summary=summary, recommended_action=action, impact=impact, reason=reason,
         suggested_action=action, evidence=evidence or {})
 
@@ -89,11 +100,13 @@ class DeviceOfflineRule(Rule):
             category = "Printing" if "print" in kind else "Server" if "server" in kind else "Network"
             rule = type("Bound", (), {"id": self.id, "category": category})()
             result.append(item(rule, "issue", f"Device offline: {_name(asset)}", "High",
-                device=_name(asset), site=asset.get("site", ""), summary="Inventory reports the device offline.",
+                canonical_id=asset.get("canonical_id", ""),
+                device=_name(asset), site=_site(asset), site_id=_site_id(asset), summary="Inventory reports the device offline.",
                 reason="The latest complete observation explicitly reported online=false.",
                 impact="The device may be unavailable to users or dependent services.",
                 action="Confirm power and network reachability, then inspect the device.",
-                evidence={"asset_id": asset.get("asset_id"), "online": False}))
+                evidence={"canonical_id": asset.get("canonical_id"), "online": False,
+                          "sources": asset.get("sources", [])}))
         return result
 
 
@@ -122,8 +135,8 @@ class FirmwareUnsupportedRule(Rule):
             if not current or not target or current.startswith(str(target)): continue
             reason = f"Running {current}; approved release is {target}."
             result.extend([
-                item(self, "risk", f"Unsupported firmware: {_name(asset)}", "High", device=_name(asset), site=asset.get("site", ""), summary=reason, reason=reason, impact="Security fixes and vendor support may be unavailable.", action=f"Plan an upgrade to approved release {target}.", evidence={"running": current, "approved": target}),
-                item(self, "recommendation", f"Upgrade firmware on {_name(asset)}", "High", device=_name(asset), site=asset.get("site", ""), summary="Move the device to an approved release.", reason=reason, impact="Restores supportability and security maintenance.", action=f"Validate and schedule upgrade to {target}.", evidence={"running": current, "approved": target})])
+                item(self, "risk", f"Unsupported firmware: {_name(asset)}", "High", canonical_id=asset.get("canonical_id", ""), device=_name(asset), site=_site(asset), site_id=_site_id(asset), summary=reason, reason=reason, impact="Security fixes and vendor support may be unavailable.", action=f"Plan an upgrade to approved release {target}.", evidence={"running": current, "approved": target, "sources": asset.get("sources", [])}),
+                item(self, "recommendation", f"Upgrade firmware on {_name(asset)}", "High", canonical_id=asset.get("canonical_id", ""), device=_name(asset), site=_site(asset), site_id=_site_id(asset), summary="Move the device to an approved release.", reason=reason, impact="Restores supportability and security maintenance.", action=f"Validate and schedule upgrade to {target}.", evidence={"running": current, "approved": target, "sources": asset.get("sources", [])})])
         return result
 
 
@@ -186,7 +199,14 @@ class UnknownInventoryRule(Rule):
         for asset in context.assets:
             missing = [key for key in ("vendor", "device_type") if not asset.get(key)]
             if not missing: continue
-            result.append(item(self, "risk", f"Unknown inventory: {_name(asset)}", "Low", device=_name(asset), site=asset.get("site", ""), summary="Asset classification is incomplete.", reason="Missing required inventory attributes: " + ", ".join(missing) + ".", impact="Ownership, lifecycle, and health rules may be incomplete.", action="Run discovery and enrich the asset identity.", evidence={"missing_fields": missing}))
+            result.append(item(self, "risk", f"Unknown inventory: {_name(asset)}", "Low",
+                canonical_id=asset.get("canonical_id", ""), device=_name(asset), site=_site(asset), site_id=_site_id(asset),
+                summary="Asset classification is incomplete.",
+                reason="Missing required inventory attributes: " + ", ".join(missing) + ".",
+                impact="Ownership, lifecycle, and health rules may be incomplete.",
+                action="Run discovery and enrich the asset identity.",
+                evidence={"canonical_id": asset.get("canonical_id"), "missing_fields": missing,
+                          "sources": asset.get("sources", [])}))
         return result
 
 
@@ -197,7 +217,10 @@ class LifecycleStaleRule(Rule):
         for asset in context.assets:
             days = context.age_days(asset.get("last_seen_at"))
             if days is None or days < 30 or asset.get("lifecycle_state") == "retired": continue
-            name = _name(asset); common = dict(device=name, site=asset.get("site", ""), evidence={"days_not_seen": int(days), "last_seen_at": asset.get("last_seen_at")})
+            name = _name(asset); common = dict(canonical_id=asset.get("canonical_id", ""), device=name,
+                site=_site(asset), site_id=_site_id(asset), evidence={"canonical_id": asset.get("canonical_id"),
+                "days_not_seen": int(days), "last_seen_at": asset.get("last_seen_at"),
+                "sources": asset.get("sources", [])})
             result.append(item(self, "risk", f"Device not seen for {int(days)} days: {name}", "Medium", summary="The asset has not been observed for at least 30 days.", reason=f"Last seen {int(days)} days ago.", impact="Inventory may include an absent or unmanaged device.", action="Run discovery and confirm whether the asset still exists.", **common))
             if days >= 60:
                 result.append(item(self, "recommendation", f"Review asset for archival: {name}", "Low", summary="Review this long-unseen asset for retirement.", reason=f"The asset has not been seen for {int(days)} days.", impact="Archiving confirmed removals improves inventory accuracy.", action="Confirm decommissioning, then retire the asset through the inventory CLI.", **common))
@@ -212,10 +235,13 @@ class TypedOfflineRule(Rule):
             if asset.get("online") is not False or self.match not in _kind(asset): continue
             name = _name(asset)
             result.append(item(self, "issue", f"{self.title_word} offline: {name}", self.severity,
-                device=name, site=asset.get("site", ""), summary=f"{self.title_word} is explicitly offline.",
+                canonical_id=asset.get("canonical_id", ""),
+                device=name, site=_site(asset), site_id=_site_id(asset), summary=f"{self.title_word} is explicitly offline.",
                 reason="The latest complete inventory observation reported online=false.",
                 impact=f"Services dependent on this {self.title_word.lower()} may be unavailable.",
-                action="Confirm power, uplink, and management reachability.", evidence={"asset_id": asset.get("asset_id"), "online": False}, weight=5))
+                action="Confirm power, uplink, and management reachability.",
+                evidence={"canonical_id": asset.get("canonical_id"), "online": False,
+                          "sources": asset.get("sources", [])}, weight=5))
         return result
 
 
@@ -229,3 +255,92 @@ class SwitchOfflineRule(TypedOfflineRule):
 
 class FirewallUnavailableRule(TypedOfflineRule):
     id = "firewall.unavailable"; category = "Firewall"; match = "firewall"; title_word = "Firewall"; severity = "Critical"
+
+
+class PaloAltoAPIUnavailableRule(Rule):
+    id = "PA-API-UNAVAILABLE"; category = "Collector"
+    def evaluate(self, context):
+        state = context.source_states.get("paloalto", {})
+        run = state.get("last_run", {})
+        if run.get("success") is not False: return []
+        category = run.get("error_category") or "unknown"
+        return [item(self, "issue", "Palo Alto API collection unavailable", "High",
+            device="paloalto", summary="The Palo Alto collector could not complete identity collection.",
+            reason=f"Latest source run failed with safe category {category}.",
+            impact="Palo Alto observability is unavailable; firewall availability is not inferred.",
+            action="Verify the read-only API key, TLS trust, and management connectivity.",
+            evidence={"source_collector": "paloalto", "error_category": category})]
+
+
+class PaloAltoHADegradedRule(Rule):
+    id = "PA-HA-DEGRADED"; category = "Firewall"
+    def evaluate(self, context):
+        result = []
+        for asset in context.assets:
+            if "paloalto" not in asset.get("sources", []): continue
+            ha = (asset.get("extensions") or {}).get("ha") or {}
+            if ha.get("status") != "degraded": continue
+            result.append(item(self, "issue", f"Palo Alto HA degraded: {_name(asset)}", "High",
+                canonical_id=asset.get("canonical_id", ""), device=_name(asset),
+                site=_site(asset), site_id=_site_id(asset),
+                summary="Authoritative PAN-OS HA state is degraded.",
+                reason="PAN-OS reported a suspended, non-functional, unavailable, or unsynchronised HA state.",
+                impact="Firewall redundancy may not protect against a node failure.",
+                action="Review local/peer HA state and restore synchronisation.",
+                evidence={"source_collector": "paloalto", "ha": ha}))
+        return result
+
+
+class PaloAltoExpectedInterfaceDownRule(Rule):
+    id = "PA-EXPECTED-INTERFACE-DOWN"; category = "Firewall"
+    def evaluate(self, context):
+        result = []
+        for asset in context.assets:
+            if "paloalto" not in asset.get("sources", []): continue
+            down = ((asset.get("extensions") or {}).get("interface_summary") or {}).get("expected_down", [])
+            for interface in sorted(down):
+                result.append(item(self, "issue",
+                    f"Expected firewall interface down: {_name(asset)} {interface}", "High",
+                    canonical_id=asset.get("canonical_id", ""), device=_name(asset),
+                    site=_site(asset), site_id=_site_id(asset),
+                    summary=f"Explicitly expected interface {interface} is operationally down.",
+                    reason="The interface is listed in expected_interfaces and PAN-OS did not report it up.",
+                    impact="A configured production path may be unavailable.",
+                    action="Validate the connected service, cabling, and interface configuration.",
+                    evidence={"source_collector": "paloalto", "interface": interface,
+                              "expected": True, "operational_status": "down"}))
+        return result
+
+
+class PaloAltoLicenceRule(Rule):
+    id = ""; category = "Security"; expired = None
+    def evaluate(self, context):
+        result = []
+        threshold = int(context.settings.get("licence_expiry_days", 30))
+        for asset in context.assets:
+            if "paloalto" not in asset.get("sources", []): continue
+            for licence in (asset.get("extensions") or {}).get("licenses", []):
+                expired = licence.get("expired") is True
+                days = licence.get("days_remaining")
+                if not expired and (days is None or days > threshold): continue
+                if expired is not self.expired: continue
+                severity = "High" if expired else "Medium"
+                result.append(item(self, "risk",
+                    f"Palo Alto licence {'expired' if expired else 'expiring'}: {licence['name']}",
+                    severity, canonical_id=asset.get("canonical_id", ""), device=_name(asset),
+                    site=_site(asset), site_id=_site_id(asset),
+                    summary=f"{licence['name']} has {days if days is not None else 0} days remaining.",
+                    reason="PAN-OS returned an authoritative licence expiry state.",
+                    impact="Subscribed security or support services may become unavailable.",
+                    action="Review the subscription with the authorised Palo Alto support partner.",
+                    evidence={"source_collector": "paloalto", "licence": licence["name"],
+                              "days_remaining": days, "expired": expired}))
+        return result
+
+
+class PaloAltoLicenceExpiredRule(PaloAltoLicenceRule):
+    id = "PA-LICENCE-EXPIRED"; expired = True
+
+
+class PaloAltoLicenceExpiringRule(PaloAltoLicenceRule):
+    id = "PA-LICENCE-EXPIRING"; expired = False

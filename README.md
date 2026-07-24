@@ -10,6 +10,33 @@ InfluxDB storage, Grafana dashboards, Docker Compose workflow, and native Mist
 collector. The ITP name is an architectural evolution of the project, not a
 rewrite.
 
+## Profile quick start
+
+ITP deployments are customer-scoped. Do not copy or overwrite
+`discovery/config.yml` to switch customers.
+
+```sh
+./itp profile list
+./itp profile init-secrets mlc
+./itp profile validate mlc
+./itp profile up mlc
+./itp profile status mlc
+```
+
+MLC and SBC ship as tracked profiles; credentials and runtime state remain
+ignored and isolated. See [deployment profiles](docs/deployment-profiles.md) for
+creation, concurrent operation, updates, migration, backup and troubleshooting.
+
+Choose a deployment model:
+
+- **Single site:** one organisation and one operational location.
+- **Multi-site organisation:** one profile with estate and per-site views.
+- **Multiple isolated customers:** one profile, Grafana instance and telemetry boundary per customer.
+
+See the plain-language [getting-started guide](docs/getting-started.md),
+[deployment models](docs/deployment-models.md) and the
+[operator guide](docs/operator-guide.md).
+
 ## Quick start
 
 ```sh
@@ -39,6 +66,7 @@ commit `.env`, `secrets/*.env`, generated inventory, or tokens.
 | SNMP | `collectors.snmp.enabled: true` | Discovery → generated Telegraf inputs → InfluxDB |
 | Juniper Mist | `collectors.mist.enabled: true` | Native HTTPS API → shared telemetry contract → InfluxDB |
 | FortiGate | `collectors.fortigate.enabled: true` | Native edge HTTPS API → normalized and compatible telemetry → InfluxDB |
+| Palo Alto Networks | `collectors.paloalto.enabled: true` | Read-only PAN-OS XML API → canonical firewall telemetry → InfluxDB |
 
 Every supported collector is included in the collector image. To enable one:
 
@@ -62,6 +90,16 @@ vendor-neutral.
 Collectors must not contain dashboard logic, depend on Grafana, know about
 other collectors, or invent collector-specific storage paths. See
 [Architecture](docs/architecture.md) for the enforced boundaries.
+
+Collector observations pass through deterministic signal adapters and the
+[canonical asset model](docs/canonical-asset-model.md) before they reach
+Infrastructure State, operational rules, or Grafana. This prevents duplicate
+physical devices from producing duplicate health counts and issues while keeping
+source evidence and field provenance inspectable.
+
+Platform-wide estate names and aliases live in `config/sites.yml`. The
+[Canonical Site Registry](docs/site-registry.md) resolves them before asset
+fusion without changing collector behavior.
 
 ## Configuration and credentials
 
@@ -102,6 +140,8 @@ The one-shot `collect` command writes telemetry and health. `inspect` validates 
 normalization behavior without writing telemetry. SNMP remains a fallback, interface
 counter enrichment source, and option for devices without a suitable API. See the
 [FortiGate collector guide](collectors/fortigate/README.md).
+For PAN-OS permissions, TLS, configuration and second-site deployment, see the
+[Palo Alto collector guide](docs/collectors/paloalto.md).
 
 ## Repository layout
 
@@ -125,6 +165,12 @@ place for deployment compatibility.
 
 ## Typical operations
 
+Regenerate the canonical site estate after changing site aliases:
+
+```sh
+docker compose exec collector python -m collectors sites generate
+```
+
 ```sh
 python -m collectors list
 docker compose run --rm discovery python /app/discover.py once --config /app/config.yml
@@ -134,10 +180,19 @@ docker compose logs --tail=200 discovery collector telegraf
 ```
 
 Open Grafana at `http://localhost:${GRAFANA_PORT}`. The dashboard provider
-recreates the operations-first hierarchy from `dashboards/`, including Network,
-Compute, Printing, Services, Inventory, Collectors, Operations, and Vendor.
-Start with **Infrastructure Overview** and use the Mist and FortiGate dashboards
-under Vendor for engineering drill-down. See [dashboard navigation](docs/DASHBOARDS.md).
+creates the capability-aware folders Operations, Infrastructure, Security,
+Wireless, Printing, Compute, Identity, and Vendor. Collector manifests advertise
+capabilities and dashboard packs; disabled collector dashboards are omitted.
+See the [Dashboard Platform](docs/dashboard-platform.md).
+
+Start with **Infrastructure Overview** and use enabled vendor dashboards for
+engineering drill-down. Use **Operations Wallboard**
+(`itp-operations-wallboard`) for
+a dense 1920 × 1080 kiosk display; see [wallboard guidance](docs/operations-wallboard.md).
+See [dashboard navigation](docs/DASHBOARDS.md).
+Canonical summary dashboards use a generated, supported
+[data-binding projection](docs/dashboard-data-binding.md); Grafana does not read
+runtime JSON files directly.
 Live overview counts come from the deterministic
 [Infrastructure State](docs/infrastructure-state.md); operational issues, risks,
 and recommendations come from the [Operations Engine](docs/operations-engine.md).

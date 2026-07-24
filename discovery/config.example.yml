@@ -55,6 +55,7 @@ operations:
   output_path: /app/runtime/operations
   dashboard_template: /app/dashboards/Infrastructure Overview/infrastructure-overview.json
   dashboard_output: /app/runtime/dashboard/grafana/infrastructure-overview.json
+  capability_registry: /app/runtime/dashboard/managed/registry.json
   collector_overdue_seconds: 900
 
 infrastructure:
@@ -63,6 +64,29 @@ infrastructure:
   operations_path: /app/runtime/operations
   output_path: /app/runtime/infrastructure
   dashboard_path: /app/runtime/dashboard
+  status_freshness_seconds: 300
+  sites_config: /app/config/sites.yml
+  sites_output: /app/runtime/sites
+
+services:
+  enabled: true
+  infrastructure_state: /app/runtime/infrastructure/state.json
+  operations_state: /app/runtime/operations/operations.json
+  capability_registry: /app/runtime/dashboard/managed/registry.json
+  output_path: /app/runtime/services
+  sites_config: /app/config/sites.yml
+
+wallboard:
+  enabled: true
+  freshness_seconds: 900
+  infrastructure_state: /app/runtime/infrastructure/state.json
+  operations_state: /app/runtime/operations/operations.json
+  sites_state: /app/runtime/sites/sites.json
+  dashboard_template: /app/dashboards/Operations/operations-wallboard.json
+  summary_output: /app/runtime/dashboard/wallboard-summary.json
+  dashboard_output: /app/runtime/dashboard/operations/operations-wallboard.json
+  capability_registry: /app/runtime/dashboard/managed/registry.json
+  service_health: /app/runtime/services/service-health.json
 
 collectors:
   snmp:
@@ -89,3 +113,33 @@ collectors:
     discovery_interval_seconds: 21600
     collection_interval_seconds: 60
     max_retries: 2
+  paloalto:
+    enabled: false
+    execution: edge
+    site: customer-site-slug
+    customer: Customer Name
+    base_url: https://192.0.2.1
+    api_key_env: PALOALTO_API_KEY
+    verify_tls: true
+    ca_bundle:
+    timeout_seconds: 20
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 60
+    max_retries: 2
+    collect_interfaces: true
+    collect_ha: true
+    collect_system_resources: true
+    collect_licenses: true
+    collect_content_versions: true
+    expected_interfaces: []
+    licence_expiry_days: 30
+    content_warning_days: 30
+    content_critical_days: 90
+    # WAN roles are never inferred. Use only interfaces confirmed by the operator.
+    wan_interfaces:
+      - name: ethernet1/1
+        role: primary
+        display_name: Primary Internet
+      - name: ethernet1/2
+        role: backup
+        display_name: Backup Internet

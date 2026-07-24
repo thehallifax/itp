@@ -1,26 +1,29 @@
 services:
   influxdb3-core:
-    container_name: influxdb3-core
     image: influxdb:3-core
+    env_file:
+      - .env
+      - path: ${ITP_SECRETS_DIR:-./secrets}/influxdb.env
+        required: false
     ports:
-      - 8181:8181
+      - "${INFLUXDB_PORT:-8181}:8181"
     command:
       - influxdb3
       - serve
       - --node-id=${INFLUXDB_NODE_ID}
       - --object-store=file
       - --data-dir=/var/lib/influxdb3
+      - --disable-authz=health,ready
     volumes:
       - influxdb_data:/var/lib/influxdb3
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -H 'Authorization: Bearer ${INFLUXDB_TOKEN}' http://localhost:8181/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8181/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
 
   telegraf:
-    container_name: telegraf
     image: telegraf
     command:
       - telegraf
@@ -39,14 +42,21 @@ services:
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
       - INFLUXDB_ORG=${INFLUXDB_ORG}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+      - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
       - TELEGRAF_COLLECTION_INTERVAL=${TELEGRAF_COLLECTION_INTERVAL}
       - HOSTNAME=telegraf
     env_file:
       - .env
-      - secrets/snmp.env
+      - path: ${ITP_SECRETS_DIR:-./secrets}/influxdb.env
+        required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/collector.env
+        required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/snmp.env
+        required: false
     volumes:
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
-      - ./telegraf/telegraf.d:/etc/telegraf/telegraf.d:ro
+      - ./telegraf/telegraf.d/canonical.conf:/etc/telegraf/telegraf.d/canonical.conf:ro
+      - ${ITP_RUNTIME_DIR:-./runtime}/telegraf-generated:/etc/telegraf/telegraf.d/generated:ro
     restart: unless-stopped
 
   discovery:
@@ -55,9 +65,10 @@ services:
       dockerfile: discovery/Dockerfile
     restart: unless-stopped
     volumes:
-      - ./discovery/config.yml:/app/config.yml:ro
-      - ./runtime/inventory:/app/runtime/inventory
-      - ./telegraf/telegraf.d/generated:/app/generated
+      - ${ITP_DISCOVERY_CONFIG:-./discovery/config.yml}:/app/config.yml:ro
+      - ${ITP_SITES_CONFIG:-./config/sites.yml}:/app/config/sites.yml:ro
+      - ${ITP_RUNTIME_DIR:-./runtime}/inventory:/app/runtime/inventory
+      - ${ITP_RUNTIME_DIR:-./runtime}/telegraf-generated:/app/generated
     command:
       - python
       - /app/discover.py
@@ -71,28 +82,39 @@ services:
       dockerfile: discovery/Dockerfile
     restart: unless-stopped
     env_file:
-      - path: secrets/mist.env
+      - .env
+      - path: ${ITP_SECRETS_DIR:-./secrets}/influxdb.env
         required: false
-      - path: secrets/fortigate.env
+      - path: ${ITP_SECRETS_DIR:-./secrets}/collector.env
+        required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/mist.env
+        required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/fortigate.env
+        required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/paloalto.env
         required: false
     environment:
       - ITP_RUNTIME_MODE=${ITP_RUNTIME_MODE:-central}
       - INFLUXDB_HOST=${INFLUXDB_HOST}
-      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+      - ITP_PROFILE=${ITP_PROFILE:-}
+      - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
+      - ITP_RUNTIME_DIR=/app/runtime/${ITP_PROFILE:-legacy}
+      - SITES_CONFIG=/app/config/sites.yml
+      - INVENTORY_PATH=/app/runtime/${ITP_PROFILE:-legacy}/inventory/devices.json
+      - DASHBOARD_MANAGED_OUTPUT=/app/runtime/${ITP_PROFILE:-legacy}/dashboard/managed
+      - DASHBOARD_PROVISIONING=/app/runtime/${ITP_PROFILE:-legacy}/dashboard/provisioning/dashboards.yml
     volumes:
-      - ./discovery/config.yml:/app/config.yml:ro
-      - ./runtime/inventory:/app/runtime/inventory
-      - ./runtime/operations:/app/runtime/operations
-      - ./runtime/infrastructure:/app/runtime/infrastructure
-      - ./runtime/dashboard:/app/runtime/dashboard
+      - ${ITP_DISCOVERY_CONFIG:-./discovery/config.yml}:/app/config.yml:ro
+      - ${ITP_SITES_CONFIG:-./config/sites.yml}:/app/config/sites.yml:ro
+      - ${ITP_RUNTIME_DIR:-./runtime}:/app/runtime/${ITP_PROFILE:-legacy}
     command:
       - python
       - -m
       - collectors
       - run
     healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/collector-health"]
+      test: ["CMD-SHELL", "test -f \"$$ITP_RUNTIME_DIR/collector-health\""]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -103,17 +125,21 @@ services:
 
   grafana:
     image: grafana/grafana
+    env_file:
+      - .env
+      - path: ${ITP_SECRETS_DIR:-./secrets}/influxdb.env
+        required: false
     ports:
-      - "${GRAFANA_PORT}:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./dashboards:/var/lib/grafana/dashboards:ro
-      - ./runtime/dashboard:/var/lib/grafana/runtime-dashboard:ro
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ${ITP_RUNTIME_DIR:-./runtime}/dashboard/provisioning:/etc/grafana/provisioning/dashboards:ro
+      - ${ITP_RUNTIME_DIR:-./runtime}/dashboard:/var/lib/grafana/runtime-dashboard:ro
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
     depends_on:
       - influxdb3-core
     # Or switch to influxdb3-enterprise as needed

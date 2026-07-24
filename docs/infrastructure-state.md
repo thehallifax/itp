@@ -12,41 +12,53 @@ Collectors → Signal Adapters → Infrastructure State
                                   └─ Future API
 ```
 
+Before fusion, the [Canonical Site Registry](site-registry.md) resolves exact
+configured aliases to stable `site_id` values. Assets retain the original value
+from every source in their site provenance.
+
 ## Outputs and schema
 
 The scheduled engine atomically creates `runtime/infrastructure/state.json`,
-`state.csv`, and the intentionally flat
+`state.csv`, the canonical estate files under `runtime/sites/`, and the intentionally flat
 `runtime/dashboard/infrastructure-summary.json`. State contains `generated_at`,
 sites, summary, network, wireless, firewalls, servers, printers, collectors,
 validation warnings, and the deduplicated canonical assets.
+
+The presentation-only Wallboard Engine derives scoped domain totals and logical
+aggregate topology from this state. It does not create a second asset registry or
+feed presentation values back into Infrastructure State.
 
 Counts are derived only from explicit inventory values. Unknown online state is
 kept unknown. Wireless clients, failed authentication, printer consumables, and
 WAN state are `null` when the existing outputs do not provide them.
 
-## Merge rules
+## Canonical fusion
 
 Adapters are evaluated using fixed precedence:
 
 1. Inventory (`300`)
-2. Vendor collectors—Mist and FortiGate (`200`)
+2. Vendor collectors—Mist, FortiGate and Palo Alto Networks (`200`)
 3. SNMP discovery (`100`)
 
-Identity uses serial number, then hostname, then management IP, then asset ID.
-The highest-priority record owns populated values; lower-priority records may
-only fill missing fields. Conflicting explicit online states create a warning and
-never override the higher-priority value. Assets and warnings are sorted by stable
-keys, so identical inputs produce byte-equivalent logical output apart from the
-requested generation timestamp.
+Identity uses serial, chassis ID, management MAC, hostname/site, IP/site, then a
+source-native ID. The highest-priority source owns populated values and lower
+priority sources fill gaps. Status additionally considers observation freshness
+and vendor authority. Conflicts remain explicit. See
+[Canonical Asset Model](canonical-asset-model.md) for the confidence model,
+provenance, collision safeguards, and worked example.
 
-Validation warnings cover duplicate serials, duplicate hostnames, conflicting
-states, missing sites, and missing management IPs. They are evidence, not alerts.
+Validation covers remaining duplicate identities, conflicting states, missing
+sites, and device-aware management-IP gaps. Findings are classified as
+actionable, data quality, or suppressed. State separately reports Infrastructure
+Health and Observability Health.
 
 ## Adapter API
 
 Subclass `SignalAdapter`, set a unique `name` and integer `priority`, and implement
 `collect()` returning `AdapterResult`. Subclasses register automatically. Missing
 collector files must return an empty result; absence is not an exception.
+PAN-OS records use serial-first fusion, including fusion with SNMP. HA peer
+metadata never creates a second asset without a direct observation.
 
 Existing adapters are Inventory, Mist, FortiGate, and SNMP. They consume only the
 current runtime inventory and source-run outputs and do not call vendor APIs.

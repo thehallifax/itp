@@ -1,92 +1,82 @@
 apiVersion: 1
-
 providers:
-  - name: ITP Infrastructure Overview
-    orgId: 1
-    folder: Infrastructure Overview
-    folderUid: itp-folder-overview
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/runtime-dashboard/grafana}
-
-  - name: ITP Network
-    orgId: 1
-    folder: Network
-    folderUid: itp-folder-network
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Network}
-
-  - name: ITP Compute
-    orgId: 1
-    folder: Compute
-    folderUid: itp-folder-compute
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Compute}
-
-  - name: ITP Printing
-    orgId: 1
-    folder: Printing
-    folderUid: itp-folder-printing
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Printing}
-
-  - name: ITP Services
-    orgId: 1
-    folder: Services
-    folderUid: itp-folder-services
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Services}
-
-  - name: ITP Inventory
-    orgId: 1
-    folder: Inventory
-    folderUid: itp-folder-inventory
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Inventory}
-
-  - name: ITP Collectors
-    orgId: 1
-    folder: Collectors
-    folderUid: itp-folder-collectors
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Collectors}
-
-  - name: ITP Operations
-    orgId: 1
-    folder: Operations
-    folderUid: itp-folder-operations
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Operations}
-
-  - name: ITP Vendor
-    orgId: 1
-    folder: Vendor
-    folderUid: itp-folder-vendor
-    type: file
-    disableDeletion: false
-    allowUiUpdates: true
-    updateIntervalSeconds: 30
-    options: {path: /var/lib/grafana/dashboards/Vendor}
+- name: ITP Managed Operations
+  orgId: 1
+  folder: Operations
+  folderUid: itp-folder-operations
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/operations
+- name: ITP Managed Infrastructure
+  orgId: 1
+  folder: Infrastructure
+  folderUid: itp-folder-infrastructure
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/infrastructure
+- name: ITP Managed Security
+  orgId: 1
+  folder: Security
+  folderUid: itp-folder-security
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/security
+- name: ITP Managed Wireless
+  orgId: 1
+  folder: Wireless
+  folderUid: itp-folder-wireless
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/wireless
+- name: ITP Managed Printing
+  orgId: 1
+  folder: Printing
+  folderUid: itp-folder-printing
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/printing
+- name: ITP Managed Compute
+  orgId: 1
+  folder: Compute
+  folderUid: itp-folder-compute
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/compute
+- name: ITP Managed Identity
+  orgId: 1
+  folder: Identity
+  folderUid: itp-folder-identity
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/identity
+- name: ITP Managed Vendor
+  orgId: 1
+  folder: Vendor
+  folderUid: itp-folder-vendor
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/vendor
