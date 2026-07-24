@@ -111,7 +111,7 @@ def test_dashboard_variable_and_estate_metrics_are_generated(tmp_path):
         sites_config=config).run(NOW)
     dashboard = json.loads(output.read_text())
     variable = next(value for value in dashboard["templating"]["list"] if value["name"] == "site")
-    assert [value["value"] for value in variable["options"]] == ["all", "site:example-campus"]
+    assert [value["value"] for value in variable["options"]] == ["site:example-campus"]
     assert variable["query"] == r"Example College\, Campus : site:example-campus"
     panels = {value["title"]: value for value in dashboard["panels"]}
     site_rows = list(csv.DictReader(__import__("io").StringIO(

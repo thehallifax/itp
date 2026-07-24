@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -210,6 +211,7 @@ class InfrastructureStateEngine:
             "collectors_healthy": sum(value["status"] == "healthy" for value in collectors),
             "collectors_failed": sum(value["status"] == "failed" for value in collectors)}
         return {"generated_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "deployment_id": os.getenv("ITP_DEPLOYMENT_ID", ""),
             "sites": sites, "summary": summary,
             "network": {"switches": {key: switch[key] for key in ("total", "online", "offline", "warning", "unknown")}},
             "wireless": {"aps": {key: aps[key] for key in ("total", "online", "offline", "warning", "unknown")},

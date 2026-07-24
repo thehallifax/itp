@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -237,9 +238,25 @@ class ServiceHealthEngine:
                 "enabled_collectors": list(site_context["enabled_collectors"]),
                 "capabilities": sorted(site_context["capabilities"]),
                 "services": services})
-        estate_services = self._services(context)
+        generated_at = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        deployment_id = os.getenv("ITP_DEPLOYMENT_ID", "")
+        if sites:
+            estate_services = self._rollup_services(sites, generated_at, deployment_id)
+        else:
+            estate_services = []
+            for value in self._services(context):
+                state = value["status"]
+                estate_services.append({**value,
+                    "deployment_id": deployment_id,
+                    "service_id": value["service"].casefold().replace(" ", "_"),
+                    "state": state,
+                    "confidence": "low" if state == "Unknown" else "high",
+                    "affected_site_count": 0,
+                    "total_site_count": 0,
+                    "affected_site_ids": [],
+                    "last_evaluated": generated_at})
         return {"schema_version": 2,
-            "generated_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "generated_at": generated_at, "deployment_id": deployment_id,
             "sites": sites,
             "estate": {"site_id": "all", "site_name": "All Sites",
                 "overall_status": _overall(estate_services),
@@ -247,6 +264,75 @@ class ServiceHealthEngine:
                 "capabilities": sorted(context["capabilities"]),
                 "services": estate_services},
             "diagnostics": context["diagnostics"]}
+
+    def _rollup_services(self, sites, generated_at, deployment_id):
+        """Roll site evaluations without inventing shared dependency relationships."""
+        by_site = {site["site_id"]: site for site in sites}
+        dependencies = {
+            str(value.get("service", "")).casefold(): value
+            for value in self.site_registry.dependencies if isinstance(value, dict)}
+        results = []
+        for service_name in SERVICE_NAMES:
+            values = [(site["site_id"], next(value for value in site["services"]
+                       if value["service"] == service_name)) for site in sites]
+            enabled = [(site_id, value) for site_id, value in values
+                       if value["status"] != "Not Enabled"]
+            statuses = {value["status"] for _, value in enabled}
+            if not enabled:
+                state, confidence = "Not Enabled", "high"
+            elif "Critical" in statuses:
+                state, confidence = "Critical", "high"
+            elif "Warning" in statuses:
+                state, confidence = "Warning", "high"
+            elif "Unknown" in statuses:
+                state, confidence = ("Warning", "medium") if "Healthy" in statuses \
+                    else ("Unknown", "low")
+            else:
+                state, confidence = "Healthy", "high"
+            affected = sorted(site_id for site_id, value in enabled
+                              if value["status"] in {"Critical", "Warning", "Unknown"})
+            evidence = [{"type": "site_rollup", "site_id": site_id,
+                         "status": value["status"], "summary": value["summary"]}
+                        for site_id, value in enabled]
+            dependency = dependencies.get(service_name.casefold())
+            if dependency:
+                provider = self.site_registry.resolver.resolve(
+                    None, dependency.get("provider_site_id"))
+                consumers = []
+                for site_id in dependency.get("consumer_site_ids", []):
+                    resolution = self.site_registry.resolver.resolve(None, site_id)
+                    if resolution.status == "resolved":
+                        consumers.append(resolution.site_id)
+                provider_value = next((value for site_id, value in enabled
+                                       if site_id == provider.site_id), None)
+                if provider.status == "resolved" and provider_value:
+                    evidence.append({"type": "central_dependency",
+                        "provider_site_id": provider.site_id,
+                        "consumer_site_ids": sorted(set(consumers)),
+                        "provider_status": provider_value["status"]})
+                    if provider_value["status"] == "Critical":
+                        state, confidence = "Critical", "high"
+                        affected = sorted(set([provider.site_id, *consumers]))
+            results.append({
+                "deployment_id": deployment_id,
+                "service_id": service_name.casefold().replace(" ", "_"),
+                "service": service_name, "status": state, "state": state,
+                "confidence": confidence,
+                "affected_site_count": len(affected),
+                "total_site_count": len(sites),
+                "affected_site_ids": affected,
+                "summary": (
+                    f"{service_name} is {state.lower()} across "
+                    f"{len(sites)} enabled site{'s' if len(sites) != 1 else ''}."),
+                "affected_assets": sorted({asset for _, value in enabled
+                                           for asset in value.get("affected_assets", [])}),
+                "affected_users": None,
+                "severity": {"Critical": "Critical", "Warning": "Medium"}.get(state, "Info"),
+                "last_change": None,
+                "last_evaluated": generated_at,
+                "evidence": evidence,
+            })
+        return results
 
     def run(self, now=None):
         result = self.evaluate(now)

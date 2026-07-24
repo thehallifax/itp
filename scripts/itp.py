@@ -98,12 +98,19 @@ def validate(value):
 
     config = load_config(value.paths.discovery)
     sites = SiteRegistry.load(value.paths.sites)
-    findings = [item for item in sites.validation()
-                if item["type"] in {"duplicate_alias", "ambiguous_alias"}]
+    blocking_types = {
+        "duplicate_alias", "ambiguous_alias", "duplicate_site_id",
+        "unknown_parent", "self_parent", "circular_hierarchy",
+        "invalid_site_type", "invalid_rollup_group", "disabled_parent",
+        "excessive_hierarchy_depth", "duplicate_display_order",
+        "invalid_service_dependency", "unknown_dependency_site",
+    }
+    findings = [item for item in sites.validation() if item["type"] in blocking_types]
     check("Manifest", True, f"deployment_id={value.deployment_id} timezone={value.timezone}")
     check("Configuration", config.get("schema_version") == 1, "schema version 1")
     check("Sites", bool(sites.sites) and not findings,
-          f"{len(sites.sites)} canonical site(s), {len(findings)} conflict(s)")
+          f"{len(sites.sites)} canonical site(s), model={sites.deployment_model}, "
+          f"{len(findings)} conflict(s)")
     enabled = sorted(name for name, settings in config.get("collectors", {}).items()
                      if isinstance(settings, dict) and settings.get("enabled"))
     check("Collectors", bool(enabled), ", ".join(enabled) or "none enabled")
@@ -162,6 +169,9 @@ def status(value):
     enabled = sorted(name for name, settings in config.get("collectors", {}).items()
                      if isinstance(settings, dict) and settings.get("enabled"))
     print("Enabled collectors: " + (", ".join(enabled) or "none"))
+    sites = SiteRegistry.load(value.paths.sites)
+    print(f"Deployment model: {sites.deployment_model}")
+    print(f"Enabled sites: {len(sites.sites)}")
     assets_path = value.paths.inventory / "assets.json"
     try:
         assets = len(json.loads(assets_path.read_text()).get("assets", []))
@@ -182,6 +192,29 @@ def status(value):
     print(f"Managed dashboards: {count}")
     print(f"InfluxDB: http://localhost:{value.influxdb_port}")
     print(f"Grafana: http://localhost:{value.grafana_port}")
+
+
+def sites_status(value):
+    describe(value)
+    registry = SiteRegistry.load(value.paths.sites)
+    blocking = [item for item in registry.validation()
+                if item["type"] not in {"unused_alias", "unknown_site"}]
+    print(f"Deployment model: {registry.deployment_model}")
+    print(f"Enabled sites: {len(registry.sites)}")
+    print(f"Root sites: {len(registry.roots)}")
+    print(f"Child sites: {len(registry.children)}")
+    print(f"Disabled sites: {len(registry.disabled_sites)}")
+    print("Estate rollups: " + ("enabled" if registry.estate_enabled else "single-site"))
+    for site in registry.sites:
+        relationship = f" -> {site.canonical_parent_id}" if site.parent_id else ""
+        print(f"  {site.site_id}\t{site.display_name}\t{site.type}{relationship}")
+    print("Hierarchy validation: " + ("valid" if not blocking
+          else f"{len(blocking)} blocking finding(s)"))
+    if blocking:
+        for finding in blocking:
+            print(f"  {finding['type']}: {finding.get('site_id') or finding.get('alias')}")
+        raise ProfileError(f"profile {value.id} site hierarchy is invalid")
+    print("Status: valid")
 
 
 def init_secrets(value):
@@ -315,7 +348,7 @@ def main():
     actions = profile_parser.add_subparsers(dest="action", required=True)
     actions.add_parser("list")
     create_parser = actions.add_parser("create"); create_parser.add_argument("profile")
-    for name in ("validate", "status", "up", "down", "restart", "logs",
+    for name in ("validate", "status", "sites", "up", "down", "restart", "logs",
                  "init-secrets", "dashboards", "services", "shell"):
         item = actions.add_parser(name); item.add_argument("profile")
     collect = actions.add_parser("collect"); collect.add_argument("profile"); collect.add_argument("collector")
@@ -333,6 +366,7 @@ def main():
     value = profile(args.profile)
     if args.action == "validate": validate(value)
     elif args.action == "status": status(value)
+    elif args.action == "sites": sites_status(value)
     elif args.action == "init-secrets": init_secrets(value)
     elif args.action in {"up", "down", "restart"}:
         describe(value)

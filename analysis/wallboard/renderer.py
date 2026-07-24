@@ -116,9 +116,17 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     atomic_write(summary_path, json.dumps(summary, indent=2, sort_keys=True) + "\n")
     dashboard = json.loads(Path(template_path).read_text())
     variable = next(value for value in dashboard["templating"]["list"] if value["name"] == "site")
-    variable["options"] = [{"selected": True, "text": "All Sites", "value": "all"}] + [
-        {"selected": False, "text": value["display_name"], "value": value["site_id"]}
-        for value in summary["site_options"]]
+    if len(summary["site_options"]) == 1:
+        only = summary["site_options"][0]
+        variable["options"] = [{"selected": True, "text": only["display_name"],
+                                "value": only["site_id"]}]
+        variable["current"] = {"selected": True, "text": only["display_name"],
+                               "value": only["site_id"]}
+    else:
+        variable["options"] = [{"selected": True, "text": "All Sites", "value": "all"}] + [
+            {"selected": False, "text": value["display_name"], "value": value["site_id"]}
+            for value in summary["site_options"]]
+        variable["current"] = {"selected": True, "text": "All Sites", "value": "all"}
     variable["query"] = ",".join(
         str(value["display_name"]).replace(",", "\\,") + " : " + value["site_id"]
         for value in summary["site_options"])

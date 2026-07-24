@@ -154,9 +154,13 @@ def render_dashboard(template_path, output_path, result, infrastructure_summary=
     variable = next((value for value in dashboard.get("templating", {}).get("list", [])
                      if value.get("name") == "site"), None)
     if variable is not None:
-        options = [{"selected": True, "text": "All", "value": "all"}] + [
-            {"selected": False, "text": value["display_name"], "value": value["site_id"]}
-            for value in site_values]
+        if len(site_values) == 1:
+            options = [{"selected": True, "text": site_values[0]["display_name"],
+                        "value": site_values[0]["site_id"]}]
+        else:
+            options = [{"selected": True, "text": "All Sites", "value": "all"}] + [
+                {"selected": False, "text": value["display_name"], "value": value["site_id"]}
+                for value in site_values]
         variable["options"] = options
         variable["query"] = ",".join(
             str(value["display_name"]).replace(",", "\\,") + " : " + value["site_id"]

@@ -27,6 +27,16 @@ MLC and SBC ship as tracked profiles; credentials and runtime state remain
 ignored and isolated. See [deployment profiles](docs/deployment-profiles.md) for
 creation, concurrent operation, updates, migration, backup and troubleshooting.
 
+Choose a deployment model:
+
+- **Single site:** one organisation and one operational location.
+- **Multi-site organisation:** one profile with estate and per-site views.
+- **Multiple isolated customers:** one profile, Grafana instance and telemetry boundary per customer.
+
+See the plain-language [getting-started guide](docs/getting-started.md),
+[deployment models](docs/deployment-models.md) and the
+[operator guide](docs/operator-guide.md).
+
 ## Quick start
 
 ```sh

@@ -10,10 +10,22 @@ class SiteDefinition:
     display_name: str
     aliases: tuple = field(default_factory=tuple)
     metadata: dict = field(default_factory=dict)
+    type: str = "other"
+    parent_id: str | None = None
+    rollup_group: str | None = None
+    enabled: bool = True
+    display_order: int | None = None
+    description: str = ""
 
     @property
     def site_id(self):
         return self.id if self.id.startswith("site:") else f"site:{self.id}"
+
+    @property
+    def canonical_parent_id(self):
+        if not self.parent_id:
+            return None
+        return self.parent_id if self.parent_id.startswith("site:") else f"site:{self.parent_id}"
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from analysis.infrastructure.models import asset_kind, health_of, state_of
 from analysis.services.models import SERVICE_NAMES
+from collectors.writer import atomic_write
 from .renderer import write_wallboard
 
 
@@ -372,7 +373,17 @@ class WallboardEngine:
                        "status": status, "last_run": last}
                 collector_rows.append({"scope": "all", **row})
                 collector_rows.append({"scope": site_id, **row})
+        site_matrix = []
+        matrix_services = ("Internet", "Wireless", "Switching", "Security", "Monitoring")
+        for site in site_options:
+            scoped = service_scopes[site["site_id"]]
+            services = {value["service"]: value["status"] for value in scoped["services"]}
+            site_matrix.append({"site_id": site["site_id"], "site": site["display_name"],
+                "overall": scoped.get("overall_status", "Unknown"),
+                **{name.casefold(): services.get(name, "Unknown") for name in matrix_services}})
+        site_counts = Counter(value["overall"] for value in site_matrix)
         return {"generated_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "deployment_id": state.get("deployment_id", ""),
             "selected_scope": "all", "site_options": site_options, "scopes": scope_values,
             "capabilities": sorted(capabilities),
             "enabled_collectors": sorted(enabled_collectors),
@@ -393,9 +404,23 @@ class WallboardEngine:
                 "threshold_seconds": self.freshness_seconds},
             "services": {name: None for name in ("DNS", "DHCP", "Active Directory", "PaperCut", "Certificates")},
             "wan": {"uplinks": wan_uplinks, "samples": wan_samples,
-                    "latency_ms": None, "packet_loss_percent": None}}
+                    "latency_ms": None, "packet_loss_percent": None},
+            "estate": {"enabled": len(site_options) > 1,
+                "site_counts": {name.casefold(): site_counts[name] for name in
+                                ("Healthy", "Warning", "Critical", "Unknown")},
+                "sites_requiring_attention": sum(site_counts[name] for name in
+                                                 ("Warning", "Critical")),
+                "site_status_matrix": site_matrix,
+                "high_impact_findings": [value for value in actions
+                                         if value.get("scope") == "all"][:10]}}
 
     def run(self, now=None):
         value = self.evaluate(now)
         write_wallboard(value, self.dashboard_template, self.summary_output, self.dashboard_output)
+        estate_path = self.operations_state.parent / "estate-state.json"
+        atomic_write(estate_path, json.dumps({
+            "schema_version": 1, "generated_at": value["generated_at"],
+            "deployment_id": value.get("deployment_id", ""),
+            **value["estate"],
+        }, indent=2, sort_keys=True) + "\n")
         return value

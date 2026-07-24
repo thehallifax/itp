@@ -1,0 +1,11 @@
+sites:
+  - id: north-campus
+    name: North Campus
+    type: campus
+    display_order: 10
+    aliases: [north]
+  - id: south-campus
+    name: South Campus
+    type: campus
+    display_order: 20
+    aliases: [south]
