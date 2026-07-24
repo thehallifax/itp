@@ -1,250 +1,198 @@
 # ITP — Infrastructure Telemetry Platform
 
-ITP discovers infrastructure, collects operational telemetry, stores it in
-InfluxDB 3, and presents it through Grafana. It is designed for repeatable MSP
-and consultant deployments: supported collectors ship with the repository and
-are enabled through configuration, not code changes.
+ITP is an evidence-driven infrastructure telemetry and operational intelligence
+platform for multi-site organisations and managed estates.
 
-The project retains its established SNMP discovery, generated Telegraf inputs,
-InfluxDB storage, Grafana dashboards, Docker Compose workflow, and native Mist
-collector. The ITP name is an architectural evolution of the project, not a
-rewrite.
+[![Project status](https://img.shields.io/badge/status-Alpha%202-orange)](docs/releases/v0.2.0-alpha.2.md)
+[![Validation](https://github.com/thehallifax/itp/actions/workflows/validate.yml/badge.svg)](https://github.com/thehallifax/itp/actions/workflows/validate.yml)
+![Python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)
+![Virtualisation](https://img.shields.io/badge/virtualisation-VMware%20%7C%20Hyper--V%20%7C%20Proxmox-5b5bdb)
 
-## Profile quick start
+![ITP Operations Wallboard — network and wireless estate](docs/images/alpha-2/operations-wallboard-sbc.png)
 
-ITP deployments are customer-scoped. Do not copy or overwrite
-`discovery/config.yml` to switch customers.
+Infrastructure teams often have monitoring data split across vendor portals,
+pollers, and dashboards, making it difficult to understand service impact
+across a site or estate. ITP collects that evidence, resolves it into canonical
+assets and services, and produces one explainable current-state operational
+view without hiding vendor detail needed for investigation.
 
-```sh
-./itp profile list
-./itp profile init-secrets mlc
-./itp profile validate mlc
-./itp profile up mlc
-./itp profile status mlc
+## Key capabilities
+
+- SNMP discovery plus native Juniper Mist, FortiGate, and Palo Alto collectors
+- Canonical infrastructure, inventory, site, and virtualisation models
+- Deterministic Operations Engine for issues, risks, and recommendations
+- Vendor-neutral Service Health with supporting assets and evidence
+- Capability-aware Grafana provisioning and vendor drill-down dashboards
+- Single-screen Operations Wallboard with a consolidated action queue
+- Single-site, multi-site, estate, and isolated multi-customer deployment models
+- Read-only VMware vSphere, Microsoft Hyper-V, and Proxmox VE intelligence
+- InfluxDB 3, FlightSQL, Grafana, Telegraf, and Docker Compose deployment
+
+ITP is Alpha software. It is intended for evaluation and controlled deployments,
+not represented as production-ready.
+
+## Architecture
+
+Collectors own authentication, discovery, and collection. After collection,
+identity, normalisation, operational rules, service evaluation, and
+presentation remain deterministic and vendor-neutral.
+
+```mermaid
+flowchart LR
+    C["Collectors<br/>SNMP · Mist · FortiGate · Palo Alto<br/>VMware · Hyper-V · Proxmox"]
+    M["Canonical Models<br/>Assets · Sites · Telemetry · Virtualisation"]
+    O["Operational Intelligence<br/>Operations Engine · Service Health"]
+    P["Presentation<br/>Wallboard · Dashboards · Evidence"]
+    C --> M --> O --> P
 ```
 
-MLC and SBC ship as tracked profiles; credentials and runtime state remain
-ignored and isolated. See [deployment profiles](docs/deployment-profiles.md) for
-creation, concurrent operation, updates, migration, backup and troubleshooting.
+The platform covers networking, wireless, WAN, firewalls, security, compute,
+storage, printing, inventory, lifecycle, collector health, and virtualisation.
+Missing or untrusted evidence produces `Unknown` rather than an invented healthy
+or failed state.
 
-Choose a deployment model:
+See [Architecture](docs/architecture.md),
+[canonical assets](docs/canonical-asset-model.md),
+[Infrastructure State](docs/infrastructure-state.md), and
+[canonical site identity](docs/architecture/site-hierarchy.md).
 
-- **Single site:** one organisation and one operational location.
-- **Multi-site organisation:** one profile with estate and per-site views.
-- **Multiple isolated customers:** one profile, Grafana instance and telemetry boundary per customer.
+## Operational intelligence
 
-See the plain-language [getting-started guide](docs/getting-started.md),
-[deployment models](docs/deployment-models.md) and the
-[operator guide](docs/operator-guide.md).
+The deterministic [Operations Engine](docs/operations-engine.md) turns
+canonical evidence into Active Issues, Operational Risks, and Recommendations.
+Rules use explicit evidence and thresholds—no LLMs, probabilistic scoring, or
+cloud reasoning services.
 
-Optional read-only [virtualisation intelligence](docs/virtualisation.md)
-normalises VMware, Hyper-V and Proxmox estates without exposing provider
-objects directly to operational dashboards.
+[Service Health](docs/service-health.md) evaluates enabled vendor-neutral
+services as `Healthy`, `Warning`, `Critical`, `Unknown`, or `Not Enabled`.
+Results retain summaries, affected assets, site scope, and evidence.
 
-## Quick start
-
-```sh
-git clone <repository-url> itp
-cd itp
-cp .env.example .env
-cp discovery/config.example.yml discovery/config.yml
-# Edit stack settings and collector enablement, then add only the credentials
-# required by enabled collectors.
-cp secrets/mist.env.example secrets/mist.env  # only when enabling Mist
-cp secrets/fortigate.env.example secrets/fortigate.env  # only on a FortiGate edge
-docker compose up -d --build
-```
-
-For a guided deployment, run `./scripts/install.sh` on Linux/macOS or
-`./scripts/Install-ITP.ps1` on Windows. See [installation](docs/INSTALL.md),
-[upgrades](docs/UPGRADING.md), and the [canonical schema](docs/SCHEMA.md).
-
-Create an InfluxDB administrator token when bootstrapping a new deployment, then
-set `INFLUXDB_TOKEN` in the root `.env` and restart the affected services. Never
-commit `.env`, `secrets/*.env`, generated inventory, or tokens.
+The [Operations Wallboard](docs/operations-wallboard.md) presents generated
+current-state service health, infrastructure counts, collector state, and a
+priority-ordered Action Required queue. Vendor dashboards remain available for
+engineering drill-down.
 
 ## Supported collectors
 
-| Collector | Enablement | Telemetry path |
-| --- | --- | --- |
-| SNMP | `collectors.snmp.enabled: true` | Discovery → generated Telegraf inputs → InfluxDB |
-| Juniper Mist | `collectors.mist.enabled: true` | Native HTTPS API → shared telemetry contract → InfluxDB |
-| FortiGate | `collectors.fortigate.enabled: true` | Native edge HTTPS API → normalized and compatible telemetry → InfluxDB |
-| Palo Alto Networks | `collectors.paloalto.enabled: true` | Read-only PAN-OS XML API → canonical firewall telemetry → InfluxDB |
+| Collector | Collection path |
+| --- | --- |
+| SNMP | Discovery → generated Telegraf inputs → canonical telemetry |
+| Juniper Mist | Native HTTPS API → canonical network and wireless signals |
+| FortiGate | Native HTTPS API → canonical firewall and interface signals |
+| Palo Alto PAN-OS | Read-only XML API → canonical firewall and security signals |
 
-Every supported collector is included in the collector image. To enable one:
+Collectors ship with the repository and are enabled through configuration. A
+collector owns authentication, discovery, collection, and adaptation only; it
+must not contain operational or dashboard policy.
 
-1. Add its credentials under `secrets/`.
-2. Set `enabled: true` and configure its intervals/endpoints in
-   `discovery/config.yml`.
-3. Restart `collector` (and `discovery` for SNMP changes).
+## Virtualisation
 
-No source-code or image changes are required. A disabled native collector does
-not require its secret file and the collector service remains healthy while
-idle.
+ITP normalises read-only virtualisation evidence into canonical managers,
+clusters, hosts, workloads, storage, networks, and snapshots. Provider
+management failure alone does not prove workload outage.
 
-## Collector philosophy
+<table>
+  <tr>
+    <th>VMware vSphere</th>
+    <th>Microsoft Hyper-V</th>
+    <th>Proxmox VE</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/alpha-2/operations-wallboard-vmware.png" alt="VMware Operations Wallboard"></td>
+    <td><img src="docs/images/alpha-2/operations-wallboard-hyperv.png" alt="Hyper-V Operations Wallboard"></td>
+    <td><img src="docs/images/alpha-2/operations-wallboard-proxmox.png" alt="Proxmox Operations Wallboard"></td>
+  </tr>
+</table>
 
-A collector owns only authentication, discovery, and collection. Translating a
-vendor response into the shared telemetry contract is the final collection
-boundary. After that boundary, normalisation rules, inventory, storage, health
-scoring, lifecycle tracking, change detection, dashboards, and reporting are
-vendor-neutral.
+See [Virtualisation intelligence](docs/virtualisation.md) and the individual
+[VMware](docs/collectors/vmware.md), [Hyper-V](docs/collectors/hyperv.md), and
+[Proxmox](docs/collectors/proxmox.md) guides.
 
-Collectors must not contain dashboard logic, depend on Grafana, know about
-other collectors, or invent collector-specific storage paths. See
-[Architecture](docs/architecture.md) for the enforced boundaries.
+## Multi-site and estate support
 
-Collector observations pass through deterministic signal adapters and the
-[canonical asset model](docs/canonical-asset-model.md) before they reach
-Infrastructure State, operational rules, or Grafana. This prevents duplicate
-physical devices from producing duplicate health counts and issues while keeping
-source evidence and field provenance inspectable.
+A deployment profile is the isolation boundary for one customer or
+organisation. Configuration, secrets, runtime state, Compose projects,
+telemetry databases, and Grafana instances remain profile-scoped.
 
-Platform-wide estate names and aliases live in `config/sites.yml`. The
-[Canonical Site Registry](docs/site-registry.md) resolves them before asset
-fusion without changing collector behavior.
+Within a profile, canonical site IDs support both individual-site views and an
+aggregate estate view. Multiple isolated profiles can run concurrently. See
+[deployment profiles](docs/deployment-profiles.md) and
+[deployment models](docs/deployment-models.md).
 
-## Configuration and credentials
+## Getting started
 
-- Root `.env`: Docker Compose interpolation, InfluxDB, Grafana, Telegraf, and
-  ports.
-- `secrets/*.env`: vendor credentials, injected only into the service that needs
-  them. Examples are safe to commit; populated files are ignored and excluded
-  from Docker build contexts.
-- `discovery/config.yml`: collector enable flags, intervals, approved networks,
-  and API endpoints. Start from `discovery/config.example.yml`.
-
-`collectors/config.py` expands whole-value environment placeholders such as
-`${MIST_ORG_ID}`. Unset placeholders become empty values; an enabled collector
-then fails with the required variable names without exposing credential values.
-
-Mist tenants are regional. Match `base_url` to the tenant portal—for example,
-`manage.ac2.mist.com` uses `https://api.ac2.mist.com`. A wrong region commonly
-appears as authentication or organization-access failure.
-
-## Central and edge runtime modes
-
-The same collector image runs in `central` or `edge` mode through
-`ITP_RUNTIME_MODE`. It defaults to `central` for compatibility with existing Mist
-deployments. Mist defaults to central placement; FortiGate API and SNMP default to edge.
-Incompatible collectors are logged and skipped. See the
-[edge architecture](docs/edge-collector-architecture.md).
+Requirements: Git, Docker, and Docker Compose v2.
 
 ```sh
-cp secrets/fortigate.env.example secrets/fortigate.env
-# Edit the secret file and enable collectors.fortigate with execution: edge.
-ITP_RUNTIME_MODE=edge docker compose run --rm collector python -m collectors inspect fortigate
-ITP_RUNTIME_MODE=edge docker compose run --rm collector python -m collectors collect fortigate
-ITP_RUNTIME_MODE=edge docker compose up -d --force-recreate collector
-docker compose logs --since=5m collector
+git clone https://github.com/thehallifax/itp.git
+cd itp
+cp .env.example .env
+cp discovery/config.example.yml discovery/config.yml
+docker compose config --quiet
+docker compose up -d --build
 ```
 
-The one-shot `collect` command writes telemetry and health. `inspect` validates API and
-normalization behavior without writing telemetry. SNMP remains a fallback, interface
-counter enrichment source, and option for devices without a suitable API. See the
-[FortiGate collector guide](collectors/fortigate/README.md).
-For PAN-OS permissions, TLS, configuration and second-site deployment, see the
-[Palo Alto collector guide](docs/collectors/paloalto.md).
+Open Grafana at `http://localhost:${GRAFANA_PORT:-3000}`. Datasources, folders,
+and enabled dashboard packs are provisioned automatically.
+
+For a customer-scoped deployment:
+
+```sh
+./itp profile list
+./itp profile init-secrets <profile>
+./itp profile validate <profile>
+./itp profile up <profile>
+./itp profile status <profile>
+```
+
+Enable a collector by configuring its endpoint, setting `enabled: true`, and
+copying only its required `.env.example` secret template to a local `.env`
+file. Never commit populated secrets, root `.env`, customer evidence, or
+generated runtime state.
+
+See [Getting Started](docs/getting-started.md),
+[Installation](docs/INSTALL.md), and the
+[Operator Guide](docs/operator-guide.md).
 
 ## Repository layout
 
 ```text
-collectors/          collector contracts, registry, scheduler, inventory and writers
-  snmp/              SNMP implementation and Telegraf generation
-  mist/              native Mist API implementation
-telemetry/           future vendor-neutral telemetry helpers
-analysis/            future health, lifecycle and change analysis
+collectors/          collector framework and vendor implementations
+analysis/            canonical state, operations, services, sites and virtualisation
+telemetry/           vendor-neutral telemetry contracts
 dashboards/          version-controlled Grafana dashboards
-runtime/inventory/   generated shared inventory and its documented contract
-config/              configuration guidance, examples and template conventions
-discovery/           compatible SNMP discovery command and deployment config
-grafana/             Grafana provisioning
-telegraf/            base and generated Telegraf configuration
-docs/                concise architecture and roadmap documentation
+grafana/             datasource and dashboard provisioning
+profiles/            tracked customer deployment definitions
+runtime/             generated, profile-isolated operational state
+config/              site and platform configuration
+discovery/           SNMP discovery and compatible configuration
+scripts/             installation, update and evidence tooling
+docs/                architecture, operator and collector documentation
 ```
 
-The historical `discovery/discover.py` command and configuration paths remain in
-place for deployment compatibility.
+## Current Alpha limitations
 
-## Typical operations
-
-Regenerate the canonical site estate after changing site aliases:
-
-```sh
-docker compose exec collector python -m collectors sites generate
-```
-
-```sh
-python -m collectors list
-docker compose run --rm discovery python /app/discover.py once --config /app/config.yml
-docker compose run --rm collector python -m collectors inspect mist
-docker compose up -d
-docker compose logs --tail=200 discovery collector telegraf
-```
-
-Open Grafana at `http://localhost:${GRAFANA_PORT}`. The dashboard provider
-creates the capability-aware folders Operations, Infrastructure, Security,
-Wireless, Printing, Compute, Identity, and Vendor. Collector manifests advertise
-capabilities and dashboard packs; disabled collector dashboards are omitted.
-See the [Dashboard Platform](docs/dashboard-platform.md).
-
-Start with **Infrastructure Overview** and use enabled vendor dashboards for
-engineering drill-down. Use **Operations Wallboard**
-(`itp-operations-wallboard`) for
-a dense 1920 × 1080 kiosk display; see [wallboard guidance](docs/operations-wallboard.md).
-See [dashboard navigation](docs/DASHBOARDS.md).
-Canonical summary dashboards use a generated, supported
-[data-binding projection](docs/dashboard-data-binding.md); Grafana does not read
-runtime JSON files directly.
-Live overview counts come from the deterministic
-[Infrastructure State](docs/infrastructure-state.md); operational issues, risks,
-and recommendations come from the [Operations Engine](docs/operations-engine.md).
-
-### Inventory operations
-
-The Inventory Engine mirrors collector observations into
-`runtime/inventory/assets.json` while preserving the existing `devices.json`.
-It provides stable source identity, reconciliation evidence, and lifecycle
-evaluation without changing telemetry.
-
-```sh
-docker compose exec collector python -m collectors inventory summary
-docker compose exec collector python -m collectors inventory list
-docker compose exec collector python -m collectors inventory show ASSET_ID --json
-docker compose exec collector python -m collectors inventory reconcile
-docker compose exec collector python -m collectors inventory lifecycle
-docker compose exec collector python -m collectors inventory sources
-docker compose exec collector python -m collectors inventory history --limit 20
-docker compose exec collector python -m collectors inventory retire ASSET_ID --reason "decommissioned"
-docker compose exec collector python -m collectors inventory restore ASSET_ID --reason "returned to service"
-docker compose exec collector python -m collectors inventory changes --since 7d --limit 50
-docker compose exec collector python -m collectors inventory changes-summary --since 7d
-```
-
-See [runtime inventory](runtime/inventory/README.md) for identity rules,
-lifecycle states, reconciliation states, persistence, and safe file inspection.
-
-Lifecycle evaluation runs hourly by default. Assets age only after a complete,
-successful discovery for their own source fails to observe them; collector
-failures, disabled sources, partial discovery, and platform downtime do not age
-inventory. Lifecycle remains CLI/file-visible and is not duplicated into
-InfluxDB or Grafana in this milestone.
-
-Inventory change detection runs during discovery ingestion and records only
-meaningful normalized fields in `runtime/inventory/change_history.json`.
-Protected serial, MAC, and source IDs are never silently replaced; conflicts are
-high severity. Telemetry fluctuations and lifecycle state changes are excluded.
-
-SNMP safety limits, credential rotation, troubleshooting, and generated-file
-ownership are documented in [SNMP discovery](discovery/README.md). Mist mappings,
-permissions, and collection scope are documented in the
-[Mist collector guide](collectors/mist/README.md).
+- Operator review is required before deployment and upgrades.
+- Infrastructure, Operations, and Service Health current-state outputs are
+  file-backed; durable state history is not yet implemented.
+- Provider and infrastructure-domain coverage is incomplete.
+- Optional API fields may produce `Unknown` rather than inferred health.
+- Service-impact rules are deliberately conservative.
+- Platform high availability is not included.
+- Configuration and secret bootstrap remain operator-managed.
 
 ## Roadmap
 
-The Inventory Engine, scheduled lifecycle, and inventory change-detection
-foundations are implemented. The next milestones are Health Scoring,
-Relationship Engine, and additional collectors. See the
-[roadmap](docs/roadmap.md); it intentionally describes boundaries rather than
-speculative implementations.
+The next milestone is **OPS-008 — Scheduler and State History**:
+
+- unified scheduling for canonical analysis pipelines;
+- durable timestamped Infrastructure, Operations, and Service Health history;
+- deterministic retention and replay;
+- change-over-time evidence for dashboards and operational rules.
+
+Later work will expand relationships, lifecycle intelligence, collectors, and
+service coverage without weakening the canonical vendor-neutral architecture.
+
+See the [Alpha 2 release notes](docs/releases/v0.2.0-alpha.2.md),
+[changelog](CHANGELOG.md), [contribution guide](CONTRIBUTING.md), and
+[security policy](SECURITY.md).

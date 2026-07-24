@@ -1,64 +1,59 @@
 # Changelog
 
-## [0.2.0] - 2026-07-23
+All notable changes to ITP are documented in this file. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## Unreleased
+
+### Planned
+
+- OPS-008 unified analysis scheduling and durable state history.
+
+## 0.2.0-alpha.2
 
 ### Added
 
-- Operations-first Grafana dashboard hierarchy
-- Infrastructure Overview dashboard
-- Deterministic operational intelligence engine
-- Active Issues, Operational Risks, and Recommendations
-- Fourteen automatically registered operational rules
-- JSON and CSV operational outputs
-- Scheduled operational evaluation
-- Operational dashboard and engine documentation
+- Canonical infrastructure, asset, site, estate, and virtualisation models.
+- Read-only VMware vSphere, Microsoft Hyper-V, and Proxmox VE support.
+- Deterministic Operations Engine for issues, risks, and recommendations.
+- Vendor-neutral Service Health with site and estate evaluation.
+- Capability-aware dashboard registry and managed Grafana provisioning.
+- Exception-driven Operations Wallboard and deterministic release evidence.
+- Multi-customer deployment profiles and multi-site estate rollups.
 
 ### Changed
 
-- Vendor dashboards moved beneath the Vendor folder
-- Grafana provisioning expanded to operational folders
-- Scheduler lock initialisation corrected
-- Infrastructure Overview populated from generated operational findings
+- Operational dashboards consume canonical state instead of embedding
+  vendor-specific health policy.
+- Virtualisation findings now use conservative, evidence-based service-impact
+  propagation.
+
+### Known limitations
+
+- Canonical operational state is file-backed and has no durable history.
+- Collector, provider, and service-domain coverage remains incomplete.
+- ITP remains Alpha software and is not represented as production-ready.
+
+## 0.2.0 - 2026-07-23
+
+### Added
+
+- Operations-first Grafana hierarchy and Infrastructure Overview.
+- Deterministic operational intelligence with JSON and CSV outputs.
+- Scheduled operational evaluation and operational documentation.
+
+### Changed
+
+- Vendor dashboards moved beneath the Vendor folder.
+- Grafana provisioning expanded to operational folders.
 
 ### Fixed
 
-- BUG-001: Scheduler construction failed when no asyncio event loop was active
+- Scheduler construction no longer requires an active asyncio event loop.
 
-### Security
-
-- Local credentials rotated after expanded Docker Compose configuration was exposed in diagnostic output
-
-
-All notable changes to this project will be documented in this file.
-
-The format is based on Keep a Changelog.
-
-## [0.1.0] - 2026-07-22
+## 0.1.0 - 2026-07-22
 
 ### Added
 
-- Production repository foundation
-- Unified collector framework
-- Mist collector
-- FortiGate collector
-- SNMP discovery framework
-- Inventory engine
-- Lifecycle tracking
-- Grafana dashboards
-- Discovery service
-- Canonical telemetry schema
-- Documentation
-- Installation scripts
-- Docker deployment
-- Versioning
-
-### Changed
-
-- Standardised Python project structure
-- Moved secrets to example configuration files
-- Introduced pyproject.toml
-- Added development dependency management
-
-### Known Issues
-
-- BUG-001 — Scheduler lock initialisation requires an active asyncio event loop (3 tests currently failing).
+- Initial collector framework, SNMP discovery, Mist and FortiGate collectors.
+- Inventory, lifecycle, canonical telemetry, Grafana, and Docker foundations.
