@@ -20,6 +20,7 @@ from analysis.sites import SiteRegistry
 from analysis.wallboard import WallboardEngine
 from analysis.dashboards import DashboardRegistry, FOLDERS
 from analysis.services import ServiceHealthEngine, ServiceEvaluator
+from analysis.state_history import FileStateStore, StateHistoryEngine
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -161,6 +162,20 @@ async def _validate(config):
 async def _run(args):
     if args.command == "list":
         for name in CollectorRegistry.names(): print(name)
+        return
+    if args.command == "state-history":
+        try:
+            payload = json.loads(Path(args.input).read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"invalid state-history input {args.input}: {exc}") from exc
+        result = StateHistoryEngine(
+            FileStateStore(args.store)).process_payload(
+                payload, observed_at=args.observed_at)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(f"Persisted {len(result['snapshots'])} canonical snapshot(s); "
+                  f"detected {result['change_count']} change(s)")
         return
     config = load_config(args.config)
     if args.command == "validate":
@@ -508,10 +523,20 @@ def main():
     dashboards = sub.add_parser("dashboards")
     dashboards.add_argument("action", choices=("generate", "status"), default="generate", nargs="?")
     dashboards.add_argument("--json", action="store_true")
+    history = sub.add_parser("state-history")
+    history.add_argument("action", choices=("process",), default="process", nargs="?")
+    history.add_argument("--input", required=True)
+    history.add_argument("--store", required=True)
+    history.add_argument("--observed-at")
+    history.add_argument("--json", action="store_true")
     paloalto = sub.add_parser("paloalto")
     paloalto.add_argument("action", choices=("validate", "discover", "run"))
     args = parser.parse_args()
-    if args.profile:
+    if args.command == "state-history":
+        # Canonical fixture/history processing is deliberately independent of
+        # deployment configuration and any inherited ITP_PROFILE value.
+        logging_context = ""
+    elif args.profile:
         from itp_profiles import DeploymentProfile
         profile = DeploymentProfile.load(args.profile, ROOT).activate()
         args.config = args.config or str(profile.paths.discovery)

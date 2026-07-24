@@ -173,8 +173,8 @@ docs/                architecture, operator and collector documentation
 ## Current Alpha limitations
 
 - Operator review is required before deployment and upgrades.
-- Infrastructure, Operations, and Service Health current-state outputs are
-  file-backed; durable state history is not yet implemented.
+- State history is filesystem-backed and manually invoked; scheduled capture,
+  retention pruning, and history queries are not yet implemented.
 - Provider and infrastructure-domain coverage is incomplete.
 - Optional API fields may produce `Unknown` rather than inferred health.
 - Service-impact rules are deliberately conservative.
@@ -183,16 +183,19 @@ docs/                architecture, operator and collector documentation
 
 ## Roadmap
 
-The next milestone is **OPS-008 — Scheduler and State History**:
+**OPS-008 Phase 1 — State History and Change Detection** is implemented with
+canonical snapshots, deterministic change sets, and atomic filesystem storage.
+The next phase will add:
 
-- unified scheduling for canonical analysis pipelines;
-- durable timestamped Infrastructure, Operations, and Service Health history;
-- deterministic retention and replay;
-- change-over-time evidence for dashboards and operational rules.
+- scheduling after successful canonical analysis;
+- bounded retention and recovery behavior;
+- history query interfaces;
+- state-transition evidence for operational rules.
 
 Later work will expand relationships, lifecycle intelligence, collectors, and
 service coverage without weakening the canonical vendor-neutral architecture.
 
 See the [Alpha 2 release notes](docs/releases/v0.2.0-alpha.2.md),
+[OPS-008 architecture](docs/ops-008-state-history.md),
 [changelog](CHANGELOG.md), [contribution guide](CONTRIBUTING.md), and
 [security policy](SECURITY.md).

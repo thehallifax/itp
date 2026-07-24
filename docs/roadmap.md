@@ -10,9 +10,15 @@ commit the project to a database or analytics implementation prematurely.
 3. **Inventory Change Detection Foundation** — implemented: protected identity,
    authoritative comparisons, deterministic classification, suppression, and
    bounded change history.
-4. **Health Scoring** — calculate explainable, vendor-neutral infrastructure
+4. **OPS-008 Phase 1 State History** — implemented: canonical site/domain
+   snapshots, deterministic field-level change detection, stable change IDs,
+   and replaceable atomic filesystem storage.
+5. **OPS-008 Phase 2 Scheduling and History Access** — schedule capture after
+   canonical generation, define bounded retention/recovery, and expose history
+   queries without treating changes as alerts.
+6. **Health Scoring** — calculate explainable, vendor-neutral infrastructure
    health from normalized telemetry.
-5. **Relationship Engine** — model site, device, interface, and service
+7. **Relationship Engine** — model site, device, interface, and service
    relationships without collector coupling.
-6. **Additional collectors** — add supported vendors through the existing
+8. **Additional collectors** — add supported vendors through the existing
    registry, configuration, inventory, and writer contracts.

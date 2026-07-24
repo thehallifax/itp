@@ -5,9 +5,16 @@ All notable changes to ITP are documented in this file. The format follows
 
 ## Unreleased
 
+### Added
+
+- OPS-008 Phase 1 canonical snapshots, deterministic field-level change
+  detection, stable change identifiers, atomic filesystem storage, and
+  config-independent CLI processing.
+
 ### Planned
 
-- OPS-008 unified analysis scheduling and durable state history.
+- OPS-008 Phase 2 scheduled capture, bounded retention/recovery, history
+  queries, and operational state-transition inputs.
 
 ## 0.2.0-alpha.2
 

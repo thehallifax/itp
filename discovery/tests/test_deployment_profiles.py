@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -157,3 +159,14 @@ def test_legacy_configuration_emits_deprecation_warning(monkeypatch, tmp_path):
     config.write_text((ROOT / "discovery/config.example.yml").read_text())
     with pytest.warns(DeprecationWarning, match="deployment profile"):
         load_config(config)
+
+
+def test_repository_profile_validation_is_secret_and_docker_independent():
+    completed = subprocess.run(
+        [sys.executable, "-m", "discovery.cli", "validate-profiles",
+         "--root", str(ROOT)],
+        cwd=ROOT, text=True, capture_output=True)
+    assert completed.returncode == 0, completed.stderr
+    assert "[PASS] mlc" in completed.stdout
+    assert "[PASS] sbc" in completed.stdout
+    assert "Validated 2 deployment profile(s)" in completed.stdout
