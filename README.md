@@ -181,6 +181,44 @@ See [Getting Started](docs/getting-started.md),
 [Installation](docs/INSTALL.md), and the
 [Operator Guide](docs/operator-guide.md).
 
+Diagnose a deployment without changing it:
+
+```sh
+./itp doctor --offline
+./itp doctor
+```
+
+See [ITP Doctor](docs/doctor.md) for JSON automation, strict mode, connector
+selection, exit codes, and redaction guarantees.
+
+Run enabled root-deployment connectors once and inspect operational status:
+
+```sh
+./itp collect
+./itp status
+```
+
+Both commands support `--json`. Collection uses the same registry and scheduler
+as the long-running collector service and records a canonical `PipelineRun`.
+Status reports deployment identity, enabled connectors, service health, last
+successful collection, and common freshness states without exposing credential
+values. Profile-scoped collection commands remain available under
+`./itp profile`.
+
+For continuous root-deployment collection:
+
+```sh
+./itp daemon
+./itp status
+```
+
+The default command starts a single background daemon. Use
+`./itp daemon --foreground` for container or service-manager operation, or
+`./itp daemon --once` for one lock-protected cycle. Connector discovery and
+collection continue at their configured intervals; failures are isolated and
+recorded without stopping other connectors. Daemon heartbeat, uptime, current
+work, and last success are included in status output.
+
 ## Repository layout
 
 ```text

@@ -39,6 +39,10 @@ class ConnectorMetadata:
     implementation: str
     aliases: tuple[str, ...]
     notes: str
+    validation_adapter: str = ""
+    configuration_checker: str = ""
+    health_adapter: str = ""
+    remediation_command: str = ""
 
     @property
     def manual_only(self):
@@ -59,7 +63,23 @@ class ConnectorMetadata:
 class ConnectorMetadataRegistry:
     """Validated connector catalogue; loading performs no runtime imports."""
 
-    def __init__(self, root, connectors):
+    def __init__(self, root, connectors=None):
+        if connectors is None:
+            if isinstance(root, (str, Path)):
+                # Compatibility with the original root-only constructor.
+                # Metadata still comes from the authoritative tracked manifest,
+                # while documentation and implementation references are
+                # validated relative to the supplied repository root.
+                supplied_manifest = (
+                    Path(root) / "collectors/connector-registry.yml")
+                connectors = self._read_connectors(
+                    supplied_manifest if supplied_manifest.is_file()
+                    else Path(__file__).resolve().parents[1]
+                    / "collectors/connector-registry.yml")
+            else:
+                # Compatibility with callers that supplied only an iterable of
+                # metadata and relied on the package repository as the root.
+                connectors, root = root, Path(__file__).resolve().parents[1]
         self.root = Path(root).resolve()
         self._connectors = tuple(sorted(connectors, key=lambda value: value.id))
         self._validate()
@@ -68,9 +88,7 @@ class ConnectorMetadataRegistry:
             for key in (connector.id, *connector.aliases)}
 
     @classmethod
-    def load(cls, root=None, path=None):
-        root = Path(root or Path(__file__).resolve().parents[1]).resolve()
-        path = Path(path or root / "collectors/connector-registry.yml")
+    def _read_connectors(cls, path):
         try:
             payload = yaml.safe_load(path.read_text())
         except (OSError, yaml.YAMLError) as exc:
@@ -104,10 +122,25 @@ class ConnectorMetadataRegistry:
                     implementation=str(raw.get("implementation") or ""),
                     aliases=tuple(sorted(set(raw.get("aliases") or []))),
                     notes=str(raw.get("notes") or ""),
+                    validation_adapter=str(
+                        raw.get("validation_adapter") or ""),
+                    configuration_checker=str(
+                        raw.get("configuration_checker") or ""),
+                    health_adapter=str(raw.get("health_adapter") or ""),
+                    remediation_command=str(
+                        raw.get("remediation_command")
+                        or "python -m collectors connectors inspect "
+                        + str(raw["id"])),
                 ))
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("invalid connector registry entry") from exc
-        return cls(root, connectors)
+        return connectors
+
+    @classmethod
+    def load(cls, root=None, path=None):
+        root = Path(root or Path(__file__).resolve().parents[1]).resolve()
+        path = Path(path or root / "collectors/connector-registry.yml")
+        return cls(root, cls._read_connectors(path))
 
     def _validate_reference(self, connector):
         if not connector.implementation or ":" not in connector.implementation:

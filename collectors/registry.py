@@ -1,4 +1,5 @@
 """Collector class registration and construction."""
+import inspect
 
 
 class CollectorRegistry:
@@ -37,6 +38,26 @@ class CollectorRegistry:
         return cls.get(name)(*args, **kwargs)
 
     @classmethod
+    def create_configured(cls, name, config, inventory_path, generated_dir):
+        """Construct a registered collector from the common runtime paths."""
+        collector = cls.get(name)
+        available = {
+            "config": config,
+            "inventory_path": inventory_path,
+            "generated_dir": generated_dir,
+        }
+        parameters = inspect.signature(collector).parameters
+        arguments = {
+            key: available[key] for key in parameters if key in available}
+        return collector(**arguments)
+
+    @classmethod
     def metadata(cls, name):
         collector = cls.get(name)
         return {"name": name, "execution": getattr(collector, "execution", "either")}
+
+    @classmethod
+    def execution_eligible(cls, name, settings, runtime_mode):
+        execution = settings.get(
+            "execution", cls.metadata(name)["execution"])
+        return execution in ("either", runtime_mode), execution

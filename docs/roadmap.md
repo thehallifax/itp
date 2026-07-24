@@ -27,3 +27,6 @@ commit the project to a database or analytics implementation prematurely.
 10. **OOBE-002 Connector Onboarding** — Phase 1 implemented: authoritative
     connector metadata and inspection. Phase 2 should add guided onboarding
     only for connectors whose registry capabilities and validation are ready.
+11. **CLI-001 Doctor** — Phase 1 implemented: deterministic read-only platform,
+    service, connector, state-history, and operations diagnostics. Phase 2
+    should add explicitly declared safe connector doctor adapters.
