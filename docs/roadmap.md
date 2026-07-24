@@ -13,12 +13,14 @@ commit the project to a database or analytics implementation prematurely.
 4. **OPS-008 Phase 1 State History** — implemented: canonical site/domain
    snapshots, deterministic field-level change detection, stable change IDs,
    and replaceable atomic filesystem storage.
-5. **OPS-008 Phase 2 Scheduling and History Access** — schedule capture after
-   canonical generation, define bounded retention/recovery, and expose history
-   queries without treating changes as alerts.
-6. **Health Scoring** — calculate explainable, vendor-neutral infrastructure
+5. **OPS-008 Phase 2 Safe Pipeline Capture** — implemented: explicit run and
+   completeness metadata, conservative removal authority, atomic multi-scope
+   persistence, idempotent capture, and CLI inspection.
+6. **OPS-008 Phase 3 History Operations** — define bounded retention and expose
+   history queries without treating changes as alerts.
+7. **Health Scoring** — calculate explainable, vendor-neutral infrastructure
    health from normalized telemetry.
-7. **Relationship Engine** — model site, device, interface, and service
+8. **Relationship Engine** — model site, device, interface, and service
    relationships without collector coupling.
-8. **Additional collectors** — add supported vendors through the existing
+9. **Additional collectors** — add supported vendors through the existing
    registry, configuration, inventory, and writer contracts.

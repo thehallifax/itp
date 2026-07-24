@@ -71,6 +71,9 @@ def load_config(path):
                 "capability_registry": str(base / "dashboard/managed/registry.json"),
                 "service_health": str(base / "services/service-health.json"),
             },
+            "state_history": {
+                "store_path": str(base / "state-history"),
+            },
         }
         for section, settings in defaults.items():
             target = value.setdefault(section, {})

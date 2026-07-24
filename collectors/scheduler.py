@@ -4,6 +4,7 @@ import inspect
 import time
 import logging
 from pathlib import Path
+from datetime import datetime, timezone
 
 
 async def _resolve(value):
@@ -15,6 +16,7 @@ class Scheduler:
                  lifecycle_interval=3600, infrastructure_engine=None,
                  operations_engine=None, service_health_engine=None,
                  wallboard_engine=None, dashboard_registry=None,
+                 state_history_capture=None,
                  operations_interval=300):
         self.collectors = list(collectors)
         self.health_path = Path(health_path) if health_path else None
@@ -30,6 +32,7 @@ class Scheduler:
         self.service_health_engine = service_health_engine
         self.wallboard_engine = wallboard_engine
         self.dashboard_registry = dashboard_registry
+        self.state_history_capture = state_history_capture
         self.operations_interval = max(1, int(operations_interval))
         self._operations_lock = None
 
@@ -96,22 +99,48 @@ class Scheduler:
         while True:
             started = time.monotonic()
             async with self._operations_lock:
-                try:
-                    if self.infrastructure_engine:
-                        await asyncio.to_thread(self.infrastructure_engine.run)
-                    result = await asyncio.to_thread(self.operations_engine.run)
-                    if self.service_health_engine:
-                        await asyncio.to_thread(self.service_health_engine.run)
-                    if self.wallboard_engine:
-                        await asyncio.to_thread(self.wallboard_engine.run)
-                    if self.dashboard_registry:
-                        await asyncio.to_thread(self.dashboard_registry.generate)
-                    logger.info("operations result=success issues=%d risks=%d recommendations=%d",
-                        len(result["issues"]), len(result["risks"]), len(result["recommendations"]))
-                    if self.health_path: self.health_path.touch()
-                except Exception:
-                    logger.exception("operations result=failed")
+                await self._execute_operations(started)
             await asyncio.sleep(max(1, self.operations_interval - (time.monotonic() - started)))
+
+    async def _execute_operations(self, started=None):
+        """Run one canonical pipeline; history cannot invalidate its outputs."""
+        logger = logging.getLogger("collector.operations")
+        started = time.monotonic() if started is None else started
+        try:
+            infrastructure = None
+            if self.infrastructure_engine:
+                infrastructure = await asyncio.to_thread(
+                    self.infrastructure_engine.run)
+            result = await asyncio.to_thread(self.operations_engine.run)
+            if self.service_health_engine:
+                await asyncio.to_thread(self.service_health_engine.run)
+            if self.wallboard_engine:
+                await asyncio.to_thread(self.wallboard_engine.run)
+            if self.dashboard_registry:
+                await asyncio.to_thread(self.dashboard_registry.generate)
+            if self.state_history_capture and infrastructure is not None:
+                try:
+                    capture = await asyncio.to_thread(
+                        self.state_history_capture.capture_generated,
+                        infrastructure, started_at=datetime.fromtimestamp(
+                            time.time() - (time.monotonic() - started),
+                            timezone.utc),
+                        canonical_output="runtime/infrastructure/state.json")
+                    if capture:
+                        logger.info("state_history result=%s run_id=%s",
+                                    capture.status, capture.run_id)
+                except Exception:
+                    logger.exception("state_history result=degraded")
+            logger.info(
+                "operations result=success issues=%d risks=%d recommendations=%d",
+                len(result["issues"]), len(result["risks"]),
+                len(result["recommendations"]))
+            if self.health_path:
+                self.health_path.touch()
+            return result
+        except Exception:
+            logger.exception("operations result=failed")
+            return None
 
     async def run(self, discovery_only=False):
         tasks = [asyncio.create_task(self._loop(c, "discover", c.discovery_interval))

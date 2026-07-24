@@ -88,6 +88,15 @@ wallboard:
   capability_registry: /app/runtime/dashboard/managed/registry.json
   service_health: /app/runtime/services/service-health.json
 
+# Optional durable canonical history. Disabled preserves pre-OPS-008 behaviour.
+# Configure expected_sources before enabling removal authority.
+state_history:
+  enabled: false
+  store_path: /app/runtime/state-history
+  removal_policy: complete_only
+  volatile_fields_policy: default
+  expected_sources: []
+
 collectors:
   snmp:
     enabled: true
