@@ -110,3 +110,59 @@ docker compose restart grafana
 docker compose logs --since=5m grafana
 docker compose logs --since=5m collector
 ```
+
+For a deployment profile, use the profile-aware wrappers:
+
+```bash
+./itp profile services <profile>
+./itp profile wallboard <profile>
+./itp profile dashboards <profile>
+./itp profile restart <profile>
+```
+
+Virtualisation uses the existing wallboard rather than a vendor wallboard.
+`Action Required` includes provider-neutral domain, provider and object-kind
+columns, covering manager/collection health, clusters, hosts, workloads,
+capacity, storage and snapshot governance. Site filtering remains canonical and
+SQL-free because generated frames use exact `site_id` scopes.
+
+## Final layout
+
+The renderer packs the grid after capability filtering:
+
+1. Site/estate summary, Overall State, service-health age, freshness and Monitoring.
+2. Equal-height core and capability-gated virtualisation service cards.
+3. Infrastructure state and a wide Collector State table.
+4. Optional printing exceptions.
+5. Balanced WAN state and traffic panels.
+6. A full-width, seven-row-high Action Required queue.
+
+Action Required sorts by severity, evidence age and priority. Compact columns
+show human-readable Severity, Service, Domain, Provider, Object Type, Asset,
+Issue and Age headings. Provider and object values are presentation labels
+(`VMware`, `Hyper-V`, `Proxmox`, `Virtual Machine`, and so on); canonical
+runtime values remain unchanged. Relative freshness uses `Just now`, minutes,
+hours and days. Legacy records may leave provider and object kind blank.
+
+Site Operational Status is the selected scope's active issue count. A service
+in Warning or Critical state must have a matching actionable row; Medium
+virtualisation risks are therefore included. WAN and Servers appear only when
+their canonical capabilities are enabled. Virtualisation-only evidence omits
+empty generic Compute/Storage cards and uses concise service titles.
+
+## Release screenshot fixtures
+
+Sanitized evidence is generated below `runtime/evidence/` and never enters a
+profile's canonical runtime:
+
+```bash
+.venv/bin/python scripts/render_wallboard_scenario.py sbc
+.venv/bin/python scripts/render_wallboard_scenario.py vmware
+.venv/bin/python scripts/render_wallboard_scenario.py hyperv
+.venv/bin/python scripts/render_wallboard_scenario.py proxmox
+```
+
+Each scenario contains a complete managed dashboard and provisioning file under
+`runtime/evidence/<scenario>/dashboard/`. SBC demonstrates wireless and Mist
+state; the remaining scenarios reuse sanitized provider fixtures. Use
+1920×1080 for primary release images and 1440×900 for the compact-layout check.

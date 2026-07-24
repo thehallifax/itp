@@ -32,3 +32,9 @@ dependencies:
 
 A critical provider produces one estate result identifying its provider and
 consumers. Site views include only findings explicitly attributed to that site.
+
+Virtualisation follows the same rule. Manager `Unknown` does not propagate.
+Only a configured dependency whose service matches a confirmed Critical
+virtualisation service (for example Shared Storage) can add consumer sites to
+the estate impact. Manager, cluster, host, workload and storage relationships
+use canonical IDs and never display names.

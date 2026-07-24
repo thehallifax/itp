@@ -108,3 +108,11 @@ vendor-name conditions or dashboard code.
 
 The Operations Wallboard consumes the per-site and estate records directly,
 without duplicating evaluation policy.
+
+When the `virtualisation` capability is enabled, six additional services are
+instantiated: Virtualisation Management Plane, Hypervisor Cluster, Compute
+Capacity, Virtual Machine Hosting, Shared Storage and Workload Availability.
+They consume affected-service IDs on promoted findings. Powered-off workloads
+are not failures by default, and manager loss cannot make hosting Critical
+without separate impact evidence. Profiles without the capability retain the
+original service list unchanged.

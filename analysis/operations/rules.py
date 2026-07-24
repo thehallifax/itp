@@ -96,7 +96,10 @@ class DeviceOfflineRule(Rule):
         result = []
         for asset in context.assets:
             kind = _kind(asset)
-            if asset.get("online") is not False or any(x in kind for x in ("access-point", "switch", "firewall")): continue
+            if asset.get("online") is not False or any(x in kind for x in (
+                    "access-point", "switch", "firewall", "virtual-machine",
+                    "virtual-container", "compute-workload")):
+                continue
             category = "Printing" if "print" in kind else "Server" if "server" in kind else "Network"
             rule = type("Bound", (), {"id": self.id, "category": category})()
             result.append(item(rule, "issue", f"Device offline: {_name(asset)}", "High",

@@ -209,7 +209,9 @@ async def _run(args):
             inventory_dir=settings.get("inventory_path", "/app/runtime/inventory"),
             output_dir=settings.get("output_path", "/app/runtime/operations"),
             dashboard_template=settings.get("dashboard_template", "/app/dashboards/Infrastructure Overview/infrastructure-overview.json"),
-            settings=settings,
+            settings={**settings, "virtualisation": config.get("virtualisation", {})},
+            virtualisation_dir=settings.get(
+                "virtualisation_path", "/app/runtime/virtualisation"),
             capability_registry=settings.get(
                 "capability_registry", "/app/runtime/dashboard/managed/registry.json"))
         if args.action == "rules":
@@ -428,7 +430,11 @@ async def _run(args):
             infrastructure_summary=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard") + "/infrastructure-summary.json",
             capability_registry=operations_settings.get(
                 "capability_registry", "/app/runtime/dashboard/managed/registry.json"),
-            settings=operations_settings) if operations_settings.get("enabled", True) else None
+            settings={**operations_settings,
+                      "virtualisation": config.get("virtualisation", {})},
+            virtualisation_dir=operations_settings.get(
+                "virtualisation_path", "/app/runtime/virtualisation")) \
+        if operations_settings.get("enabled", True) else None
     wallboard = WallboardEngine(
         infrastructure_state=wallboard_settings.get("infrastructure_state", "/app/runtime/infrastructure/state.json"),
         operations_state=wallboard_settings.get("operations_state", "/app/runtime/operations/operations.json"),

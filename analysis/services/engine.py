@@ -8,7 +8,7 @@ from pathlib import Path
 
 from analysis.sites import SiteRegistry
 from .evaluators import ServiceEvaluator
-from .models import SERVICE_NAMES
+from .models import SERVICE_NAMES, VIRTUALISATION_SERVICE_NAMES
 from .renderer import write_service_health
 
 
@@ -197,8 +197,11 @@ class ServiceHealthEngine:
 
     @staticmethod
     def _services(context):
-        evaluators = {value.definition.name: value for value in ServiceEvaluator.registered()}
-        return [evaluators[name].evaluate(context).to_dict() for name in SERVICE_NAMES]
+        virtual = "virtualisation" in context["capabilities"]
+        evaluators = {value.definition.name: value for value in
+                      ServiceEvaluator.registered(include_virtualisation=virtual)}
+        names = SERVICE_NAMES + (VIRTUALISATION_SERVICE_NAMES if virtual else ())
+        return [evaluators[name].evaluate(context).to_dict() for name in names]
 
     @staticmethod
     def _site_context(context, site_id):
@@ -269,12 +272,17 @@ class ServiceHealthEngine:
         """Roll site evaluations without inventing shared dependency relationships."""
         by_site = {site["site_id"]: site for site in sites}
         dependencies = {
-            str(value.get("service", "")).casefold(): value
+            str(value.get("service", "")).casefold().replace("_", " "): value
             for value in self.site_registry.dependencies if isinstance(value, dict)}
         results = []
-        for service_name in SERVICE_NAMES:
-            values = [(site["site_id"], next(value for value in site["services"]
-                       if value["service"] == service_name)) for site in sites]
+        service_names = list(SERVICE_NAMES)
+        for site in sites:
+            for value in site["services"]:
+                if value["service"] not in service_names:
+                    service_names.append(value["service"])
+        for service_name in service_names:
+            values = [(site["site_id"], value) for site in sites
+                      for value in site["services"] if value["service"] == service_name]
             enabled = [(site_id, value) for site_id, value in values
                        if value["status"] != "Not Enabled"]
             statuses = {value["status"] for _, value in enabled}

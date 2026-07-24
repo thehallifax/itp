@@ -7,9 +7,10 @@ from datetime import datetime, timezone
 
 
 CATEGORIES = {"Network", "Wireless", "Firewall", "Server", "Printing", "Storage",
-              "Collector", "Inventory", "Lifecycle", "Security"}
-SEVERITIES = {"Critical", "High", "Medium", "Low", "Info"}
-SEVERITY_BASE = {"Critical": 90, "High": 75, "Medium": 55, "Low": 35, "Info": 15}
+              "Collector", "Inventory", "Lifecycle", "Security", "Virtualisation"}
+SEVERITIES = {"Critical", "High", "Medium", "Low", "Info", "Unknown"}
+SEVERITY_BASE = {"Critical": 90, "High": 75, "Medium": 55, "Low": 35, "Info": 15,
+                 "Unknown": 0}
 
 
 def parse_time(value):
@@ -39,6 +40,19 @@ class OperationalItem:
     reason: str = ""
     suggested_action: str = ""
     evidence: dict = field(default_factory=dict)
+    deployment_id: str = ""
+    domain: str = ""
+    provider: str = ""
+    object_kind: str = ""
+    object_id: str = ""
+    cluster_id: str = ""
+    host_id: str = ""
+    workload_id: str = ""
+    confidence: str = ""
+    source_finding_id: str = ""
+    first_observed: str | None = None
+    last_observed: str | None = None
+    affected_service_ids: tuple[str, ...] = ()
     id: str = ""
 
     def __post_init__(self):
@@ -53,7 +67,9 @@ class OperationalItem:
             object.__setattr__(self, "id", "ops:" + hashlib.sha256(identity.encode()).hexdigest()[:20])
 
     def to_dict(self):
-        return asdict(self)
+        value = asdict(self)
+        value["affected_service_ids"] = list(self.affected_service_ids)
+        return value
 
 
 @dataclass

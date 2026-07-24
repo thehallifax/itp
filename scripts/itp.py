@@ -456,7 +456,8 @@ def main():
     create_parser = actions.add_parser("create"); create_parser.add_argument("profile")
     for name in ("validate", "status", "sites", "virtualisation-status",
                  "up", "down", "restart", "logs",
-                 "init-secrets", "dashboards", "services", "shell"):
+                 "init-secrets", "dashboards", "operations", "services",
+                 "wallboard", "shell"):
         item = actions.add_parser(name); item.add_argument("profile")
     virt = actions.add_parser("virtualisation")
     virt.add_argument("profile")
@@ -498,7 +499,7 @@ def main():
     elif args.action == "collect":
         compose(value, "exec", "collector", "python", "-m", "collectors",
                 "--profile", value.id, "collect", args.collector)
-    elif args.action in {"dashboards", "services"}:
+    elif args.action in {"dashboards", "operations", "services", "wallboard"}:
         compose(value, "exec", "collector", "python", "-m", "collectors",
                 "--profile", value.id, args.action, "generate")
 

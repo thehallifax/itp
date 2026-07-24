@@ -63,3 +63,15 @@ Copy only the required profile secret example, use a read-only account and keep
 TLS verification enabled. Unknown means evidence was insufficient, not that a
 workload is down. Inspect `runtime/<profile>/virtualisation/collection-status.json`
 for partial or permission-limited sections.
+
+Interpret `Unknown` as an observability limitation. Do not restart workloads
+because a manager is unreachable. Confirm direct host, storage and workload
+evidence first. Critical shared-storage or expected-running workload findings
+identify the evidence and affected canonical service; recommendations remain
+read-only operator guidance.
+
+For release evidence, run `scripts/render_wallboard_scenario.py` with `sbc`,
+`vmware`, `hyperv` or `proxmox`. Do not copy evidence output into
+`runtime/<profile>`: it is an isolated screenshot fixture, not production
+telemetry. The live dashboard is under **Operations → Operations Wallboard**
+at `/d/itp-operations-wallboard`.
