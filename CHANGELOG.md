@@ -7,14 +7,20 @@ All notable changes to ITP are documented in this file. The format follows
 
 ### Added
 
+- OOBE-001 Phase 1 cross-platform bootstrap wizard with safe template
+  generation, Docker and port checks, Compose validation, optional startup,
+  service-health waiting, and unattended operation.
 - OPS-008 Phase 1 canonical snapshots, deterministic field-level change
   detection, stable change identifiers, atomic filesystem storage, and
   config-independent CLI processing.
+- OPS-008 Phase 2 opt-in pipeline capture with explicit completeness,
+  source/site isolation, removal suppression, atomic latest-pointer rollback,
+  idempotent run results, and capture inspection CLI.
 
 ### Planned
 
-- OPS-008 Phase 2 scheduled capture, bounded retention/recovery, history
-  queries, and operational state-transition inputs.
+- OPS-008 Phase 3 bounded retention, history queries, and operational
+  state-transition inputs.
 
 ## 0.2.0-alpha.2
 

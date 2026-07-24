@@ -20,7 +20,11 @@ from analysis.sites import SiteRegistry
 from analysis.wallboard import WallboardEngine
 from analysis.dashboards import DashboardRegistry, FOLDERS
 from analysis.services import ServiceHealthEngine, ServiceEvaluator
-from analysis.state_history import FileStateStore, StateHistoryEngine
+from analysis.state_history import (
+    FileStateStore,
+    PipelineStateCapture,
+    StateHistoryEngine,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -164,18 +168,40 @@ async def _run(args):
         for name in CollectorRegistry.names(): print(name)
         return
     if args.command == "state-history":
+        store = FileStateStore(args.store)
+        if args.action == "inspect-run":
+            result = store.capture_result(args.run_id)
+            if result is None:
+                raise ValueError(f"state-history run not found: {args.run_id}")
+            payload = result.to_dict()
+            if args.json:
+                print(json.dumps(payload, indent=2, sort_keys=True))
+            else:
+                print(f"Run {result.run_id}: {result.status}; "
+                      f"{payload['change_count']} change(s)")
+            return
         try:
             payload = json.loads(Path(args.input).read_text())
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f"invalid state-history input {args.input}: {exc}") from exc
-        result = StateHistoryEngine(
-            FileStateStore(args.store)).process_payload(
+        engine = StateHistoryEngine(store)
+        if args.action == "capture-run":
+            try:
+                run_payload = json.loads(Path(args.run_metadata).read_text())
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    f"invalid pipeline run metadata {args.run_metadata}: {exc}") from exc
+            result = engine.capture_payload(
+                run_payload, payload, removal_policy=args.removal_policy)
+            output = result.to_dict()
+        else:
+            output = engine.process_payload(
                 payload, observed_at=args.observed_at)
         if args.json:
-            print(json.dumps(result, indent=2, sort_keys=True))
+            print(json.dumps(output, indent=2, sort_keys=True))
         else:
-            print(f"Persisted {len(result['snapshots'])} canonical snapshot(s); "
-                  f"detected {result['change_count']} change(s)")
+            print(f"Persisted {len(output['snapshots'])} canonical snapshot(s); "
+                  f"detected {output['change_count']} change(s)")
         return
     config = load_config(args.config)
     if args.command == "validate":
@@ -422,6 +448,7 @@ async def _run(args):
     infrastructure_settings = config.get("infrastructure", {})
     wallboard_settings = config.get("wallboard", {})
     services_settings = config.get("services", {})
+    state_history = PipelineStateCapture(config.get("state_history", {}))
     dashboard_registry = DashboardRegistry(ROOT, config,
         os.getenv("DASHBOARD_MANAGED_OUTPUT", str(ROOT / "runtime/dashboard/managed")),
         os.getenv("DASHBOARD_PROVISIONING",
@@ -482,6 +509,7 @@ async def _run(args):
                     service_health_engine=service_health,
                     wallboard_engine=wallboard,
                     dashboard_registry=dashboard_registry,
+                    state_history_capture=state_history,
                     operations_interval=operations_settings.get("interval_seconds", 300)).run()
 
 
@@ -524,14 +552,26 @@ def main():
     dashboards.add_argument("action", choices=("generate", "status"), default="generate", nargs="?")
     dashboards.add_argument("--json", action="store_true")
     history = sub.add_parser("state-history")
-    history.add_argument("action", choices=("process",), default="process", nargs="?")
-    history.add_argument("--input", required=True)
+    history.add_argument("action", choices=("process", "capture-run", "inspect-run"),
+                         default="process", nargs="?")
+    history.add_argument("--input")
     history.add_argument("--store", required=True)
     history.add_argument("--observed-at")
+    history.add_argument("--run-metadata")
+    history.add_argument("--run-id")
+    history.add_argument("--removal-policy", choices=("complete_only", "disabled"),
+                         default="complete_only")
     history.add_argument("--json", action="store_true")
     paloalto = sub.add_parser("paloalto")
     paloalto.add_argument("action", choices=("validate", "discover", "run"))
     args = parser.parse_args()
+    if args.command == "state-history":
+        if args.action in ("process", "capture-run") and not args.input:
+            parser.error(f"state-history {args.action} requires --input")
+        if args.action == "capture-run" and not args.run_metadata:
+            parser.error("state-history capture-run requires --run-metadata")
+        if args.action == "inspect-run" and not args.run_id:
+            parser.error("state-history inspect-run requires --run-id")
     if args.command == "state-history":
         # Canonical fixture/history processing is deliberately independent of
         # deployment configuration and any inherited ITP_PROFILE value.

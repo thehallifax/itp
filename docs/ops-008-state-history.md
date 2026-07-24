@@ -1,6 +1,6 @@
-# OPS-008 Phase 1 — State History and Change Detection
+# OPS-008 — State History and Safe Pipeline Capture
 
-OPS-008 Phase 1 adds deterministic history for canonical platform state. It
+Phase 1 adds deterministic history for canonical platform state. It
 persists observations, compares each site/domain scope with its previous
 snapshot, and emits exact changes without reading raw vendor payloads.
 
@@ -98,9 +98,15 @@ writes:
   snapshots/<snapshot_id>.json
   changes/<change_set_id>.json
   latest/<scope_id>.json
+  runs/<pipeline_run_id_hash>.json
 ```
 
-Every file uses the platform atomic-write helper. An empty directory is valid,
+Every file uses the platform atomic-write helper. Phase 2 writes all immutable
+snapshots and change sets before advancing any latest pointer. If a later
+pointer or run-result write fails, all affected pointers are restored. Orphaned
+immutable files are harmless and reusable because identifiers are stable.
+Repeating a completed `run_id` returns its persisted result without advancing
+history again. An empty directory is valid,
 and the first observation emits `entity_added` records. Runtime stores belong
 under ignored `runtime/`; tests use temporary directories. A future SQLite or
 PostgreSQL store can implement the same interface without changing comparison.
@@ -121,6 +127,55 @@ Use `--observed-at 2026-07-24T01:00:00Z` when a fixture has no canonical
 timestamp. Invalid JSON, missing timestamps, missing stable identities, and
 unsupported document shapes return a non-zero exit status.
 
+Capture a canonical output with explicit pipeline metadata:
+
+```sh
+python -m collectors state-history capture-run \
+  --input runtime/infrastructure/state.json \
+  --run-metadata runtime/pipeline-run.json \
+  --store runtime/state-history --json
+
+python -m collectors state-history inspect-run \
+  --run-id pipeline-20260724-01 --store runtime/state-history --json
+```
+
+## Phase 2 capture contract
+
+`PipelineRun` records run identity, timestamps, status, canonical output, and
+site/domain coverage. Every `ObservationScope` records expected, observed,
+failed, and skipped sources/providers plus one explicit completeness value:
+`complete`, `partial`, `failed`, `skipped`, or `unknown`. `CaptureResult`
+records the immutable outcome and suppression counts.
+
+Only a `complete` site/domain scope is authoritative for removals. Partial,
+failed, skipped, and unknown scopes may still emit additions and field/status
+changes from observed entities, but prior unseen entities are carried forward.
+A non-authoritative scope with no observed entities does not advance its latest
+pointer. This conservative authority boundary prevents a failed provider or
+site from deleting state supplied by another provider or site.
+
+Pipeline capture is disabled by default:
+
+```yaml
+state_history:
+  enabled: false
+  store_path: /app/runtime/state-history
+  removal_policy: complete_only
+  volatile_fields_policy: default
+  expected_sources: []
+```
+
+Enabling capture without `expected_sources` is safe: scopes are `partial` or
+`unknown` and removals remain suppressed. Configure the full expected-source
+contract before granting completeness. `removal_policy: disabled` suppresses
+removals regardless of completeness.
+
+Capture runs after the infrastructure canonical document and all other
+operational derivatives have been written successfully. A canonical pipeline
+failure prevents capture. A history persistence failure is logged clearly as
+`state_history result=degraded`, while the already-valid canonical pipeline
+remains successful; retrying the same deterministic run is safe.
+
 ## Boundary to future events
 
 An observation is source evidence. A state change is a factual difference
@@ -128,7 +183,5 @@ between canonical observations. Neither is an alert event. Alert policy,
 delivery, acknowledgement, deduplication windows, user rules, scheduling,
 retention pruning, trends, and forecasting remain outside Phase 1.
 
-OPS-008 Phase 2 should schedule history capture after successful canonical
-generation, define bounded retention and recovery semantics, expose history
-queries, and add state-transition inputs for operational rules without turning
-changes directly into alerts.
+Scheduled collection, retention/pruning, alerting, operational-rule inputs,
+database storage, dashboards, and trend analysis remain future work.

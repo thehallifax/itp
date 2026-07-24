@@ -4,12 +4,16 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from .models import (
+    CaptureResult,
     ChangeSet,
     EntityState,
     Observation,
+    ObservationCompleteness,
+    PipelineRun,
     StateChange,
     StateSnapshot,
 )
@@ -182,6 +186,16 @@ def observation_from_payload(payload, observed_at=None):
     )
 
 
+def pipeline_run_from_payload(payload):
+    """Validate and normalize explicit pipeline-run completeness metadata."""
+    run = PipelineRun.from_dict(payload)
+    return replace(
+        run,
+        started_at=_iso(run.started_at, "pipeline start"),
+        completed_at=_iso(run.completed_at, "pipeline completion"),
+    )
+
+
 class StateHistoryEngine:
     """Compare canonical snapshots and persist deterministic change sets."""
 
@@ -209,12 +223,19 @@ class StateHistoryEngine:
             return values
         return value
 
-    def _snapshot(self, observation, site_id, domain):
-        entities = tuple(
+    def _snapshot(self, observation, site_id, domain, *, run_id="",
+                  completeness=ObservationCompleteness.COMPLETE.value,
+                  warning_details=(), carried_entities=()):
+        observed = tuple(
             EntityState(**{**entity.to_dict(),
                 "state": self._normalise(entity.state)})
             for entity in observation.entities
             if (entity.site_id, entity.domain) == (site_id, domain))
+        values = {(entity.entity_type, entity.entity_id): entity
+                  for entity in carried_entities}
+        values.update({(entity.entity_type, entity.entity_id): entity
+                       for entity in observed})
+        entities = tuple(values[key] for key in sorted(values))
         material = {
             "schema_version": observation.schema_version,
             "site_id": site_id, "domain": domain,
@@ -222,6 +243,11 @@ class StateHistoryEngine:
             "collected_at": observation.collected_at,
             "entities": [entity.to_dict() for entity in entities],
         }
+        if run_id:
+            material.update({
+                "run_id": run_id, "completeness": completeness,
+                "warning_details": list(warning_details),
+            })
         sources = sorted({entity.source for entity in entities if entity.source})
         providers = sorted({entity.provider for entity in entities if entity.provider})
         return StateSnapshot(
@@ -234,6 +260,8 @@ class StateHistoryEngine:
             provider=(providers[0] if len(providers) == 1 else
                       "multiple" if providers else observation.provider),
             schema_version=observation.schema_version,
+            run_id=run_id, completeness=completeness,
+            warning_details=tuple(warning_details),
         )
 
     @staticmethod
@@ -299,7 +327,8 @@ class StateHistoryEngine:
         return [self._change(
             previous, current, entity, change_type, dotted, old, new)]
 
-    def compare(self, previous, current):
+    def compare(self, previous, current, *, run_id="", completeness=None,
+                removals_suppressed=0):
         old = {} if previous is None else {
             (entity.entity_type, entity.entity_id): entity
             for entity in previous.entities}
@@ -334,6 +363,9 @@ class StateHistoryEngine:
             site_id=current.site_id, domain=current.domain,
             observed_at=current.observed_at, changes=changes,
             schema_version=current.schema_version,
+            run_id=run_id,
+            completeness=completeness or current.completeness,
+            removals_suppressed=removals_suppressed,
         )
 
     def process(self, observation):
@@ -342,10 +374,8 @@ class StateHistoryEngine:
             current = self._snapshot(observation, site_id, domain)
             previous = self.store.latest(site_id, domain)
             changes = self.compare(previous, current)
-            self.store.write_snapshot(current)
-            self.store.write_change_set(changes)
-            self.store.set_latest(current)
             snapshots.append(current); change_sets.append(changes)
+        self.store.commit_batch(tuple(zip(snapshots, change_sets)))
         return {
             "schema_version": 1,
             "observed_at": observation.observed_at,
@@ -356,3 +386,119 @@ class StateHistoryEngine:
 
     def process_payload(self, payload, observed_at=None):
         return self.process(observation_from_payload(payload, observed_at))
+
+    def capture(self, run, observation, *, removal_policy="complete_only"):
+        """Capture one successful run using explicit scope authority."""
+        if removal_policy not in {"complete_only", "disabled"}:
+            raise ValueError(f"unsupported removal policy: {removal_policy}")
+        if not isinstance(run, PipelineRun):
+            raise ValueError("capture requires PipelineRun metadata")
+        existing = self.store.capture_result(run.run_id)
+        if existing is not None:
+            return existing
+        if run.status != "success":
+            material = {"run": run.to_dict(), "status": "skipped"}
+            return CaptureResult(
+                capture_id=_hash("capture:", material), run_id=run.run_id,
+                status="skipped", pipeline_run=run.to_dict(),
+                warning_details=tuple(sorted(set(
+                    (*run.warning_details,
+                     f"pipeline status {run.status} prevents state capture")))))
+
+        metadata = {scope.authority: scope for scope in run.scopes}
+        observed_authorities = set(observation.scopes)
+        undeclared = observed_authorities - set(metadata)
+        if undeclared:
+            raise ValueError(
+                "pipeline metadata is missing observed scope(s): " +
+                ", ".join(f"{site}/{domain}" for site, domain in sorted(undeclared)))
+
+        entries = []; scope_results = []; warnings = set(run.warning_details)
+        for authority in sorted(metadata):
+            site_id, domain = authority
+            scope = metadata[authority]
+            previous = self.store.latest(site_id, domain)
+            observed_entities = tuple(
+                entity for entity in observation.entities
+                if (entity.site_id, entity.domain) == authority)
+            authoritative = (
+                removal_policy == "complete_only"
+                and scope.completeness ==
+                ObservationCompleteness.COMPLETE.value)
+            prior_entities = () if previous is None else previous.entities
+            observed_ids = {
+                (entity.entity_type, entity.entity_id)
+                for entity in observed_entities}
+            missing = tuple(
+                entity for entity in prior_entities
+                if (entity.entity_type, entity.entity_id) not in observed_ids)
+            suppressed = 0 if authoritative else len(missing)
+            warnings.update(scope.warning_details)
+
+            if not authoritative and not observed_entities:
+                scope_results.append({
+                    **scope.to_dict(), "captured": False,
+                    "removal_authoritative": False,
+                    "removals_suppressed": suppressed,
+                    "previous_snapshot_id": (
+                        previous.snapshot_id if previous else None),
+                    "current_snapshot_id": None,
+                    "change_set_id": None, "change_count": 0,
+                })
+                continue
+
+            current = self._snapshot(
+                observation, site_id, domain, run_id=run.run_id,
+                completeness=scope.completeness,
+                warning_details=scope.warning_details,
+                carried_entities=missing if not authoritative else ())
+            change_set = self.compare(
+                previous, current, run_id=run.run_id,
+                completeness=scope.completeness,
+                removals_suppressed=suppressed)
+            entries.append((current, change_set))
+            scope_results.append({
+                **scope.to_dict(), "captured": True,
+                "removal_authoritative": authoritative,
+                "removals_suppressed": suppressed,
+                "previous_snapshot_id": (
+                    previous.snapshot_id if previous else None),
+                "current_snapshot_id": current.snapshot_id,
+                "change_set_id": change_set.change_set_id,
+                "change_count": len(change_set.changes),
+            })
+
+        degraded = any(
+            scope.completeness != ObservationCompleteness.COMPLETE.value
+            for scope in run.scopes)
+        snapshots = tuple(snapshot.to_dict() for snapshot, _ in entries)
+        change_sets = tuple(change_set.to_dict() for _, change_set in entries)
+        material = {
+            "run": run.to_dict(), "scope_results": scope_results,
+            "snapshots": snapshots, "change_sets": change_sets,
+        }
+        result = CaptureResult(
+            capture_id=_hash("capture:", material), run_id=run.run_id,
+            status="degraded" if degraded else "captured",
+            pipeline_run=run.to_dict(),
+            scope_results=tuple(scope_results), snapshots=snapshots,
+            change_sets=change_sets,
+            warning_details=tuple(sorted(warnings)),
+        )
+        self.store.commit_batch(entries, result)
+        return result
+
+    def capture_payload(self, run_payload, state_payload, *,
+                        removal_policy="complete_only"):
+        run = pipeline_run_from_payload(run_payload)
+        observation = observation_from_payload(
+            state_payload, observed_at=run.completed_at)
+        # Explicit expected scopes remain visible even when a failed/skipped
+        # source produced no entities in the canonical document.
+        observation = replace(
+            observation,
+            scopes=tuple(sorted(
+                set(observation.scopes)
+                | {scope.authority for scope in run.scopes})))
+        return self.capture(
+            run, observation, removal_policy=removal_policy)
