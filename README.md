@@ -37,6 +37,10 @@ See the plain-language [getting-started guide](docs/getting-started.md),
 [deployment models](docs/deployment-models.md) and the
 [operator guide](docs/operator-guide.md).
 
+Optional read-only [virtualisation intelligence](docs/virtualisation.md)
+normalises VMware, Hyper-V and Proxmox estates without exposing provider
+objects directly to operational dashboards.
+
 ## Quick start
 
 ```sh

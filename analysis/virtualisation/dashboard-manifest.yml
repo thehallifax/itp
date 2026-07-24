@@ -1,0 +1,10 @@
+collector: virtualisation
+version: 1
+capabilities: [compute, storage, telemetry, virtualisation]
+requires: []
+dashboards:
+  - uid: itp-virtualisation-overview
+    source: dashboards/Virtualisation/virtualisation-overview.json
+    folder: Virtualisation
+    tags: [virtualisation, compute, capacity]
+    requires_capabilities: [virtualisation]

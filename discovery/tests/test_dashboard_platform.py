@@ -19,7 +19,7 @@ def registry(tmp_path, enabled):
 def test_manifests_are_complete_unique_and_future_extensible(tmp_path):
     value = registry(tmp_path, {}).manifests()
     assert [item.collector for item in value] == [
-        "fortigate", "mist", "paloalto", "platform", "snmp"]
+        "fortigate", "mist", "paloalto", "platform", "snmp", "virtualisation"]
     assert all(item.version == 1 for item in value)
     assert all(item.path.name in {"dashboard-manifest.yml", "platform-manifest.yml"}
                for item in value)
@@ -73,7 +73,7 @@ def test_normalized_provisioning_has_fixed_unique_folders(tmp_path):
     provision = yaml.safe_load((tmp_path / "dashboards.yml").read_text())
     providers = provision["providers"]
     assert [item["folder"] for item in providers] == list(FOLDERS)
-    assert len({item["folderUid"] for item in providers}) == len(FOLDERS) == 8
+    assert len({item["folderUid"] for item in providers}) == len(FOLDERS) == 9
     assert all(item["allowUiUpdates"] is False for item in providers)
     assert all("/runtime-dashboard/managed/" in item["options"]["path"]
                for item in providers)

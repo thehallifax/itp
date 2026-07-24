@@ -71,6 +71,6 @@ def test_provisioning_creates_fixed_operational_folders():
     )
     providers = config["providers"]
     expected = {"Operations", "Infrastructure", "Security", "Wireless", "Printing",
-                "Compute", "Identity", "Vendor"}
+                "Compute", "Identity", "Virtualisation", "Vendor"}
     assert {provider["folder"] for provider in providers} == expected
     assert all(provider["folderUid"].startswith("itp-folder-") for provider in providers)

@@ -1,0 +1,339 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Estate Summary",
+      "type": "table",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT provider, COUNT(*) AS workloads FROM virtualisation_workload WHERE deployment_id = ${deployment:sqlstring} AND site_id LIKE ${site:sqlstring} GROUP BY provider ORDER BY provider",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Cluster Health",
+      "type": "table",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT time, provider, site_id, name AS cluster_name, health, ha_status, cpu_utilisation_percent, memory_utilisation_percent FROM virtualisation_cluster WHERE deployment_id = ${deployment:sqlstring} AND site_id LIKE ${site:sqlstring} AND provider LIKE ${provider:sqlstring} ORDER BY time DESC",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Host Capacity",
+      "type": "table",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT time, provider, name AS host_name, connection_state, maintenance, cpu_utilisation_percent, memory_utilisation_percent, workload_count, uptime_seconds FROM virtualisation_host WHERE deployment_id = ${deployment:sqlstring} AND site_id LIKE ${site:sqlstring} AND provider LIKE ${provider:sqlstring} AND cluster_id LIKE ${cluster:sqlstring} ORDER BY time DESC",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Workload Inventory",
+      "type": "table",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT time, name, workload_type, provider, cluster_id, host_id, state, vcpu, memory_bytes, guest_agent_state, snapshot_count, oldest_snapshot_age_days FROM virtualisation_workload WHERE deployment_id = ${deployment:sqlstring} AND site_id LIKE ${site:sqlstring} AND provider LIKE ${provider:sqlstring} AND cluster_id LIKE ${cluster:sqlstring} AND host_id LIKE ${host:sqlstring} AND state LIKE ${workload_state:sqlstring} ORDER BY name",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Storage",
+      "type": "table",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT time, name, provider, scope, capacity_bytes, used_bytes, free_bytes, utilisation_percent, accessible FROM virtualisation_storage WHERE deployment_id = ${deployment:sqlstring} AND site_id LIKE ${site:sqlstring} AND provider LIKE ${provider:sqlstring} ORDER BY utilisation_percent DESC",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Snapshot / Checkpoint Governance",
+      "type": "table",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT time, workload_id, provider, snapshot_type, age_days, accessible FROM virtualisation_snapshot WHERE deployment_id = ${deployment:sqlstring} AND site_id LIKE ${site:sqlstring} AND provider LIKE ${provider:sqlstring} ORDER BY age_days DESC",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Collection Health",
+      "type": "table",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT time, provider, endpoint_id, result, partial, duration_ms, diagnostic_category FROM virtualisation_collection WHERE deployment_id = ${deployment:sqlstring} AND provider LIKE ${provider:sqlstring} ORDER BY time DESC",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      }
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 42,
+  "tags": [
+    "itp",
+    "itp-managed",
+    "virtualisation"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "deployment",
+        "label": "Deployment",
+        "type": "custom",
+        "query": "legacy",
+        "current": {
+          "text": "legacy",
+          "value": "legacy"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "legacy",
+            "value": "legacy"
+          }
+        ]
+      },
+      {
+        "name": "site",
+        "label": "Site",
+        "type": "custom",
+        "query": "All Sites : %",
+        "current": {
+          "text": "All Sites",
+          "value": "%"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "All Sites",
+            "value": "%"
+          }
+        ]
+      },
+      {
+        "name": "provider",
+        "label": "Provider",
+        "type": "custom",
+        "query": "All : %,VMware : vmware,Hyper-V : hyperv,Proxmox : proxmox",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "%"
+          }
+        ]
+      },
+      {
+        "name": "manager",
+        "label": "Manager",
+        "type": "custom",
+        "query": "All : %",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "%"
+          }
+        ]
+      },
+      {
+        "name": "cluster",
+        "label": "Cluster",
+        "type": "custom",
+        "query": "All : %",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "%"
+          }
+        ]
+      },
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "custom",
+        "query": "All : %",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "%"
+          }
+        ]
+      },
+      {
+        "name": "workload_state",
+        "label": "Workload State",
+        "type": "custom",
+        "query": "All : %,Running : running,Stopped : stopped,Paused : paused,Suspended : suspended,Saved : saved,Unknown : unknown",
+        "current": {
+          "text": "All",
+          "value": "%"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "%"
+          }
+        ]
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Virtualisation Overview",
+  "uid": "itp-virtualisation-overview",
+  "version": 1
+}

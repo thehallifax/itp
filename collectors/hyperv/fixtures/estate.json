@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-07-24T00:00:00Z",
+  "provider": "hyperv",
+  "manager": {"id": "hv-manager", "name": "Example Hyper-V Management", "version": "fixture", "reachable": true},
+  "clusters": [{"id": "hv-cluster", "name": "Example Failover Cluster", "total_host_count": 2, "enabled_host_count": 1, "degraded_host_count": 1, "maintenance_host_count": 0, "ha_status": "enabled", "health": "warning"}],
+  "hosts": [
+    {"id": "hv-1", "name": "hv-a.example.invalid", "cluster_id": "hv-cluster", "platform_version": "Windows Server", "connection_state": "connected", "maintenance": false, "logical_processor_count": 32, "memory_total_bytes": 137438953472, "memory_used_bytes": 68719476736, "vm_count": 2, "running_vm_count": 1, "health": "healthy"},
+    {"id": "hv-2", "name": "hv-b.example.invalid", "cluster_id": "hv-cluster", "platform_version": "Windows Server", "connection_state": "not_responding", "maintenance": false, "logical_processor_count": 32, "memory_total_bytes": 137438953472, "memory_used_bytes": 34359738368, "vm_count": 0, "running_vm_count": 0, "health": "critical"}
+  ],
+  "vms": [
+    {"id": "vm-guid-1", "name": "Example Domain Service", "cluster_id": "hv-cluster", "host_id": "hv-1", "state": "Running", "vcpu": 4, "memory_bytes": 8589934592, "guest_agent_state": "healthy", "replication_state": "Replicating", "storage_ids": ["csv-1"]},
+    {"id": "vm-guid-2", "name": "Example Legacy Service", "cluster_id": "hv-cluster", "host_id": "hv-1", "state": "Off", "vcpu": 2, "memory_bytes": 4294967296, "guest_agent_state": "missing", "storage_ids": ["csv-1"]}
+  ],
+  "containers": [],
+  "storage": [{"id": "csv-1", "name": "Example CSV", "cluster_id": "hv-cluster", "storage_type": "cluster_shared_volume", "scope": "cluster", "capacity_bytes": 2199023255552, "used_bytes": 1099511627776, "free_bytes": 1099511627776, "accessible": true, "shared": true}],
+  "networks": [{"id": "switch-1", "name": "Example External Switch", "network_type": "external", "connected_workload_count": 2}],
+  "snapshots": [{"id": "checkpoint-1", "workload_id": "vm-guid-1", "name": "Approved Checkpoint", "snapshot_type": "checkpoint", "created_at": "2025-06-01T00:00:00Z", "accessible": true}],
+  "diagnostics": [{"section": "standalone-host", "category": "unsupported", "message": "FailoverClusters module absent on standalone fixture"}, {"section": "remoting", "category": "timeout", "message": "Sanitized remoting failure fixture"}]
+}

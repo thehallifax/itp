@@ -76,3 +76,28 @@ class PaloAltoAdapter(CollectorAdapter):
 
 class SNMPAdapter(CollectorAdapter):
     name = "snmp"; collector = "snmp"; priority = 100
+
+
+class VirtualisationAdapter(SignalAdapter):
+    name = "virtualisation"; priority = 200
+
+    def collect(self):
+        payload = _read(self.inventory_dir.parent / "virtualisation/assets.json",
+                        {"assets": []})
+        assets = [dict(value) for value in payload.get("assets", [])]
+        status = _read(self.inventory_dir.parent /
+                       "virtualisation/collection-status.json", {"collections": []})
+        values = status.get("collections", [])
+        collectors = [] if not values else [{
+            "collector": "virtualisation",
+            "last_run": max((value.get("last_attempt") or "" for value in values), default=None),
+            "last_successful_run": max(
+                (value.get("last_success") or "" for value in values), default=None),
+            "duration_ms": sum(int(value.get("duration_ms") or 0) for value in values),
+            "status": "failed" if any(value.get("result") == "failed" for value in values)
+                else "warning" if any(value.get("partial") for value in values)
+                else "healthy",
+            "failures": sum(value.get("result") == "failed" for value in values),
+        }]
+        return AdapterResult(self.name, self.priority, assets=assets,
+                             collectors=collectors)

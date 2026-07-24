@@ -95,3 +95,7 @@ interface-counter, subscription, content-package, certificate, and collector
 diagnostic telemetry. Run `python -m collectors dashboards generate` after
 collector or dashboard upgrades; managed files remain replaceable and preserve
 the stable `paloalto-operational-overview` UID.
+
+The conditional **Virtualisation / Virtualisation Overview** dashboard is
+provisioned only when virtualisation is enabled for the active profile. It uses
+canonical `virtualisation_*` FlightSQL measurements and never calls vendor APIs.
