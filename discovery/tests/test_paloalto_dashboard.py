@@ -1,11 +1,15 @@
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
+
+from analysis.dashboards import DashboardRegistry
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/generate_paloalto_dashboard.py"
-OUTPUT = ROOT / "runtime/dashboard/grafana/paloalto-overview.json"
+SOURCE = ROOT / "dashboards/vendor/paloalto-overview.json"
 DATASOURCE_UID = "ffsu5ap2kr5dse"
 
 
@@ -15,7 +19,14 @@ def module():
     return value
 
 
-def test_dashboard_is_classic_stable_and_runtime_provisioned():
+def generate(path):
+    subprocess.run(
+        [sys.executable, str(SCRIPT), "--output", str(path)],
+        check=True, capture_output=True, text=True)
+    return json.loads(path.read_text())
+
+
+def test_dashboard_is_classic_stable_and_runtime_provisioned(tmp_path):
     dashboard = module().build()
     assert dashboard["uid"] == "paloalto-operational-overview"
     assert dashboard["schemaVersion"] == 41
@@ -23,8 +34,7 @@ def test_dashboard_is_classic_stable_and_runtime_provisioned():
     assert "elements" not in dashboard and "layout" not in dashboard
     provision = (ROOT / "grafana/provisioning/dashboards/dashboards.yml").read_text()
     assert "/var/lib/grafana/runtime-dashboard/managed/vendor" in provision
-    assert OUTPUT.exists()
-    assert json.loads(OUTPUT.read_text()) == dashboard
+    assert generate(tmp_path / "runtime/dashboard/grafana/paloalto-overview.json") == dashboard
 
 
 def test_every_live_target_uses_confirmed_flightsql_contract():
@@ -120,9 +130,14 @@ def test_string_stats_render_confirmed_canonical_fields_without_reduction():
 
 def test_generated_managed_dashboard_matches_source(tmp_path):
     dashboard = module().build()
-    source = json.loads((ROOT / "dashboards/Vendor/paloalto-overview.json").read_text())
-    runtime = json.loads(OUTPUT.read_text())
-    managed_path = ROOT / "runtime/dashboard/managed/vendor/paloalto-operational-overview.json"
+    source = json.loads(SOURCE.read_text())
+    runtime = generate(tmp_path / "runtime/dashboard/grafana/paloalto-overview.json")
+    managed_root = tmp_path / "runtime/dashboard/managed"
+    DashboardRegistry(
+        ROOT, {"collectors": {"paloalto": {"enabled": True}}},
+        managed_root, tmp_path / "runtime/dashboard/provisioning/dashboards.yml",
+    ).generate()
+    managed_path = managed_root / "vendor/paloalto-operational-overview.json"
     managed = json.loads(managed_path.read_text())
 
     assert source == dashboard

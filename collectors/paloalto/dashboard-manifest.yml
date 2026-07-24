@@ -8,7 +8,7 @@ capabilities:
 requires: []
 dashboards:
   - uid: paloalto-operational-overview
-    source: dashboards/Vendor/paloalto-overview.json
+    source: dashboards/vendor/paloalto-overview.json
     folder: Vendor
     tags: [paloalto, firewall]
     requires_capabilities: [firewall]

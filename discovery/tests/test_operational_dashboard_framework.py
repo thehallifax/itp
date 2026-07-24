@@ -50,11 +50,11 @@ def test_overview_contains_required_operational_panels_and_honest_placeholders()
 
 def test_vendor_dashboards_retain_titles_uids_and_classic_schema():
     expected = {
-        "Vendor/mist-infrastructure-overview.json":
+        "vendor/mist-infrastructure-overview.json":
             ("Mist Infrastructure Overview", "mist-infrastructure-overview"),
-        "Vendor/fortigate-overview.json":
+        "vendor/fortigate-overview.json":
             ("FortiGate Infrastructure Overview", "fortigate-infrastructure-overview"),
-        "Vendor/paloalto-overview.json":
+        "vendor/paloalto-overview.json":
             ("Palo Alto Operational Overview", "paloalto-operational-overview"),
     }
     for relative, (title, uid) in expected.items():
