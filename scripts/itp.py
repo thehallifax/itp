@@ -20,6 +20,14 @@ sys.path.insert(0, str(ROOT))
 
 from analysis.dashboards import DashboardRegistry
 from analysis.sites import SiteRegistry
+from analysis.virtualisation import VirtualisationEngine
+from analysis.virtualisation.config import validate_virtualisation
+from analysis.virtualisation.renderer import render as render_virtualisation
+from analysis.virtualisation.telemetry import points as virtualisation_points
+from collectors.vmware.client import VMwareClient
+from collectors.proxmox.client import ProxmoxClient
+from collectors.hyperv.runner import LocalPowerShellRunner
+from collectors.writer import InfluxWriter
 from collectors.config import load_config
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
 from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
@@ -111,6 +119,12 @@ def validate(value):
     check("Sites", bool(sites.sites) and not findings,
           f"{len(sites.sites)} canonical site(s), model={sites.deployment_model}, "
           f"{len(findings)} conflict(s)")
+    try:
+        virtualisation = validate_virtualisation(config, value.paths.sites, ROOT)
+        check("Virtualisation", True,
+              f"{len(virtualisation)} enabled endpoint(s)" if virtualisation else "not enabled")
+    except ValueError as exc:
+        check("Virtualisation", False, str(exc))
     enabled = sorted(name for name, settings in config.get("collectors", {}).items()
                      if isinstance(settings, dict) and settings.get("enabled"))
     check("Collectors", bool(enabled), ", ".join(enabled) or "none enabled")
@@ -215,6 +229,98 @@ def sites_status(value):
             print(f"  {finding['type']}: {finding.get('site_id') or finding.get('alias')}")
         raise ProfileError(f"profile {value.id} site hierarchy is invalid")
     print("Status: valid")
+
+
+def virtualisation(value, *, fixture=None, provider_name=None):
+    config = load_config(value.paths.discovery)
+    sites = SiteRegistry.load(value.paths.sites)
+    if not sites.sites:
+        raise ProfileError("virtualisation requires at least one enabled canonical site")
+    selected = fixture or provider_name
+    if selected not in {"vmware", "hyperv", "proxmox"}:
+        raise ProfileError("select --fixture or --provider: vmware, hyperv, or proxmox")
+    if not fixture:
+        endpoints = [item for item in validate_virtualisation(
+            config, value.paths.sites, ROOT) if item["provider"] == selected]
+        if not endpoints:
+            raise ProfileError(f"no enabled {selected} endpoint is configured")
+        contracts = []
+        for endpoint in endpoints:
+            if selected == "vmware":
+                username = os.getenv(endpoint.get("username_env", "VMWARE_USERNAME"), "")
+                password = os.getenv(endpoint.get("password_env", "VMWARE_PASSWORD"), "")
+                if not username or not password:
+                    raise ProfileError("VMware read-only credentials are unavailable")
+                verify = endpoint.get("ca_bundle") or endpoint.get("verify_tls", True)
+                contract = VMwareClient(endpoint["endpoint"], username, password,
+                    verify=verify, timeout=float(endpoint.get("timeout_seconds", 20))).collect()
+            elif selected == "proxmox":
+                token_id = os.getenv(endpoint.get("token_id_env", "PROXMOX_TOKEN_ID"), "")
+                token_secret = os.getenv(
+                    endpoint.get("token_secret_env", "PROXMOX_TOKEN_SECRET"), "")
+                if not token_id or not token_secret:
+                    raise ProfileError("Proxmox read-only API token is unavailable")
+                verify = endpoint.get("ca_bundle") or endpoint.get("verify_tls", True)
+                contract = ProxmoxClient(endpoint["endpoint"], token_id, token_secret,
+                    verify=verify, timeout=float(endpoint.get("timeout_seconds", 20))).collect()
+            else:
+                if endpoint.get("transport") != "local_powershell":
+                    raise ProfileError(
+                        "Hyper-V live collection must run on an authorised Windows "
+                        "management host using local_powershell")
+                contract = LocalPowerShellRunner(
+                    ROOT / "collectors/hyperv/Collect-ITPHyperV.ps1").run()
+            contracts.append((selected, endpoint["endpoint"], contract,
+                              endpoint["site_id"]))
+    output = value.paths.runtime / "virtualisation"
+    if fixture:
+        output = output / "fixtures" / selected
+    engine = VirtualisationEngine(
+        ROOT, output, value.deployment_id,
+        sites.sites[0].site_id,
+        (config.get("virtualisation") or {}).get("thresholds"))
+    if fixture:
+        result = engine.run_fixture(selected)
+    else:
+        result = render_virtualisation(output, engine.evaluate(contracts))
+        written = InfluxWriter().write(virtualisation_points(result))
+        print(f"Telemetry points written: {written}")
+    print(f"Profile: {value.id}")
+    print(f"Provider: {selected}")
+    print("Mode: " + ("sanitized fixture" if fixture else "live read-only"))
+    print(f"Runtime: {output}")
+    print("Objects: " + ", ".join(
+        f"{key}={result['summary'][key]}" for key in
+        ("managers", "clusters", "hosts", "vms", "containers")))
+    print(f"Findings: warnings={result['summary']['warnings']} "
+          f"critical={result['summary']['critical_findings']}")
+
+
+def virtualisation_status(value):
+    path = value.paths.runtime / "virtualisation"
+    try:
+        summary = json.loads((path / "summary.json").read_text())
+        collection = json.loads((path / "collection-status.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        fixtures = sorted((path / "fixtures").glob("*/summary.json"))
+        if not fixtures:
+            raise ProfileError("no generated virtualisation state; run virtualisation collection")
+        print(f"Profile: {value.id}")
+        print("Live virtualisation state: not generated")
+        for fixture_path in fixtures:
+            summary = json.loads(fixture_path.read_text())
+            print(f"Fixture {fixture_path.parent.name}: "
+                  f"hosts={summary.get('hosts', 0)} vms={summary.get('vms', 0)} "
+                  f"containers={summary.get('containers', 0)}")
+        return
+    print(f"Profile: {value.id}")
+    print(f"Runtime: {path}")
+    print(f"Providers: {summary.get('providers', 0)}")
+    print(f"Hosts: {summary.get('hosts', 0)}")
+    print(f"VMs: {summary.get('vms', 0)}")
+    print(f"Containers: {summary.get('containers', 0)}")
+    for item in collection.get("collections", []):
+        print(f"{item['provider']}\t{item['result']}\t{item['last_attempt']}")
 
 
 def init_secrets(value):
@@ -348,9 +454,14 @@ def main():
     actions = profile_parser.add_subparsers(dest="action", required=True)
     actions.add_parser("list")
     create_parser = actions.add_parser("create"); create_parser.add_argument("profile")
-    for name in ("validate", "status", "sites", "up", "down", "restart", "logs",
+    for name in ("validate", "status", "sites", "virtualisation-status",
+                 "up", "down", "restart", "logs",
                  "init-secrets", "dashboards", "services", "shell"):
         item = actions.add_parser(name); item.add_argument("profile")
+    virt = actions.add_parser("virtualisation")
+    virt.add_argument("profile")
+    virt.add_argument("--provider", choices=("vmware", "hyperv", "proxmox"))
+    virt.add_argument("--fixture", choices=("vmware", "hyperv", "proxmox"))
     collect = actions.add_parser("collect"); collect.add_argument("profile"); collect.add_argument("collector")
     args = parser.parse_args()
     if args.group == "help":
@@ -367,6 +478,9 @@ def main():
     if args.action == "validate": validate(value)
     elif args.action == "status": status(value)
     elif args.action == "sites": sites_status(value)
+    elif args.action == "virtualisation":
+        virtualisation(value, fixture=args.fixture, provider_name=args.provider)
+    elif args.action == "virtualisation-status": virtualisation_status(value)
     elif args.action == "init-secrets": init_secrets(value)
     elif args.action in {"up", "down", "restart"}:
         describe(value)

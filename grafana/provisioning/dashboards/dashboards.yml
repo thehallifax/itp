@@ -70,6 +70,16 @@ providers:
   updateIntervalSeconds: 30
   options:
     path: /var/lib/grafana/runtime-dashboard/managed/identity
+- name: ITP Managed Virtualisation
+  orgId: 1
+  folder: Virtualisation
+  folderUid: itp-folder-virtualisation
+  type: file
+  disableDeletion: false
+  allowUiUpdates: false
+  updateIntervalSeconds: 30
+  options:
+    path: /var/lib/grafana/runtime-dashboard/managed/virtualisation
 - name: ITP Managed Vendor
   orgId: 1
   folder: Vendor

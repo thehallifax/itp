@@ -49,3 +49,17 @@ git pull --ff-only
 Back up configuration, ignored secrets, Grafana and InfluxDB volumes, and the
 profile runtime directory together. Never restore one customer's data into
 another profile.
+
+## Virtualisation
+
+```bash
+./itp profile virtualisation <profile> --fixture vmware
+./itp profile virtualisation <profile> --fixture hyperv
+./itp profile virtualisation <profile> --fixture proxmox
+./itp profile virtualisation-status <profile>
+```
+
+Copy only the required profile secret example, use a read-only account and keep
+TLS verification enabled. Unknown means evidence was insufficient, not that a
+workload is down. Inspect `runtime/<profile>/virtualisation/collection-status.json`
+for partial or permission-limited sections.

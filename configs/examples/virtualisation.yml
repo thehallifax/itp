@@ -1,0 +1,31 @@
+virtualisation:
+  enabled: true
+  thresholds:
+    host_cpu_warning_percent: 85
+    host_memory_warning_percent: 85
+    storage_warning_percent: 80
+    storage_critical_percent: 90
+    snapshot_age_warning_days: 30
+    snapshot_count_warning: 3
+  providers:
+    - id: example-vcenter
+      provider: vmware
+      enabled: true
+      site_id: example-head-office
+      endpoint: https://vcenter.example.invalid
+      secret_file: secrets/example/vmware.env
+      verify_tls: true
+    - id: example-hyperv
+      provider: hyperv
+      enabled: true
+      site_id: example-head-office
+      endpoint: hv-management.example.invalid
+      transport: powershell_remoting
+      secret_file: secrets/example/hyperv.env
+    - id: example-proxmox
+      provider: proxmox
+      enabled: true
+      site_id: example-campus
+      endpoint: https://pve.example.invalid:8006
+      secret_file: secrets/example/proxmox.env
+      verify_tls: true

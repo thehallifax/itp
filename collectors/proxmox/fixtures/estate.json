@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-07-24T00:00:00Z",
+  "provider": "proxmox",
+  "manager": {"id": "pve-cluster", "name": "Example Proxmox Cluster", "version": "8.x", "reachable": true},
+  "clusters": [{"id": "pve-cluster", "name": "Example PVE Cluster", "total_host_count": 2, "enabled_host_count": 2, "degraded_host_count": 0, "maintenance_host_count": 0, "ha_status": "enabled", "health": "healthy"}],
+  "hosts": [
+    {"id": "node-a", "name": "pve-a.example.invalid", "cluster_id": "pve-cluster", "platform_version": "8.x", "connection_state": "connected", "maintenance": false, "core_count": 16, "cpu_total_mhz": 32000, "cpu_used_mhz": 12000, "memory_total_bytes": 137438953472, "memory_used_bytes": 68719476736, "vm_count": 2, "running_vm_count": 2, "health": "healthy"},
+    {"id": "node-b", "name": "pve-b.example.invalid", "cluster_id": "pve-cluster", "platform_version": "8.x", "connection_state": "connected", "maintenance": false, "core_count": 16, "cpu_total_mhz": 32000, "cpu_used_mhz": 8000, "memory_total_bytes": 137438953472, "memory_used_bytes": 42949672960, "vm_count": 0, "running_vm_count": 0, "health": "healthy"}
+  ],
+  "vms": [{"id": "qemu-100", "name": "Example QEMU VM", "cluster_id": "pve-cluster", "host_id": "node-a", "state": "running", "vcpu": 4, "memory_bytes": 8589934592, "guest_agent_state": "healthy", "replication_state": "ok", "ha_protected": true, "storage_ids": ["shared-1"]}],
+  "containers": [{"id": "lxc-200", "name": "Example LXC Container", "cluster_id": "pve-cluster", "host_id": "node-a", "state": "running", "vcpu": 2, "memory_bytes": 2147483648, "guest_agent_state": "not_applicable", "template": false, "storage_ids": ["local-1"]}],
+  "storage": [
+    {"id": "shared-1", "name": "Example Shared Storage", "cluster_id": "pve-cluster", "storage_type": "ceph", "scope": "cluster", "capacity_bytes": 4398046511104, "used_bytes": 2199023255552, "free_bytes": 2199023255552, "accessible": true, "shared": true},
+    {"id": "local-1", "name": "Example Local Storage", "host_id": "node-a", "storage_type": "directory", "scope": "host", "capacity_bytes": 549755813888, "used_bytes": 467292441805, "free_bytes": 82463372083, "accessible": true, "shared": false}
+  ],
+  "networks": [{"id": "vmbr0", "name": "Example Bridge", "host_id": "node-a", "network_type": "bridge", "vlan_id": 200, "connected_workload_count": 2, "uplink_evidence": ["bond0"]}],
+  "snapshots": [{"id": "pve-snap-1", "workload_id": "qemu-100", "name": "Approved Snapshot", "snapshot_type": "snapshot", "created_at": "2025-03-01T00:00:00Z", "accessible": true}],
+  "diagnostics": [{"section": "replication", "category": "partial_endpoint_failure", "message": "One sanitized job unavailable"}]
+}

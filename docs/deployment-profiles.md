@@ -102,3 +102,12 @@ runtime backup. Never restore one customer’s state into another profile.
 `profile status` reports paths, containers, collectors, assets, services,
 dashboard count and endpoints. `profile logs` provides diagnostics without
 printing secret values.
+
+## Virtualisation endpoints
+
+Virtualisation is optional. Each endpoint has a stable ID, provider, canonical
+site, TLS/transport policy and profile-scoped secret file. Multiple providers
+may serve different sites in one profile. Static validation checks these
+references and thresholds without requiring credentials. See
+`configs/examples/virtualisation.yml`; never point a profile at another
+customer's management endpoint.

@@ -18,11 +18,12 @@ FOLDERS = {
     "Printing": ("itp-folder-printing", "printing"),
     "Compute": ("itp-folder-compute", "compute"),
     "Identity": ("itp-folder-identity", "identity"),
+    "Virtualisation": ("itp-folder-virtualisation", "virtualisation"),
     "Vendor": ("itp-folder-vendor", "vendor"),
 }
 CAPABILITIES = {"firewall", "internet", "wireless", "switching", "printing",
                 "identity", "compute", "storage", "voice", "email",
-                "inventory", "telemetry"}
+                "inventory", "telemetry", "virtualisation"}
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class DashboardRegistry:
     def manifests(self):
         paths = [self.root / "dashboards/platform-manifest.yml"]
         paths.extend(sorted((self.root / "collectors").glob("*/dashboard-manifest.yml")))
+        paths.append(self.root / "analysis/virtualisation/dashboard-manifest.yml")
         values = []
         for path in paths:
             if not path.exists(): continue
@@ -73,8 +75,11 @@ class DashboardRegistry:
 
     def enabled_collectors(self):
         settings = self.config.get("collectors", {})
-        return tuple(sorted(name for name, value in settings.items()
-                            if isinstance(value, dict) and value.get("enabled") is True))
+        enabled = {name for name, value in settings.items()
+                   if isinstance(value, dict) and value.get("enabled") is True}
+        if (self.config.get("virtualisation") or {}).get("enabled") is True:
+            enabled.add("virtualisation")
+        return tuple(sorted(enabled))
 
     def resolve(self):
         enabled = set(self.enabled_collectors())
@@ -137,6 +142,13 @@ class DashboardRegistry:
         deployment_id = str(self.config.get("deployment_id") or "").strip()
         if deployment_id:
             tags.add(f"itp-profile:{deployment_id}")
+            for variable in dashboard.get("templating", {}).get("list", []):
+                if variable.get("name") == "deployment":
+                    variable["query"] = deployment_id
+                    variable["current"] = {"selected": True, "text": deployment_id,
+                                           "value": deployment_id}
+                    variable["options"] = [{"selected": True, "text": deployment_id,
+                                            "value": deployment_id}]
         dashboard["tags"] = sorted(tags)
         dashboard["editable"] = False
         return dashboard

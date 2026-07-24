@@ -16,6 +16,10 @@ def test_platform_and_schema_metadata_are_stable():
     assert set(MEASUREMENTS) == {
         "device", "availability", "performance", "interface", "wireless",
         "firewall", "collector_health", "license", "content_package",
+        "virtualisation_platform", "virtualisation_cluster", "virtualisation_host",
+        "virtualisation_workload", "virtualisation_storage",
+        "virtualisation_snapshot", "virtualisation_finding",
+        "virtualisation_collection",
     }
     assert all(CollectorRegistry.get(name).schema_version == 1
                for name in CollectorRegistry.names())
@@ -23,8 +27,8 @@ def test_platform_and_schema_metadata_are_stable():
 
 def test_canonical_schema_documents_exist():
     expected = {"device", "availability", "performance", "interface", "wireless",
-                "firewall", "server", "inventory", "relationship", "collector_health",
-                "license", "content_package"}
+                    "firewall", "server", "inventory", "relationship", "collector_health",
+                    "license", "content_package", "virtualisation"}
     assert {path.stem for path in (ROOT / "docs/schema").glob("*.md")} == expected
     for name in expected:
         text = (ROOT / f"docs/schema/{name}.md").read_text().lower()
@@ -34,7 +38,7 @@ def test_canonical_schema_documents_exist():
 
 def test_dashboard_folders_and_uids_are_fixed():
     folders = {"Operations", "Infrastructure", "Security", "Wireless", "Printing",
-               "Compute", "Identity", "Vendor"}
+               "Compute", "Identity", "Virtualisation", "Vendor"}
     provision = yaml.safe_load((ROOT / "grafana/provisioning/dashboards/dashboards.yml").read_text())
     providers = provision["providers"]
     assert {provider["folder"] for provider in providers} == folders
@@ -47,6 +51,7 @@ def test_dashboard_folders_and_uids_are_fixed():
         "itp-infrastructure-overview", "mist-infrastructure-overview",
         "fortigate-infrastructure-overview", "paloalto-operational-overview",
         "itp-operations-wallboard", "itp-collector-health",
+        "itp-virtualisation-overview",
     }
 
 
