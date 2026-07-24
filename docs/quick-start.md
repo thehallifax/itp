@@ -94,3 +94,15 @@ guided options.
 
 For multi-customer deployments, continue with
 [deployment profiles](deployment-profiles.md).
+
+## Diagnose setup
+
+```sh
+./itp doctor --offline
+./itp doctor
+```
+
+The first command checks local files without Docker access. The second includes
+containers and known local HTTP health endpoints. Use
+`./itp doctor --json --strict` for support automation. Doctor is read-only and
+reports credential presence without displaying values.

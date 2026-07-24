@@ -26,6 +26,8 @@ from analysis.state_history import (
     PipelineStateCapture,
     StateHistoryEngine,
 )
+from analysis.doctor import (
+    DoctorEngine, DoctorFatalError, DoctorUsageError, render_human, render_json)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -168,6 +170,13 @@ async def _run(args):
     if args.command == "list":
         for name in CollectorRegistry.names(): print(name)
         return
+    if args.command == "doctor":
+        report = DoctorEngine(
+            ROOT, offline=args.offline, platform_only=args.platform_only,
+            connectors_only=args.connectors_only, connector=args.connector).run()
+        print(render_json(report, args.strict) if args.json
+              else render_human(report, args.strict))
+        raise SystemExit(report.exit_code(args.strict))
     if args.command == "connectors":
         registry = ConnectorMetadataRegistry.load(ROOT)
         if args.action == "list":
@@ -186,7 +195,7 @@ async def _run(args):
         try:
             connector = registry.get(args.connector)
         except KeyError as exc:
-            raise ValueError(str(exc).strip("'")) from exc
+            raise DoctorUsageError(f"unknown connector: {args.connector}") from exc
         if args.json:
             print(json.dumps(connector.to_dict(), indent=2, sort_keys=True))
         else:
@@ -196,6 +205,12 @@ async def _run(args):
             print(f"Setup: {'guided' if connector.guided_setup else connector.configuration_mode}")
             print("Validation: " + (
                 "available" if connector.capabilities["validation"]
+                else "not available"))
+            print("Doctor: " + (
+                "available" if connector.capabilities["doctor"]
+                else "not available"))
+            print("Status: " + (
+                "available" if connector.capabilities["status"]
                 else "not available"))
             print(f"Documentation: {connector.documentation}")
             print(f"Notes: {connector.notes}")
@@ -573,6 +588,18 @@ def main():
     inventory.add_argument("--json", action="store_true")
     sub.add_parser("run")
     sub.add_parser("validate")
+    connectors = sub.add_parser("connectors")
+    connectors.add_argument("action", choices=("list", "inspect"))
+    connectors.add_argument("connector", nargs="?")
+    connectors.add_argument("--json", action="store_true")
+    doctor = sub.add_parser("doctor")
+    doctor.add_argument("--json", action="store_true")
+    doctor_scope = doctor.add_mutually_exclusive_group()
+    doctor_scope.add_argument("--platform-only", action="store_true")
+    doctor_scope.add_argument("--connectors-only", action="store_true")
+    doctor.add_argument("--connector")
+    doctor.add_argument("--offline", action="store_true")
+    doctor.add_argument("--strict", action="store_true")
     operations = sub.add_parser("operations")
     operations.add_argument("action", choices=("generate", "rules"), default="generate", nargs="?")
     services = sub.add_parser("services")
@@ -612,7 +639,7 @@ def main():
             parser.error("state-history capture-run requires --run-metadata")
         if args.action == "inspect-run" and not args.run_id:
             parser.error("state-history inspect-run requires --run-id")
-    if args.command == "state-history":
+    if args.command in ("state-history", "doctor", "connectors"):
         # Canonical fixture/history processing is deliberately independent of
         # deployment configuration and any inherited ITP_PROFILE value.
         logging_context = ""
@@ -632,6 +659,14 @@ def main():
         format=f"%(asctime)s %(levelname)s{logging_context} %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     try: asyncio.run(_run(args))
+    except DoctorUsageError as exc:
+        logging.error("collector=framework phase=%s result=failed error=%s",
+                      args.command, exc)
+        raise SystemExit(2)
+    except DoctorFatalError as exc:
+        logging.error("collector=framework phase=%s result=failed error=%s",
+                      args.command, exc)
+        raise SystemExit(3)
     except Exception as exc:
         logging.error("collector=framework phase=%s result=failed error=%s", args.command, exc)
         raise SystemExit(1)

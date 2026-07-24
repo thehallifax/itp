@@ -181,6 +181,16 @@ See [Getting Started](docs/getting-started.md),
 [Installation](docs/INSTALL.md), and the
 [Operator Guide](docs/operator-guide.md).
 
+Diagnose a deployment without changing it:
+
+```sh
+./itp doctor --offline
+./itp doctor
+```
+
+See [ITP Doctor](docs/doctor.md) for JSON automation, strict mode, connector
+selection, exit codes, and redaction guarantees.
+
 ## Repository layout
 
 ```text

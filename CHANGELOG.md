@@ -7,6 +7,9 @@ All notable changes to ITP are documented in this file. The format follows
 
 ### Added
 
+- CLI-001 Phase 1 read-only Doctor with deterministic human/JSON reports,
+  registry-driven connector readiness, offline/strict modes, secret redaction,
+  service checks, and automation-safe exit codes.
 - OOBE-001 Phase 1 cross-platform bootstrap wizard with safe template
   generation, Docker and port checks, Compose validation, optional startup,
   service-health waiting, and unattended operation.

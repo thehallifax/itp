@@ -33,6 +33,8 @@ from collectors.connector_registry import ConnectorMetadataRegistry
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
 from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
 from itp_profiles.setup import BootstrapWizard, SetupError, SetupOptions
+from analysis.doctor import (
+    DoctorEngine, DoctorFatalError, DoctorUsageError, render_human, render_json)
 
 
 def load_root_env():
@@ -461,6 +463,15 @@ def main():
     connector_inspect = connector_actions.add_parser("inspect")
     connector_inspect.add_argument("connector")
     connector_inspect.add_argument("--json", action="store_true")
+    doctor = commands.add_parser(
+        "doctor", help="run read-only deployment diagnostics")
+    doctor.add_argument("--json", action="store_true")
+    doctor_scope = doctor.add_mutually_exclusive_group()
+    doctor_scope.add_argument("--platform-only", action="store_true")
+    doctor_scope.add_argument("--connectors-only", action="store_true")
+    doctor.add_argument("--connector")
+    doctor.add_argument("--offline", action="store_true")
+    doctor.add_argument("--strict", action="store_true")
     setup_parser = commands.add_parser(
         "setup", help="prepare a new root Docker Compose deployment")
     setup_parser.add_argument("--non-interactive", action="store_true")
@@ -500,6 +511,14 @@ def main():
             force=args.force,
             health_timeout=args.health_timeout))
         return
+    if args.group == "doctor":
+        report = DoctorEngine(
+            ROOT, offline=args.offline, platform_only=args.platform_only,
+            connectors_only=args.connectors_only, connector=args.connector).run()
+        print(render_json(report, args.strict) if args.json
+              else render_human(report, args.strict))
+        raise SystemExit(report.exit_code(args.strict))
+
     if args.group == "connectors":
         registry = ConnectorMetadataRegistry.load(ROOT)
         if args.connector_action == "list":
@@ -542,6 +561,7 @@ def main():
             print(f"Documentation: {connector.documentation}")
             print(f"Notes: {connector.notes}")
         return
+
     if args.action == "list":
         for value in discover_profiles(ROOT):
             print(f"{value.id}\t{value.name}\t{value.environment}")
@@ -581,6 +601,12 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except DoctorUsageError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+    except DoctorFatalError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(3)
     except (ProfileError, SetupError, subprocess.CalledProcessError,
             OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
