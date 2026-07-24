@@ -88,7 +88,27 @@ DEFINITIONS = (
                       ("Firewall", "Security"), signal_keys=("security",)),
     ServiceDefinition("Monitoring", "telemetry", categories=("Collector",),
                       signal_keys=("monitoring",)),
+    ServiceDefinition("Virtualisation Management Plane", "virtualisation",
+                      ("virtualisation-manager",)),
+    ServiceDefinition("Hypervisor Cluster", "virtualisation",
+                      ("virtualisation-cluster", "hypervisor")),
+    ServiceDefinition("Compute Capacity", "virtualisation",
+                      ("virtualisation-cluster", "hypervisor")),
+    ServiceDefinition("Virtual Machine Hosting", "virtualisation",
+                      ("hypervisor", "compute-workload")),
+    ServiceDefinition("Shared Storage", "virtualisation", ("virtual-storage",)),
+    ServiceDefinition("Workload Availability", "virtualisation",
+                      ("compute-workload",)),
 )
+
+VIRTUAL_SERVICE_IDS = {
+    "Virtualisation Management Plane": "virtualisation_management_plane",
+    "Hypervisor Cluster": "hypervisor_cluster",
+    "Compute Capacity": "compute_capacity",
+    "Virtual Machine Hosting": "virtual_machine_hosting",
+    "Shared Storage": "shared_storage",
+    "Workload Availability": "workload_availability",
+}
 
 
 class ServiceEvaluator:
@@ -103,8 +123,11 @@ class ServiceEvaluator:
             ServiceEvaluator._registry[cls.definition.name] = cls
 
     @classmethod
-    def registered(cls):
-        return [cls._registry[name]() for name in sorted(cls._registry)]
+    def registered(cls, include_virtualisation=False):
+        names = sorted(cls._registry)
+        if not include_virtualisation:
+            names = [name for name in names if name not in VIRTUAL_SERVICE_IDS]
+        return [cls._registry[name]() for name in names]
 
     @staticmethod
     def _matches_finding(definition, value):
@@ -134,6 +157,8 @@ class ServiceEvaluator:
             return self._internet(context)
         if definition.name == "Security":
             return self._security(context)
+        if definition.name in VIRTUAL_SERVICE_IDS:
+            return self._virtualisation(context)
 
         assets = [value for value in context["assets"]
                   if any(term in _text(value) for term in definition.asset_terms)]
@@ -235,6 +260,56 @@ class ServiceEvaluator:
         return ServiceHealth(definition.name, status, summaries[status], tuple(affected),
             _affected_users(findings + signals), severity, last_change,
             tuple(evidence))
+
+    def _virtualisation(self, context):
+        definition = self.definition
+        service_id = VIRTUAL_SERVICE_IDS[definition.name]
+        assets = [value for value in context["assets"]
+                  if any(term in _text(value) for term in definition.asset_terms)]
+        findings = [value for value in context["findings"]
+                    if service_id in value.get("affected_service_ids", [])]
+        confirmed = [value for value in findings
+                     if value.get("severity") == "Critical"
+                     and value.get("kind") == "issue"]
+        warnings = [value for value in findings
+                    if value.get("severity") in {"High", "Medium", "Low"}]
+        unknown = [value for value in findings
+                   if value.get("severity") == "Unknown"
+                   or (value.get("evidence") or {}).get("health_state") == "Unknown"]
+        if confirmed:
+            status = "Critical"
+        elif warnings:
+            status = "Warning"
+        elif unknown:
+            status = "Unknown"
+        elif assets:
+            status = "Healthy"
+        else:
+            status = "Unknown"
+        affected = tuple(sorted({_finding_asset(value) for value in findings
+                                 if _finding_asset(value)}))
+        evidence = tuple({"type": "finding", "id": value.get("id", ""),
+            "rule_id": value.get("rule_id", ""), "severity": value.get("severity", ""),
+            "confidence": value.get("confidence", ""),
+            "summary": value.get("summary", ""), "site_id": value.get("site_id", "")}
+            for value in sorted(findings, key=lambda item: (
+                -int(item.get("priority", 0)), str(item.get("id", "")))))
+        if not evidence:
+            evidence = tuple({"type": "asset", "canonical_id": value.get("canonical_id", ""),
+                "asset": _asset_name(value), "observed_at": value.get("last_seen_at")
+                or value.get("source_last_seen_at")} for value in sorted(assets, key=_asset_name))
+        summaries = {
+            "Critical": f"{definition.name} has confirmed operational impact.",
+            "Warning": f"{definition.name} has evidence requiring attention.",
+            "Unknown": f"{definition.name} cannot be evaluated from current trustworthy evidence.",
+            "Healthy": f"{definition.name} has current evidence and no active degradation.",
+        }
+        return ServiceHealth(definition.name, status, summaries[status], affected,
+            severity=STATUS_SEVERITY[status],
+            last_change=_latest([value.get("last_observed") for value in findings]
+                                + [value.get("last_seen_at") or
+                                   value.get("source_last_seen_at") for value in assets]),
+            evidence=evidence)
 
     @staticmethod
     def _internet(context):

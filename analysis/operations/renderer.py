@@ -10,7 +10,11 @@ from collectors.writer import atomic_write
 
 
 CSV_FIELDS = ("kind", "id", "rule_id", "title", "category", "severity", "priority",
-              "canonical_id", "device", "site_id", "site", "summary", "impact", "reason", "suggested_action")
+              "canonical_id", "device", "site_id", "site", "summary", "impact", "reason",
+              "suggested_action", "deployment_id", "domain", "provider", "object_kind",
+              "object_id", "cluster_id", "host_id", "workload_id", "confidence",
+              "source_finding_id", "first_observed", "last_observed",
+              "affected_service_ids")
 PANEL_TITLES = {"issues": "Active Issues", "risks": "Operational Risks",
                 "recommendations": "Recommendations"}
 METRIC_PANELS = {

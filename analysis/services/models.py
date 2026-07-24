@@ -8,6 +8,10 @@ SERVICE_NAMES = (
     "Internet", "Wireless", "Switching", "Printing", "Identity", "Compute",
     "Storage", "Voice", "Email", "Security", "Monitoring",
 )
+VIRTUALISATION_SERVICE_NAMES = (
+    "Virtualisation Management Plane", "Hypervisor Cluster", "Compute Capacity",
+    "Virtual Machine Hosting", "Shared Storage", "Workload Availability",
+)
 SERVICE_STATUSES = ("Healthy", "Warning", "Critical", "Unknown", "Not Enabled")
 STATUS_SEVERITY = {
     "Healthy": "Info",
@@ -32,7 +36,7 @@ class ServiceHealth:
     evidence: tuple[dict, ...] = field(default_factory=tuple)
 
     def __post_init__(self):
-        if self.service not in SERVICE_NAMES:
+        if self.service not in SERVICE_NAMES + VIRTUALISATION_SERVICE_NAMES:
             raise ValueError(f"unsupported canonical service: {self.service}")
         if self.status not in SERVICE_STATUSES:
             raise ValueError(f"unsupported service status: {self.status}")

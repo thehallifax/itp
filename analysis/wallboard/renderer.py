@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import copy
 import io
 import json
 from pathlib import Path
@@ -14,6 +15,11 @@ HEALTH_COLORS = {"Healthy": "green", "Fresh": "green", "Warning": "orange",
                  "Stale": "orange", "Critical": "red", "Failed": "red",
                  "Unknown": "gray", "Not Enabled": "gray",
                  "Awaiting telemetry": "gray"}
+PROVIDER_LABELS = {"vmware": "VMware", "hyperv": "Hyper-V", "proxmox": "Proxmox"}
+OBJECT_LABELS = {"cluster": "Cluster", "host": "Host", "storage": "Storage",
+                 "vm": "Virtual Machine", "virtual_machine": "Virtual Machine",
+                 "container": "Container", "virtual_container": "Container",
+                 "manager": "Manager", "snapshot": "Snapshot"}
 
 
 def _csv(rows, fields):
@@ -74,6 +80,65 @@ def _table(panel, rows, fields, scoped=True):
     panel["options"] = {"cellHeight": "sm", "footer": {"show": False}, "showHeader": True}
 
 
+def _column_widths(panel, widths):
+    panel["fieldConfig"]["overrides"].extend({
+        "matcher": {"id": "byName", "options": name},
+        "properties": [{"id": "custom.width", "value": width},
+                       {"id": "custom.cellOptions", "value": {"type": "auto"}}],
+    } for name, width in widths.items())
+
+
+def _layout(dashboard):
+    """Pack capability-gated panels into a deliberate, overlap-free grid."""
+    panels = {value["title"]: value for value in dashboard["panels"]}
+    summary = ["Site Operational Status", "Overall State", "Last Service Health",
+               "Data Freshness", "Monitoring Service"]
+    widths = [8, 4, 4, 4, 4]
+    x = 0
+    for title, width in zip(summary, widths):
+        if title not in panels:
+            continue
+        panels[title]["gridPos"] = {"x": x, "y": 0, "w": width, "h": 3}
+        x += width
+
+    y = 3
+    service_titles = [title for title in (
+        "Internet Service", "Wireless Service", "Switching Service",
+        "Management Plane", "Hypervisor Cluster", "Compute Capacity",
+        "VM Hosting", "Shared Storage", "Workload Availability",
+        "Security Service", "Compute Service", "Identity Service",
+        "Printing Service", "Storage Service", "Voice Service", "Email Service")
+        if title in panels]
+    for index, title in enumerate(service_titles):
+        row, column = divmod(index, 6)
+        panels[title]["gridPos"] = {"x": column * 4, "y": y + row * 3,
+                                    "w": 4, "h": 3}
+    y += max(1, (len(service_titles) + 5) // 6) * 3
+
+    infrastructure = [title for title in (
+        "Wireless Access Points", "Switches", "Servers", "Firewalls")
+        if title in panels]
+    compact_width = 4 if len(infrastructure) == 4 else \
+                    5 if len(infrastructure) == 3 else \
+                    6 if len(infrastructure) == 2 else 8
+    for index, title in enumerate(infrastructure):
+        panels[title]["gridPos"] = {"x": index * compact_width, "y": y,
+                                    "w": compact_width, "h": 4}
+    collector_x = len(infrastructure) * compact_width
+    panels["Collector State"]["gridPos"] = {
+        "x": collector_x, "y": y, "w": 24 - collector_x, "h": 4}
+    y += 4
+
+    if "Printer Action Required" in panels:
+        panels["Printer Action Required"]["gridPos"] = {"x": 0, "y": y, "w": 24, "h": 4}
+        y += 4
+    if "Internet / WAN" in panels:
+        panels["Internet / WAN"]["gridPos"] = {"x": 0, "y": y, "w": 12, "h": 5}
+        panels["WAN Traffic"]["gridPos"] = {"x": 12, "y": y, "w": 12, "h": 5}
+        y += 5
+    panels["Action Required"]["gridPos"] = {"x": 0, "y": y, "w": 24, "h": 7}
+
+
 def _topology(panel, topology):
     panel["type"] = "nodeGraph"; panel["datasource"] = DATASOURCE
     node_fields = ("scope", "id", "title", "subTitle", "mainStat", "secondaryStat", "color")
@@ -132,16 +197,26 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         for value in summary["site_options"])
     panels = {value["title"]: value for value in dashboard["panels"]}
     freshness = summary["freshness"]
-    panels["Site Operational Status"]["options"]["content"] = (
-        "# Operations Wallboard\n\n"
-        "**Site:** ${site:text}  •  **Exception-driven operational view**")
+    issue_rows = [{"scope": scope["scope"],
+        "value": (f"{scope['active_issues']} active issues"
+                  if scope["active_issues"] else "No active issues")}
+        for scope in summary["scopes"]]
+    panels["Site Operational Status"]["type"] = "stat"
+    panels["Site Operational Status"]["options"] = copy.deepcopy(
+        panels["Overall State"]["options"])
+    _stat(panels["Site Operational Status"], issue_rows, "value", False)
+    panels["Site Operational Status"]["description"] = (
+        "Active operational issues for the selected canonical site (${site:text}).")
     health_rows = [{"scope": scope, "value": value}
                    for scope, value in sorted(summary["overall_health"].items())]
     _stat(panels["Overall State"], health_rows, "value", True)
     refresh_rows = [{"scope": scope["scope"],
-        "value": freshness.get("last_successful_refresh") or "Unavailable"}
+        "value": freshness.get("age_display") or "Unavailable"}
         for scope in summary["scopes"]]
     _stat(panels["Last Service Health"], refresh_rows, "value", False)
+    panels["Last Service Health"]["description"] = (
+        "Last canonical Service Health evaluation: "
+        f"{freshness.get('last_successful_refresh') or 'Unavailable'}.")
     freshness_rows = [{"scope": scope["scope"], "value": freshness["status"]}
                       for scope in summary["scopes"]]
     _stat(panels["Data Freshness"], freshness_rows, "value", True)
@@ -151,10 +226,32 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     enabled_service_names = {value["service"] for scope in summary["service_scopes"].values()
                              for value in scope["services"]
                              if value["status"] != "Not Enabled"}
+    virtual_services = (
+        "Virtualisation Management Plane", "Hypervisor Cluster", "Compute Capacity",
+        "Virtual Machine Hosting", "Shared Storage", "Workload Availability")
     service_titles = {f"{name} Service": name for name in (
         "Internet", "Wireless", "Switching", "Printing",
         "Identity", "Compute", "Security", "Monitoring",
         "Storage", "Voice", "Email")}
+    service_titles.update({
+        "Management Plane": "Virtualisation Management Plane",
+        "Hypervisor Cluster": "Hypervisor Cluster",
+        "Compute Capacity": "Compute Capacity",
+        "VM Hosting": "Virtual Machine Hosting",
+        "Shared Storage": "Shared Storage",
+        "Workload Availability": "Workload Availability",
+    })
+    prototype = panels["Compute Service"]
+    for offset, name in enumerate(virtual_services, 25):
+        title = {
+            "Virtualisation Management Plane": "Management Plane",
+            "Virtual Machine Hosting": "VM Hosting",
+        }.get(name, name)
+        if title not in panels:
+            panel = copy.deepcopy(prototype)
+            panel.update({"id": offset, "title": title})
+            dashboard["panels"].append(panel)
+            panels[title] = panel
     for title, name in service_titles.items():
         if name not in enabled_service_names:
             continue
@@ -167,7 +264,8 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
             service_rows.append({"scope": scope["scope"], "value": value["status"]})
             summaries.append(f"{scope['display_name']}: {value.get('summary', '')}")
         _stat(panels[title], service_rows, "value", True)
-        panels[title]["description"] = "\n".join(summaries)
+        panels[title]["description"] = (
+            f"Canonical service: {name}.\n" + "\n".join(summaries))
 
     def health_card(title, domain):
         rows = []
@@ -214,8 +312,11 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     _table(panels["Printer Action Required"], summary["printer_exceptions"],
            ("scope", "asset", "location", "condition", "last_seen"))
     _table(panels["Collector State"], summary["collectors"],
-           ("scope", "collector", "site", "status"))
-    panels["Collector State"]["fieldConfig"]["overrides"] = [{
+           ("scope", "collector", "site", "status", "freshness"))
+    panels["Collector State"]["fieldConfig"]["defaults"]["custom"]["inspect"] = True
+    _column_widths(panels["Collector State"], {
+        "collector": 140, "site": 320, "status": 110, "freshness": 120})
+    panels["Collector State"]["fieldConfig"]["overrides"].append({
         "matcher": {"id": "byName", "options": "status"}, "properties": [
             {"id": "mappings", "value": [{"type": "value", "options": {
                 "Healthy": {"color": "green", "index": 0, "text": "Healthy"},
@@ -223,9 +324,29 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                 "Failed": {"color": "red", "index": 2, "text": "Failed"},
                 "Stale": {"color": "orange", "index": 3, "text": "Stale"}}}]},
             {"id": "custom.cellOptions", "value": {"type": "color-background"}},
-        ]}]
-    _table(panels["Action Required"], summary["actions"],
-           ("scope", "severity", "service", "asset", "issue", "age"))
+        ]})
+    action_rows = [{**value,
+        "domain": str(value.get("domain") or "").replace("_", " ").title(),
+        "provider": PROVIDER_LABELS.get(
+            str(value.get("provider") or "").casefold(), value.get("provider") or ""),
+        "object_kind": OBJECT_LABELS.get(
+            str(value.get("object_kind") or "").casefold(),
+            str(value.get("object_kind") or "").replace("_", " ").title())}
+        for value in summary["actions"]]
+    _table(panels["Action Required"], action_rows,
+           ("scope", "severity", "service", "domain", "provider", "object_kind",
+            "asset", "issue", "age"))
+    organize = panels["Action Required"]["transformations"][-1]["options"]
+    organize["renameByName"] = {
+        "severity": "Severity", "service": "Service", "domain": "Domain",
+        "provider": "Provider", "object_kind": "Object Type", "asset": "Asset",
+        "issue": "Issue", "age": "Age"}
+    _column_widths(panels["Action Required"], {
+        "severity": 90, "domain": 120, "provider": 100, "object_kind": 120,
+        "service": 165, "asset": 190, "issue": 520, "age": 80})
+    panels["Action Required"]["description"] = (
+        "Provider-neutral active operations, including virtualisation management, "
+        "cluster, host, workload, capacity, storage, collection and snapshot evidence.")
 
     available = set(summary.get("dashboard_uids", []))
     def links(*uids):
@@ -250,12 +371,11 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                            if service not in enabled_service_names)
     if "Printing" not in enabled_service_names:
         disabled_panels.add("Printer Action Required")
+    if "internet" not in summary.get("capabilities", []):
+        disabled_panels.update(("Internet / WAN", "WAN Traffic"))
     dashboard["panels"] = [panel for panel in dashboard["panels"]
                            if panel["title"] not in disabled_panels]
-    if not {"Storage", "Voice", "Email"} & enabled_service_names:
-        for panel in dashboard["panels"]:
-            if panel["gridPos"]["y"] >= 6:
-                panel["gridPos"]["y"] -= 2
+    _layout(dashboard)
     dashboard["version"] = int(dashboard.get("version", 0)) + 1
     atomic_write(dashboard_path, json.dumps(dashboard, indent=2, sort_keys=True) + "\n")
     return dashboard

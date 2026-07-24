@@ -90,3 +90,16 @@ Future work may add vendor-neutral adapters for service checks, backup state,
 authentication failures, storage health, redundancy, and approved configuration.
 Those adapters should only provide explicit signals; deterministic rules remain
 responsible for all conclusions and priority calculations.
+
+## Virtualisation promotion
+
+The formal virtualisation adapter consumes canonical objects, findings and
+collection status. Operations schema version remains compatible; optional
+fields add `domain`, provider/object/relationship IDs, confidence, source
+finding ID, observation times and affected service IDs.
+
+Severity is evidence-based: inaccessible shared storage and confirmed required
+replication failure are Critical; standalone host loss is Critical; clustered
+host loss, capacity pressure and governance findings are degraded conditions.
+Management reachability, permission limitations, partial collection and stale
+evidence remain Unknown when workload impact is not independently confirmed.

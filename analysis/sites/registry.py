@@ -118,6 +118,12 @@ class SiteRegistry:
         supported_services = {
             "internet", "wireless", "switching", "printing", "identity", "compute",
             "storage", "voice", "email", "security", "monitoring",
+            "virtualisation management plane", "virtualisation_management_plane",
+            "hypervisor cluster", "hypervisor_cluster",
+            "compute capacity", "compute_capacity",
+            "virtual machine hosting", "virtual_machine_hosting",
+            "shared storage", "shared_storage",
+            "workload availability", "workload_availability",
         }
         configured_ids = {site.site_id for site in self._configured_sites}
         for index, dependency in enumerate(self.dependencies):

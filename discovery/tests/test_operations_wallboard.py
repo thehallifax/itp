@@ -5,8 +5,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+import pytest
 
 from analysis.wallboard import WallboardEngine
+from scripts.render_wallboard_scenario import render as render_scenario
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -228,7 +230,7 @@ def test_action_required_is_consolidated_filtered_and_ordered(tmp_path):
 
 def test_collector_summary_is_compact_and_enabled_only(tmp_path):
     result = fixture(tmp_path).run(NOW)
-    assert result["collectors"] == [
+    expected = [
         {"scope": "all", "collector": "mist", "site": "HQ",
          "status": "Healthy", "last_run": "2026-07-23T00:59:00Z"},
         {"scope": "all", "collector": "snmp", "site": "Branch",
@@ -241,9 +243,13 @@ def test_collector_summary_is_compact_and_enabled_only(tmp_path):
          "status": "Healthy", "last_run": "2026-07-23T00:59:00Z"},
         {"scope": "site:hq", "collector": "snmp", "site": "HQ",
          "status": "Healthy", "last_run": "2026-07-23T00:59:00Z"}]
+    assert [{key: value for key, value in item.items() if key != "freshness"}
+            for item in result["collectors"]] == expected
+    assert {item["freshness"] for item in result["collectors"]} == {"1m ago"}
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
     collector = next(value for value in dashboard["panels"] if value["title"] == "Collector State")
-    assert set(rows(collector)[0]) == {"scope", "collector", "site", "status"}
+    assert set(rows(collector)[0]) == {
+        "scope", "collector", "site", "status", "freshness"}
 
 
 def test_site_summary_freshness_links_and_supported_csv_contract(tmp_path):
@@ -253,7 +259,9 @@ def test_site_summary_freshness_links_and_supported_csv_contract(tmp_path):
     assert [(value["text"], value["value"]) for value in variable["options"]] == [
         ("All Sites", "all"), ("Branch", "site:branch"), ("HQ", "site:hq")]
     panels = {value["title"]: value for value in dashboard["panels"]}
-    assert "${site:text}" in panels["Site Operational Status"]["options"]["content"]
+    assert "${site:text}" in panels["Site Operational Status"]["description"]
+    assert rows(panels["Site Operational Status"])[0]["value"].endswith(
+        "active issues")
     assert "Last Service Health" in panels
     assert panels["Collector State"]["links"][0]["url"].startswith("/d/itp-collector-health")
     assert panels["Wireless Access Points"]["links"][0]["url"].startswith(
@@ -324,7 +332,155 @@ def test_secondary_enabled_services_get_compact_cards(tmp_path):
     assert {"Storage Service", "Voice Service", "Email Service"} <= panels.keys()
     assert set(result["overall_health"].values()) == {"Warning"}
     assert max(panel["gridPos"]["y"] + panel["gridPos"]["h"]
-               for panel in dashboard["panels"]) <= 18
+               for panel in dashboard["panels"]) <= 24
+
+
+def test_polished_grid_has_no_overlap_and_dominant_action_queue(tmp_path):
+    fixture(tmp_path).run(NOW)
+    dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
+    panels = dashboard["panels"]
+    summaries = {panel["title"]: panel for panel in panels
+                 if panel["title"] in {"Site Operational Status", "Overall State",
+                    "Last Service Health", "Data Freshness", "Monitoring Service"}}
+    assert {panel["gridPos"]["h"] for panel in summaries.values()} == {3}
+    assert summaries["Site Operational Status"]["gridPos"]["w"] == 8
+    action = next(panel for panel in panels if panel["title"] == "Action Required")
+    assert action["gridPos"]["w"] == 24 and action["gridPos"]["h"] == 7
+    for index, left in enumerate(panels):
+        a = left["gridPos"]
+        for right in panels[index + 1:]:
+            b = right["gridPos"]
+            overlap = (a["x"] < b["x"] + b["w"] and b["x"] < a["x"] + a["w"]
+                       and a["y"] < b["y"] + b["h"] and b["y"] < a["y"] + a["h"])
+            assert not overlap, (left["title"], right["title"])
+
+
+def test_action_columns_widths_and_readable_freshness(tmp_path):
+    fixture(tmp_path).run(NOW)
+    dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
+    panels = {panel["title"]: panel for panel in dashboard["panels"]}
+    action = panels["Action Required"]
+    assert set(rows(action)[0]) == {"scope", "severity", "service", "domain",
+        "provider", "object_kind", "asset", "issue", "age"}
+    widths = {item["matcher"]["options"]: item["properties"][0]["value"]
+              for item in action["fieldConfig"]["overrides"]}
+    assert widths["issue"] > widths["asset"] > widths["provider"]
+    assert widths["age"] <= 90
+    latest = rows(panels["Last Service Health"])[0]["value"]
+    assert latest == "1m ago" and "T00:59:00Z" not in latest
+    collector_widths = {item["matcher"]["options"]: item["properties"][0]["value"]
+        for item in panels["Collector State"]["fieldConfig"]["overrides"]
+        if item["matcher"]["options"] != "status"}
+    assert collector_widths["site"] >= 250
+
+
+def test_virtualisation_tiles_are_conditional_and_reflowed(tmp_path):
+    engine = fixture(tmp_path, capabilities=["virtualisation", "compute", "storage",
+                                             "telemetry"])
+    payload = json.loads((tmp_path / "service-health.json").read_text())
+    names = ("Virtualisation Management Plane", "Hypervisor Cluster",
+             "Compute Capacity", "Virtual Machine Hosting", "Shared Storage",
+             "Workload Availability")
+    for scope in [payload["estate"], *payload["sites"]]:
+        scope["services"].extend({"service": name, "status": "Warning",
+            "severity": "Medium", "summary": f"{name} fixture state.",
+            "affected_assets": [], "affected_users": None, "last_change": None,
+            "evidence": []} for name in names)
+    write(tmp_path / "service-health.json", payload)
+    engine.run(NOW)
+    enabled = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
+    enabled_panels = {panel["title"]: panel for panel in enabled["panels"]}
+    titles = {"Management Plane", "Hypervisor Cluster", "Compute Capacity",
+              "VM Hosting", "Shared Storage", "Workload Availability"}
+    assert titles <= enabled_panels.keys()
+    assert len({enabled_panels[title]["gridPos"]["h"] for title in titles}) == 1
+
+    fixture(tmp_path / "disabled", capabilities=["telemetry"]).run(NOW)
+    disabled = json.loads(
+        (tmp_path / "disabled/grafana/operations-wallboard.json").read_text())
+    assert not any(panel["title"].startswith(names) for panel in disabled["panels"])
+
+
+def test_long_names_and_null_virtual_context_remain_renderable(tmp_path):
+    long_name = "A Very Long Canonical Site Name Used For Responsive Layout Validation"
+    engine = fixture(tmp_path, operations={"issues": [{
+        "id": "legacy", "priority": 75, "severity": "High",
+        "category": "Network", "title": "Long asset issue",
+        "summary": "Evidence summary " * 20, "device": "asset-" + "x" * 100,
+        "site": long_name, "site_id": "site:hq", "kind": "issue",
+        "rule_id": "legacy.issue", "provider": None, "object_kind": None,
+        "evidence": {"age_seconds": 3600}}], "risks": [], "recommendations": []})
+    sites_payload = json.loads((tmp_path / "sites.json").read_text())
+    sites_payload["sites"][1]["display_name"] = long_name
+    write(tmp_path / "sites.json", sites_payload)
+    result = engine.run(NOW)
+    row = next(item for item in result["actions"] if item["scope"] == "all")
+    assert row["provider"] is None and row["object_kind"] is None
+    assert row["age"] == "1h"
+
+
+@pytest.mark.parametrize("scenario", ["sbc", "vmware", "hyperv", "proxmox"])
+def test_release_evidence_scenarios_are_isolated_and_deterministic(tmp_path, scenario):
+    output = tmp_path / scenario
+    dashboard_path = render_scenario(scenario, output)
+    first = dashboard_path.read_bytes()
+    render_scenario(scenario, output)
+    assert dashboard_path.read_bytes() == first
+    source = output / "dashboard/operations/operations-wallboard.json"
+    assert json.loads(source.read_text())["uid"] == "itp-operations-wallboard"
+    assert json.loads(dashboard_path.read_text())["panels"]
+    operations = json.loads((output / "operations/operations.json").read_text())
+    if scenario == "sbc":
+        assert any(value["category"] == "Wireless" for value in operations["issues"])
+        assert not (output / "virtualisation").exists()
+    else:
+        promoted = operations["issues"] + operations["risks"]
+        assert any(value.get("provider") == scenario for value in promoted)
+        assert any(value.get("object_kind") in {
+            "manager", "cluster", "host", "storage", "snapshot", "vm", "container"}
+            for value in promoted)
+        assert (output / "virtualisation/findings.json").exists()
+
+
+def test_release_evidence_semantics_and_presentation(tmp_path):
+    rendered = {}
+    roots = {}
+    for scenario in ("sbc", "vmware", "hyperv", "proxmox"):
+        roots[scenario] = tmp_path / scenario
+        path = render_scenario(scenario, roots[scenario])
+        dashboard = json.loads(path.read_text())
+        rendered[scenario] = {panel["title"]: panel for panel in dashboard["panels"]}
+
+    for scenario in ("vmware", "hyperv", "proxmox"):
+        panels = rendered[scenario]
+        assert "Internet / WAN" not in panels and "WAN Traffic" not in panels
+        assert "Servers" not in panels
+        assert "Compute Service" not in panels and "Storage Service" not in panels
+        assert {"Management Plane", "Hypervisor Cluster", "Compute Capacity",
+                "VM Hosting", "Shared Storage", "Workload Availability"} <= panels.keys()
+
+    action = rendered["proxmox"]["Action Required"]
+    action_rows = rows(action)
+    assert action_rows and action_rows[0]["asset"] != "No action required"
+    assert {value["provider"] for value in action_rows} == {"Proxmox"}
+    assert {"Snapshot", "Storage"} <= {value["object_kind"] for value in action_rows}
+    assert {value["age"] for value in action_rows} == {"Just now"}
+    assert action["transformations"][-1]["options"]["renameByName"]["object_kind"] == \
+        "Object Type"
+    services = json.loads(
+        (roots["proxmox"] / "services/service-health.json").read_text())
+    assert services["estate"]["overall_status"] == "Warning"
+    warning_services = {value["service"] for value in services["estate"]["services"]
+                        if value["status"] == "Warning"}
+    assert warning_services == {"Shared Storage", "Virtual Machine Hosting"}
+    operations = json.loads(
+        (roots["proxmox"] / "operations/operations.json").read_text())
+    affected = {service_id for value in operations["issues"] + operations["risks"]
+                for service_id in value.get("affected_service_ids", [])}
+    assert {"shared_storage", "virtual_machine_hosting"} <= affected
+
+    site_rows = rows(rendered["sbc"]["Site Operational Status"])
+    assert {value["value"] for value in site_rows} == {"5 active issues"}
 
 
 def test_stale_service_health_is_explicit(tmp_path):

@@ -53,7 +53,20 @@ def _action_age(value):
         seconds = max(0, int(seconds))
         return f"{seconds // 86400}d" if seconds >= 86400 else \
                f"{seconds // 3600}h" if seconds >= 3600 else f"{seconds // 60}m"
-    return "Current"
+    return "Just now"
+
+
+def _age_label(seconds):
+    if seconds is None:
+        return "Unavailable"
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return "Just now"
+    if seconds < 3600:
+        return f"{seconds // 60}m ago"
+    if seconds < 86400:
+        return f"{seconds // 3600}h ago"
+    return f"{seconds // 86400}d ago"
 
 
 def _action_rows(operations, scopes, enabled_collectors, capabilities=None):
@@ -62,11 +75,11 @@ def _action_rows(operations, scopes, enabled_collectors, capabilities=None):
     capabilities = capabilities or set()
     domains = {"Wireless": "wireless", "Printing": "printing", "Server": "compute",
                "Storage": "storage", "Firewall": "firewall", "Security": "firewall",
-               "Network": "switching"}
+               "Network": "switching", "Virtualisation": "virtualisation"}
     services = {"Wireless": "Wireless", "Printing": "Printing", "Server": "Compute",
                 "Storage": "Storage", "Firewall": "Security", "Security": "Security",
                 "Collector": "Monitoring", "Inventory": "Monitoring",
-                "Lifecycle": "Monitoring"}
+                "Lifecycle": "Monitoring", "Virtualisation": "Virtualisation"}
     for value in operations.get("issues", []):
         required = domains.get(value.get("category"))
         if required and required not in capabilities: continue
@@ -76,7 +89,10 @@ def _action_rows(operations, scopes, enabled_collectors, capabilities=None):
     for value in operations.get("risks", []):
         required = domains.get(value.get("category"))
         if required and required not in capabilities: continue
-        if value.get("severity") not in {"Critical", "High"}: continue
+        if (value.get("severity") not in {"Critical", "High"}
+                and not (value.get("category") == "Virtualisation"
+                         and value.get("severity") == "Medium")):
+            continue
         if value.get("category") == "Collector" and value.get("device") not in enabled_collectors:
             continue
         candidates.append(value)
@@ -87,9 +103,12 @@ def _action_rows(operations, scopes, enabled_collectors, capabilities=None):
             item.get("title", ""), item.get("id", ""))):
         key = (value.get("rule_id"), value.get("canonical_id") or value.get("device"))
         unique.setdefault(key, value)
+    severity_rank = {"Critical": 5, "High": 4, "Medium": 3, "Low": 2,
+                     "Unknown": 1, "Info": 0}
     ordered = sorted(unique.values(), key=lambda value: (
-        -int(value.get("priority", 0)),
+        -severity_rank.get(value.get("severity", "Info"), 0),
         -int((value.get("evidence") or {}).get("age_seconds", 0)),
+        -int(value.get("priority", 0)),
         value.get("canonical_id") or value.get("device") or "",
         value.get("title", ""), value.get("id", "")))
     rows = []
@@ -102,10 +121,14 @@ def _action_rows(operations, scopes, enabled_collectors, capabilities=None):
             "asset": value.get("device") or "Platform",
             "issue": value.get("summary") or value.get("title"),
             "age": _action_age(value), "priority": int(value.get("priority", 0)),
+            "domain": value.get("domain") or value.get("category", "Infrastructure"),
+            "provider": value.get("provider", ""),
+            "object_kind": value.get("object_kind", ""),
             "id": value.get("id", "")} for value in selected[:8]]
         rows.extend(scoped_rows or [{"scope": scope["scope"], "severity": "Info",
             "service": "Operations", "asset": "", "issue": "No action required",
-            "age": "", "priority": 0, "id": ""}])
+            "age": "", "priority": 0, "domain": "", "provider": "",
+            "object_kind": "", "id": ""}])
     return rows
 
 
@@ -255,8 +278,9 @@ class WallboardEngine:
                     "summary": f"No canonical {name.lower()} state exists for this site.",
                     "affected_assets": [], "affected_users": None,
                     "last_change": None, "evidence": []})
-            service_scopes[scope["scope"]]["services"] = [
-                values[name] for name in SERVICE_NAMES]
+            names = list(SERVICE_NAMES) + sorted(
+                name for name in values if name and name not in SERVICE_NAMES)
+            service_scopes[scope["scope"]]["services"] = [values[name] for name in names]
         scope_values = []
         topology = []; topology_edges = []
         for scope in scopes:
@@ -367,10 +391,12 @@ class WallboardEngine:
                 attributed = sorted(site_names)
             if not attributed:
                 collector_rows.append({"scope": "all", "collector": name,
-                    "site": "Unattributed", "status": status, "last_run": last})
+                    "site": "Unattributed", "status": status,
+                    "freshness": _age_label(collector_age), "last_run": last})
             for site_id in attributed:
                 row = {"collector": name, "site": site_names[site_id],
-                       "status": status, "last_run": last}
+                       "status": status, "freshness": _age_label(collector_age),
+                       "last_run": last}
                 collector_rows.append({"scope": "all", **row})
                 collector_rows.append({"scope": site_id, **row})
         site_matrix = []
@@ -400,7 +426,8 @@ class WallboardEngine:
                     generated_at.isoformat().replace("+00:00", "Z") if generated_at else None),
                 "last_successful_refresh": (
                     generated_at.isoformat().replace("+00:00", "Z") if generated_at else None),
-                "age_seconds": age, "status": freshness,
+                "age_seconds": age, "age_display": _age_label(age),
+                "status": freshness,
                 "threshold_seconds": self.freshness_seconds},
             "services": {name: None for name in ("DNS", "DHCP", "Active Directory", "PaperCut", "Certificates")},
             "wan": {"uplinks": wan_uplinks, "samples": wan_samples,

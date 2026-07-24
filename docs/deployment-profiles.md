@@ -111,3 +111,17 @@ may serve different sites in one profile. Static validation checks these
 references and thresholds without requiring credentials. See
 `configs/examples/virtualisation.yml`; never point a profile at another
 customer's management endpoint.
+
+Run fixture integration without live endpoints, then generate the same
+profile-scoped Operations and Service Health outputs:
+
+```bash
+./itp profile virtualisation <profile> --fixture vmware
+ITP_PROFILE=<profile> ITP_RUNTIME_DIR="$PWD/runtime/<profile>" \
+  .venv/bin/python -m collectors operations generate
+ITP_PROFILE=<profile> ITP_RUNTIME_DIR="$PWD/runtime/<profile>" \
+  .venv/bin/python -m collectors services generate
+```
+
+Fixture output remains under `virtualisation/fixtures/` and is intentionally not
+read by live Operations generation.
