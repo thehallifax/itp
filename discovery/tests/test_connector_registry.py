@@ -32,6 +32,9 @@ def test_complete_inventory_stable_ids_and_deterministic_order(registry):
     assert [value.id for value in values] == sorted(EXPECTED)
     assert all(value.id == value.id.casefold() for value in values)
     assert registry.to_dict() == registry.to_dict()
+    assert ConnectorMetadataRegistry(ROOT).to_dict() == registry.to_dict()
+    assert ConnectorMetadataRegistry(registry.all()).to_dict() == registry.to_dict()
+    assert all(value.remediation_command for value in registry.all())
 
 
 def test_alias_lookup_and_manual_only_inventory(registry):
