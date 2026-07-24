@@ -139,6 +139,9 @@ Requirements: Git, Docker, and Docker Compose v2.
 git clone https://github.com/thehallifax/itp.git
 cd itp
 ./itp setup
+./itp doctor
+./itp start
+./itp status
 ```
 
 The setup wizard checks Docker, Compose, and required ports; creates `.env` and
@@ -161,6 +164,21 @@ or `--force` is supplied. Open Grafana at the URL printed by the wizard.
 Datasources, folders, and enabled dashboard packs are provisioned automatically.
 See the [Quick Start](docs/quick-start.md) for configuration and credential
 next steps.
+
+Day-to-day stack lifecycle is handled by ITP:
+
+```sh
+./itp start
+./itp restart
+./itp logs --service grafana --tail 100
+./itp stop
+```
+
+`start`, `stop`, and `restart` support `--json`. They wrap the tracked Compose
+deployment and run idempotent provisioning for runtime directories, InfluxDB,
+Grafana datasource configuration, and bundled managed dashboards. Existing
+credentials are preserved. See [Deployment](docs/deployment.md) and
+[Provisioning](docs/provisioning.md).
 
 For a customer-scoped deployment:
 
@@ -218,6 +236,20 @@ The default command starts a single background daemon. Use
 collection continue at their configured intervals; failures are isolated and
 recorded without stopping other connectors. Daemon heartbeat, uptime, current
 work, and last success are included in status output.
+
+Operational notifications consume the same connector freshness, daemon state,
+Doctor results, and `PipelineRun` outcomes:
+
+```sh
+./itp notifications evaluate
+./itp notifications list
+./itp notifications test
+```
+
+Notifications are disabled by default. Phase 1 provides console and generic
+JSON webhook delivery with deterministic deduplication, recovery events,
+acknowledgement, and secret-safe delivery records. See
+[Notifications](docs/notifications.md).
 
 ## Repository layout
 

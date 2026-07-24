@@ -49,7 +49,8 @@ class BootstrapWizard:
     """Prepare the legacy root Compose deployment without touching secrets."""
 
     def __init__(self, root, *, runner=subprocess.run, input_fn=input,
-                 output_fn=print, sleep_fn=time.sleep, connector_registry=None):
+                 output_fn=print, sleep_fn=time.sleep, connector_registry=None,
+                 provision_fn=None, start_fn=None):
         self.root = Path(root).resolve()
         self.runner = runner
         self.input = input_fn
@@ -57,6 +58,8 @@ class BootstrapWizard:
         self.sleep = sleep_fn
         self.connector_registry = connector_registry or \
             ConnectorMetadataRegistry.load(Path(__file__).resolve().parents[1])
+        self.provision_fn = provision_fn
+        self.start_fn = start_fn
         self.env_path = self.root / ".env"
         self.config_path = self.root / "discovery/config.yml"
         self.env_template = self.root / ".env.example"
@@ -288,18 +291,24 @@ class BootstrapWizard:
         created, updated = self._write_configuration(
             name, kind, port, update_existing=update_existing)
         self.validate_configuration()
+        if self.provision_fn:
+            self.provision_fn()
         should_start = options.start
         if should_start is None:
             should_start = False if options.non_interactive else self._answer(
                 self.input("Start ITP services now? [y/N]: "))
         if should_start:
-            self._run(["docker", "compose", "up", "-d", "--build"])
-            self.wait_healthy(options.health_timeout)
+            if self.start_fn:
+                self.start_fn()
+                self.wait_healthy(options.health_timeout)
+            else:
+                self._run(["docker", "compose", "up", "-d", "--build"])
+                self.wait_healthy(options.health_timeout)
         url = f"http://localhost:{port}"
         self.output("ITP setup complete.")
         self.output(f"Dashboard: {url}")
         if not should_start:
-            self.output("Next: docker compose up -d --build")
+            self.output("Next: ./itp start")
         self.output(
             "Next: configure collector credentials under secrets/ and enable "
             "collectors in discovery/config.yml.")

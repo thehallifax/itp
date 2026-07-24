@@ -15,6 +15,9 @@ Clone ITP and run the bootstrap wizard:
 git clone https://github.com/thehallifax/itp.git
 cd itp
 ./itp setup
+./itp doctor
+./itp start
+./itp status
 ```
 
 On Windows:
@@ -107,6 +110,10 @@ containers and known local HTTP health endpoints. Use
 `./itp doctor --json --strict` for support automation. Doctor is read-only and
 reports credential presence without displaying values.
 
+Docker Compose is an implementation detail for normal operation. Use
+`./itp start`, `./itp stop`, `./itp restart`, and `./itp logs`; see
+[Deployment](deployment.md).
+
 ## Collect and inspect status
 
 Run every enabled connector once using the platform scheduler:
@@ -164,3 +171,22 @@ state. For automation that needs exactly one lock-protected cycle:
 Only non-sensitive counters and exception types are written to daemon state,
 pipeline results, or command output. Background runtime logs are written to
 `runtime/daemon/daemon.log`.
+
+## Notifications
+
+Notifications are opt-in. Configure `notifications` in
+`discovery/config.yml`, then validate delivery before enabling operational
+evaluation:
+
+```sh
+./itp notifications test
+./itp notifications evaluate
+./itp notifications list
+./itp status
+```
+
+Use `--json` with any notification command for automation. Webhook URLs and
+authorization headers should be supplied through the environment placeholders
+shown in `.env.example`; they are never included in notification state or
+delivery errors. See [Notifications](notifications.md) for configuration,
+deduplication, recovery, acknowledgement, and troubleshooting.

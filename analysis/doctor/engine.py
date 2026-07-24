@@ -244,6 +244,30 @@ class DoctorEngine:
             else "Required directories are inaccessible",
             detail=", ".join(writable))
 
+        runtime = Path(os.getenv("ITP_RUNTIME_DIR", self.root / "runtime"))
+        runtime_ok = runtime.is_dir() and os.access(runtime, os.W_OK)
+        self._result(
+            "platform.runtime", "Platform", "Runtime directories",
+            "pass" if runtime_ok else "warn",
+            "Runtime directory is writable" if runtime_ok
+            else "Runtime directory is missing or not writable",
+            detail=str(runtime), remediation="Run ./itp setup")
+        provisioning = runtime / "provisioning/state.json"
+        try:
+            state = json.loads(provisioning.read_text())
+            complete = state.get("status") == "complete"
+            summary = (
+                "Provisioning is complete" if complete
+                else "Provisioning is incomplete")
+            detail = ", ".join(state.get("missing") or [])
+        except (OSError, json.JSONDecodeError):
+            complete, summary, detail = (
+                False, "Provisioning has not completed", str(provisioning))
+        self._result(
+            "platform.provisioning", "Platform", "Automatic provisioning",
+            "pass" if complete else "warn", summary, detail=detail,
+            remediation="Run ./itp start", command="./itp start")
+
         ports = []
         for key, default in (("GRAFANA_PORT", 3000), ("INFLUXDB_PORT", 8181)):
             try:
@@ -413,9 +437,13 @@ class DoctorEngine:
             return response.status
 
     def _http_checks(self):
+        influx_port = int(self.env_values.get(
+            "INFLUXDB_PORT", os.getenv("INFLUXDB_PORT", 8181)))
+        grafana_port = int(self.env_values.get(
+            "GRAFANA_PORT", os.getenv("GRAFANA_PORT", 3000)))
         endpoints = (
-            ("influxdb", "http://127.0.0.1:8181/health"),
-            ("grafana", "http://127.0.0.1:3000/api/health"))
+            ("influxdb", f"http://127.0.0.1:{influx_port}/health"),
+            ("grafana", f"http://127.0.0.1:{grafana_port}/api/health"))
         for name, url in endpoints:
             try:
                 status = self.http(url, self.timeout)

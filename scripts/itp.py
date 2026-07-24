@@ -12,6 +12,7 @@ import sys
 import time
 import urllib.request
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -39,6 +40,10 @@ from analysis.doctor import (
 from analysis.operator import (
     DaemonAlreadyRunningError, OperatorCollectEngine, OperatorDaemon,
     OperatorStatusEngine, render_collect, render_status, start_background)
+from analysis.notifications import (
+    NotificationChannelRegistry, NotificationEngine, NotificationStore)
+from analysis.deployment import (
+    DeploymentError, DockerCompose, Provisioner, StackLifecycle)
 
 
 def load_root_env():
@@ -487,6 +492,27 @@ def main():
     daemon_mode = daemon.add_mutually_exclusive_group()
     daemon_mode.add_argument("--foreground", action="store_true")
     daemon_mode.add_argument("--once", action="store_true")
+    for lifecycle_name in ("start", "stop", "restart"):
+        lifecycle = commands.add_parser(
+            lifecycle_name, help=f"{lifecycle_name} the root Compose stack")
+        lifecycle.add_argument("--json", action="store_true")
+    logs_root = commands.add_parser("logs", help="show root stack logs")
+    logs_root.add_argument("--follow", action="store_true")
+    logs_root.add_argument("--service")
+    logs_root.add_argument("--tail", type=int, default=200)
+    notifications = commands.add_parser(
+        "notifications", help="evaluate and inspect operational notifications")
+    notification_actions = notifications.add_subparsers(
+        dest="notification_action", required=True)
+    for name in ("evaluate", "list", "test"):
+        item = notification_actions.add_parser(name)
+        item.add_argument("--json", action="store_true")
+    notification_inspect = notification_actions.add_parser("inspect")
+    notification_inspect.add_argument("notification_id")
+    notification_inspect.add_argument("--json", action="store_true")
+    notification_ack = notification_actions.add_parser("acknowledge")
+    notification_ack.add_argument("notification_id")
+    notification_ack.add_argument("--json", action="store_true")
     setup_parser = commands.add_parser(
         "setup", help="prepare a new root Docker Compose deployment")
     setup_parser.add_argument("--non-interactive", action="store_true")
@@ -517,7 +543,27 @@ def main():
         parser.print_help()
         return
     if args.group == "setup":
-        BootstrapWizard(ROOT).run(SetupOptions(
+        def setup_provision():
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                setup_config = load_config(ROOT / "discovery/config.yml")
+            runtime = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
+            compose_runtime = DockerCompose(ROOT)
+            return Provisioner(
+                ROOT, setup_config, runtime, compose_runtime).provision()
+
+        def setup_start():
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                setup_config = load_config(ROOT / "discovery/config.yml")
+            runtime = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
+            compose_runtime = DockerCompose(ROOT)
+            return StackLifecycle(
+                compose_runtime,
+                Provisioner(ROOT, setup_config, runtime, compose_runtime)).start()
+
+        BootstrapWizard(
+            ROOT, provision_fn=setup_provision, start_fn=setup_start).run(SetupOptions(
             non_interactive=args.non_interactive,
             deployment_name=args.deployment_name,
             deployment_type=args.deployment_type,
@@ -534,7 +580,9 @@ def main():
               else render_human(report, args.strict))
         raise SystemExit(report.exit_code(args.strict))
 
-    if args.group in {"collect", "status", "daemon"}:
+    if args.group in {
+            "collect", "status", "daemon", "notifications",
+            "start", "stop", "restart", "logs"}:
         load_root_env()
         # These commands intentionally operate on the backwards-compatible
         # root deployment, so its profile migration warning is not actionable.
@@ -542,7 +590,89 @@ def main():
             warnings.simplefilter("ignore", DeprecationWarning)
             config = load_config(ROOT / "discovery/config.yml")
         runtime_dir = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
-        if args.group == "collect":
+        compose_runtime = DockerCompose(ROOT)
+        lifecycle = StackLifecycle(
+            compose_runtime,
+            Provisioner(ROOT, config, runtime_dir, compose_runtime))
+        if args.group in {"start", "stop", "restart"}:
+            result = getattr(lifecycle, args.group)()
+            if args.json:
+                print(json.dumps(result, indent=2, sort_keys=True))
+            else:
+                print(
+                    f"Stack {args.group}: "
+                    f"{result['stack']['compose_project_state']}")
+                for service in result["stack"]["services"]:
+                    print(
+                        f"  {service['service']}: {service['state']}"
+                        + (f"/{service['health']}" if service["health"] else ""))
+        elif args.group == "logs":
+            lifecycle.logs(
+                follow=args.follow, service=args.service, tail=args.tail)
+        elif args.group == "notifications":
+            notification_config = config.get("notifications") or {}
+            channel_registry = NotificationChannelRegistry(
+                output=lambda value: print(value, file=sys.stderr))
+            engine = NotificationEngine(
+                runtime_dir, notification_config,
+                channel_registry=channel_registry)
+            store = NotificationStore(runtime_dir)
+            if args.notification_action == "evaluate":
+                status_result = OperatorStatusEngine(
+                    ROOT, config, runtime_dir=runtime_dir).run()
+                doctor_result = DoctorEngine(ROOT).run()
+                result = engine.evaluate(status_result, doctor_result)
+            elif args.notification_action == "test":
+                result = engine.test()
+            elif args.notification_action == "list":
+                state = store.read()
+                result = {
+                    "enabled": engine.enabled,
+                    "active": sorted(
+                        state["active"].values(),
+                        key=lambda value: value["id"]),
+                    "events": state["events"],
+                    "deliveries": state["deliveries"],
+                }
+            elif args.notification_action == "inspect":
+                result = store.find(args.notification_id)
+                if result is None:
+                    raise ValueError(
+                        f"notification not found: {args.notification_id}")
+            else:
+                result = store.acknowledge(
+                    args.notification_id,
+                    datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+                if result is None:
+                    raise ValueError(
+                        f"notification not found: {args.notification_id}")
+            if args.json:
+                print(json.dumps(result, indent=2, sort_keys=True))
+            elif args.notification_action == "list":
+                print(
+                    f"Notifications: {len(result['active'])} active, "
+                    f"{len(result['events'])} total")
+                for value in result["active"]:
+                    print(
+                        f"[{value['severity'].upper()}] {value['id']} "
+                        f"{value['title']} occurrences={value['occurrence_count']}")
+            elif args.notification_action == "evaluate":
+                print(
+                    f"Notification evaluation: {result['active_count']} active, "
+                    f"{len(result['new_events'])} new, "
+                    f"{len(result['recoveries'])} recovered")
+            elif args.notification_action == "test":
+                print(
+                    "Test notification: "
+                    f"{len(result['deliveries'])} delivery attempt(s)")
+            else:
+                print(
+                    f"Notification: {result['id']}\n"
+                    f"Severity: {result['severity']}\n"
+                    f"Title: {result['title']}\n"
+                    f"Summary: {result['summary']}\n"
+                    f"Acknowledged: {result.get('acknowledged', False)}")
+        elif args.group == "collect":
             result = OperatorCollectEngine(
                 ROOT, config, runtime_dir=runtime_dir).run()
             print(json.dumps(result, indent=2, sort_keys=True)
@@ -552,8 +682,15 @@ def main():
         elif args.group == "status":
             result = OperatorStatusEngine(
                 ROOT, config, runtime_dir=runtime_dir).run()
+            result["stack"] = lifecycle.status()
+            result["stack"]["daemon"] = result["daemon"]
             print(json.dumps(result, indent=2, sort_keys=True)
-                  if args.json else render_status(result))
+                  if args.json else render_status(result) + "\n"
+                  + f"Stack: {result['stack']['compose_project_state']}\n"
+                  + f"InfluxDB: {result['stack']['influxdb']}\n"
+                  + f"Grafana: {result['stack']['grafana']}\n"
+                  + "Provisioning: "
+                  + result["stack"]["provisioning"]["status"])
         elif args.once:
             result = OperatorDaemon(
                 ROOT, config, runtime_dir=runtime_dir).run(once=True)
@@ -655,7 +792,7 @@ if __name__ == "__main__":
     except DoctorFatalError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(3)
-    except (DaemonAlreadyRunningError, ProfileError, SetupError,
+    except (DaemonAlreadyRunningError, DeploymentError, ProfileError, SetupError,
             subprocess.CalledProcessError,
             OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

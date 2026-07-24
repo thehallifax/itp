@@ -25,6 +25,7 @@ NOW = "2026-07-24T00:00:00Z"
 @pytest.fixture(autouse=True)
 def isolated_deployment_environment(monkeypatch):
     monkeypatch.delenv("ITP_PROFILE", raising=False)
+    monkeypatch.delenv("ITP_RUNTIME_DIR", raising=False)
 
 
 def repository(tmp_path, *, config=True, env=True):
@@ -97,6 +98,8 @@ def test_clean_offline_report_is_ordered_and_skips_live_checks(tmp_path):
     assert [value.check_id for value in report.checks] == sorted(
         value.check_id for value in report.checks)
     assert check(report, "platform.config").status == "pass"
+    assert check(report, "platform.runtime").status == "warn"
+    assert check(report, "platform.provisioning").status == "warn"
     assert check(report, "services.daemon").status == "skip"
     assert check(report, "state_history.configuration").summary == \
         "State history is disabled"

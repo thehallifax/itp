@@ -77,6 +77,21 @@ def test_first_run_copies_templates_and_generates_selected_values(
     assert config["schema_version"] == 1
     assert ["docker", "compose", "config", "--quiet"] in runner.commands
     assert "Dashboard: http://localhost:3100" in messages
+    assert "Next: ./itp start" in messages
+
+
+def test_setup_separates_provisioning_and_stack_start(
+        tmp_path, docker_available):
+    calls = []
+    wizard = BootstrapWizard(
+        tree(tmp_path), runner=DockerRunner(),
+        output_fn=lambda _: None, sleep_fn=lambda _: None,
+        provision_fn=lambda: calls.append("provision"),
+        start_fn=lambda: calls.append("start"))
+    result = wizard.run(SetupOptions(
+        non_interactive=True, start=True, health_timeout=2))
+    assert result.started is True
+    assert calls == ["provision", "start"]
 
 
 def test_interactive_first_run_prompts_and_can_start(
