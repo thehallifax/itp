@@ -270,3 +270,5 @@ deduplication, recovery, acknowledgement, and troubleshooting.
 
 Bootstrap progress and installation diagnostics are written to stderr, so
 commands such as `./itp status --json` keep stdout machine-readable.
+Detailed Windows virtualization, macOS, and Linux prerequisites are documented
+in [Platform prerequisites](platform-prerequisites.md).

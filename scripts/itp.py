@@ -30,6 +30,7 @@ from collectors.vmware.client import VMwareClient
 from collectors.proxmox.client import ProxmoxClient
 from collectors.hyperv.runner import LocalPowerShellRunner
 from collectors.writer import InfluxWriter
+from collectors.file_permissions import restrict_owner_access
 from collectors.config import load_config
 from collectors.connector_registry import ConnectorMetadataRegistry
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
@@ -346,7 +347,7 @@ def init_secrets(value):
         if target.exists():
             continue
         shutil.copyfile(source, target)
-        target.chmod(0o600)
+        restrict_owner_access(target)
         created.append(target)
     print("Created: " + (", ".join(str(path) for path in created) or "none; existing files preserved"))
 

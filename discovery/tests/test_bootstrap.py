@@ -38,6 +38,12 @@ def test_dependency_hash_is_deterministic_and_content_sensitive(tmp_path):
     assert first != bootstrap.dependency_hash(dependency)
 
 
+def test_supported_python_minimum_is_deliberate():
+    assert bootstrap.supported_python((3, 9, 0))
+    assert bootstrap.supported_python((3, 13, 1))
+    assert not bootstrap.supported_python((3, 8, 20))
+
+
 def test_missing_dependency_definition_has_actionable_error(tmp_path):
     with pytest.raises(bootstrap.BootstrapError, match="missing pyproject.toml"):
         bootstrap.dependency_hash(tmp_path / "pyproject.toml")
@@ -109,6 +115,11 @@ def test_corrupt_environment_is_recovered_and_installed(
     assert any("creating" in value for value in progress)
     assert any("installing" in value for value in progress)
     assert bootstrap.marker_path(root / ".venv").is_file()
+    pip_commands = [command for command in commands if "pip" in command]
+    assert len(pip_commands) == 2
+    assert all("--disable-pip-version-check" in command
+               for command in pip_commands)
+    assert all("--quiet" in command for command in pip_commands)
 
 
 def test_missing_venv_support_has_actionable_error(tmp_path, monkeypatch):
@@ -118,6 +129,39 @@ def test_missing_venv_support_has_actionable_error(tmp_path, monkeypatch):
     monkeypatch.setattr(bootstrap, "venv", None)
     with pytest.raises(bootstrap.BootstrapError, match="venv support"):
         bootstrap.ensure_environment(tmp_path, output=lambda value: None)
+
+
+def test_dependency_failure_prints_captured_pip_output(
+        tmp_path, monkeypatch, capsys):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts/itp.py").write_text("")
+    (tmp_path / "pyproject.toml").write_text("[project]\n")
+
+    class Builder:
+        def __init__(self, **kwargs):
+            pass
+
+        def create(self, environment):
+            python = _python_path(Path(environment))
+            python.parent.mkdir(parents=True)
+            python.write_text("")
+
+    def runner(command, **kwargs):
+        if "-c" in command:
+            return SimpleNamespace(returncode=1, stdout="")
+        if "--upgrade" in command:
+            return SimpleNamespace(returncode=0, stdout="toolchain detail\n")
+        return SimpleNamespace(
+            returncode=1, stdout="actionable package-index failure\n")
+
+    monkeypatch.setattr(bootstrap.venv, "EnvBuilder", Builder)
+    with pytest.raises(
+            bootstrap.BootstrapError, match="dependency installation failed"):
+        bootstrap.ensure_environment(
+            tmp_path, run=runner, output=lambda value: None)
+    error = capsys.readouterr().err
+    assert "toolchain detail" in error
+    assert "actionable package-index failure" in error
 
 
 def test_launch_forwards_arguments_and_exit_code(tmp_path, monkeypatch):
@@ -133,7 +177,8 @@ def test_launch_forwards_arguments_and_exit_code(tmp_path, monkeypatch):
         return SimpleNamespace(returncode=17)
 
     assert bootstrap.launch(
-        tmp_path, ["status", "--json"], run=runner) == 17
+        tmp_path, ["status", "--json"], run=runner,
+        prerequisite_fn=lambda *args, **kwargs: {}) == 17
     assert calls == [[str(python), str(script), "status", "--json"]]
 
 
@@ -192,10 +237,75 @@ def test_windows_prerequisites_reject_stopped_daemon():
         return SimpleNamespace(
             returncode=0 if command[1:3] == ["compose", "version"] else 1)
 
-    with pytest.raises(bootstrap.BootstrapError, match="not running"):
+    with pytest.raises(bootstrap.BootstrapError, match="daemon is unavailable"):
         bootstrap.check_windows_prerequisites(
             ["status"], which=lambda name: "docker.exe"
             if name == "docker" else None, run=runner)
+
+
+def test_windows_virtualization_diagnostic_parsing():
+    system = bootstrap.parse_windows_systeminfo(
+        "Hyper-V Requirements:\n"
+        "    Virtualization Enabled In Firmware: No\n")
+    assert system["virtualization_enabled"] is False
+    assert system["hypervisor_detected"] is False
+    features = bootstrap.parse_windows_optional_features(json.dumps([
+        {"FeatureName": "VirtualMachinePlatform", "State": "Disabled"},
+        {"FeatureName": "HypervisorPlatform", "State": "Enabled"},
+    ]))
+    assert features == {
+        "VirtualMachinePlatform": "Disabled",
+        "HypervisorPlatform": "Enabled",
+    }
+    guidance = bootstrap.windows_docker_guidance({
+        **system, "features": features, "hypervisor_launch": "off",
+        "reboot_pending": True,
+    })
+    assert "AMD SVM / AMD-V or Intel VT-x" in guidance
+    assert "Virtual Machine Platform" in guidance
+    assert "boot configuration" in guidance
+    assert "pending reboot" in guidance
+
+
+def test_windows_optional_diagnostics_tolerate_unavailable_commands():
+    result = bootstrap.windows_virtualization_diagnostics(
+        which=lambda name: None,
+        run=lambda *args, **kwargs: pytest.fail("runner should not be called"))
+    assert result == {
+        "virtualization_enabled": None, "hypervisor_detected": False,
+        "features": {}, "hypervisor_launch": None, "reboot_pending": None,
+    }
+
+
+def test_windows_diagnostics_collect_available_read_only_evidence():
+    paths = {
+        "systeminfo": "systeminfo.exe",
+        "powershell.exe": "powershell.exe",
+        "bcdedit": "bcdedit.exe",
+        "reg": "reg.exe",
+    }
+
+    def runner(command, **kwargs):
+        if command[0] == "systeminfo.exe":
+            return SimpleNamespace(
+                returncode=0,
+                stdout="Virtualization Enabled In Firmware: No")
+        if command[0] == "powershell.exe":
+            return SimpleNamespace(returncode=0, stdout=json.dumps({
+                "FeatureName": "VirtualMachinePlatform",
+                "State": "Disabled",
+            }))
+        if command[0] == "bcdedit.exe":
+            return SimpleNamespace(
+                returncode=0, stdout="hypervisorlaunchtype    Off")
+        return SimpleNamespace(returncode=0, stdout="")
+
+    result = bootstrap.windows_virtualization_diagnostics(
+        which=paths.get, run=runner)
+    assert result["virtualization_enabled"] is False
+    assert result["features"]["VirtualMachinePlatform"] == "Disabled"
+    assert result["hypervisor_launch"] == "off"
+    assert result["reboot_pending"] is True
 
 
 def test_help_does_not_require_docker():
@@ -221,7 +331,8 @@ def test_progress_uses_stderr_and_does_not_contaminate_json_stdout(
 
     assert bootstrap.launch(
         tmp_path, ["status", "--json"], run=runner,
-        output=lambda value: print(value, file=__import__("sys").stderr)) == 0
+        output=lambda value: print(value, file=__import__("sys").stderr),
+        prerequisite_fn=lambda *args, **kwargs: {}) == 0
     captured = capsys.readouterr()
     assert json.loads(captured.out) == {"status": "ok"}
     assert "ITP bootstrap: ready" in captured.err
@@ -243,11 +354,27 @@ def test_windows_first_run_progress_identifies_selected_python(
             tmp_path / "scripts/itp.py"))
     assert bootstrap.launch(
         tmp_path, ["demo"], output=progress.append,
-        run=lambda command, **kwargs: SimpleNamespace(returncode=0)) == 0
+        run=lambda command, **kwargs: SimpleNamespace(returncode=0),
+        prerequisite_fn=lambda *args, **kwargs: {
+            "docker": True, "compose": True}) == 0
     assert progress[:2] == [
         "ITP bootstrap: checking prerequisites",
-        "ITP bootstrap: using Python 3.12 via py -3",
+        "✓ Python 3.12 (py -3)",
     ]
+    assert progress[2:4] == ["✓ Docker", "✓ Docker Compose"]
+
+
+def test_main_strips_bootstrap_verbose_before_launch(monkeypatch):
+    captured = {}
+
+    def launcher(root, arguments, verbose=False):
+        captured.update(arguments=arguments, verbose=verbose)
+        return 0
+
+    monkeypatch.setattr(bootstrap, "launch", launcher)
+    assert bootstrap.main(["--verbose", "demo", "--help"]) == 0
+    assert captured == {
+        "arguments": ["demo", "--help"], "verbose": True}
 
 
 def test_windows_launcher_is_thin_and_preserves_exit_code():
@@ -282,3 +409,6 @@ def test_unix_launcher_is_location_relative_and_forwards_arguments():
     assert 'dirname -- "$0"' in text
     assert '"$BOOTSTRAP" "$@"' in text
     assert "set -eu" in text
+    assert "scripts/itp.py" not in text
+    assert "ITP_BOOTSTRAP_SHOW_PROGRESS" in text
+    assert "ITP_BOOTSTRAP_PYTHON_VERSION" in text

@@ -123,6 +123,9 @@ If Windows blocks local scripts, see the
 [PowerShell execution-policy guidance](docs/quick-start.md#powershell-execution-policy).
 ITP cannot override an organisation-enforced policy.
 
+See [Platform prerequisites](docs/platform-prerequisites.md) for Windows
+virtualization, macOS architecture, and Linux Docker guidance.
+
 ### 3. Start ITP
 
 ```sh
@@ -184,6 +187,7 @@ with ITP and are enabled through configuration—no code changes are required.
 ## Documentation
 
 - [Quick Start](docs/quick-start.md)
+- [Platform Prerequisites](docs/platform-prerequisites.md)
 - [Demo Environment](docs/demo.md)
 - [Deployment](docs/deployment.md)
 - [Provisioning](docs/provisioning.md)

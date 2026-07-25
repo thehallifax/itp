@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -30,6 +31,10 @@ from analysis.doctor import (
     DoctorEngine, DoctorFatalError, DoctorUsageError, render_human, render_json)
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _default_health_path():
+    return str(Path(tempfile.gettempdir()) / "itp-collector-health")
 
 
 def _since_timestamp(value):
@@ -81,7 +86,8 @@ def inspection_lines(name, result):
 
 async def _run_idle():
     """Keep the framework healthy when all native collectors are disabled."""
-    health_path = Path(os.getenv("COLLECTOR_HEALTH_PATH", "/tmp/collector-health"))
+    health_path = Path(os.getenv(
+        "COLLECTOR_HEALTH_PATH", _default_health_path()))
     health_path.parent.mkdir(parents=True, exist_ok=True)
     health_path.touch()
     logging.info("collector=framework phase=run result=idle enabled_collectors=0")
@@ -548,7 +554,8 @@ async def _run(args):
         output_dir=services_settings.get("output_path", "/app/runtime/services"),
         sites_config=services_settings.get("sites_config", "/app/config/sites.yml")) \
         if services_settings.get("enabled", True) else None
-    await Scheduler(collectors, os.getenv("COLLECTOR_HEALTH_PATH", "/tmp/collector-health"),
+    await Scheduler(collectors, os.getenv(
+        "COLLECTOR_HEALTH_PATH", _default_health_path()),
                     inventory_engine=engine,
                     lifecycle_interval=inventory_settings.get(
                         "lifecycle_evaluation_interval_seconds", 3600),

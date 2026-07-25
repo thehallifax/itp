@@ -1,6 +1,5 @@
 """Vendor-neutral inventory engine with legacy JSON compatibility."""
 from __future__ import annotations
-import fcntl
 import fnmatch
 import hashlib
 import ipaddress
@@ -12,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .writer import atomic_write
+from .file_lock import exclusive_file_lock
 
 
 SCHEMA_VERSION = 2
@@ -198,11 +198,8 @@ class InventoryEngine:
     def locked(self):
         self.root.mkdir(parents=True, exist_ok=True)
         with open(self.root / ".inventory.lock", "a+") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
+            with exclusive_file_lock(lock):
                 yield
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
 
     @staticmethod
     def _read_json(path, missing):
@@ -858,11 +855,8 @@ class InventoryManager:
     def locked(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(f"{self.path}.lock", "a+") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
+            with exclusive_file_lock(lock):
                 yield
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
 
     def write(self, inventory):
         atomic_write(self.path, json.dumps(inventory, indent=2) + "\n")

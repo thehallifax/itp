@@ -46,3 +46,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 setup
 
 Use `pwsh` in place of `powershell.exe` for PowerShell 7. Organisation-enforced
 Group Policy cannot be bypassed by ITP and may require administrator approval.
+
+See [Platform prerequisites](platform-prerequisites.md) for Windows firmware
+virtualization and optional-feature checks, macOS architecture guidance, Linux
+Docker permissions, and verification commands.

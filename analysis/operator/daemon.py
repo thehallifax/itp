@@ -169,7 +169,11 @@ class OperatorDaemon:
             try:
                 loop.add_signal_handler(selected, self.request_stop)
             except (NotImplementedError, RuntimeError):
-                signal.signal(selected, lambda *_: self.request_stop())
+                try:
+                    signal.signal(selected, lambda *_: self.request_stop())
+                except (OSError, RuntimeError, ValueError):
+                    logging.getLogger("operator.daemon").debug(
+                        "signal_handler=unavailable signal=%s", name)
 
     async def _heartbeat(self):
         while not self.stop_event.is_set():
