@@ -14,7 +14,8 @@ runtime/provisioning/state.json
 ```
 
 The state records the provisioning version, status, missing prerequisites,
-dashboard count, last attempt, and last successful completion. It contains no
+dashboard count, installed dashboard packs and versions, last attempt, and
+last successful completion. It contains no
 tokens, passwords, webhook URLs, or full environment values.
 
 ## Credential preservation

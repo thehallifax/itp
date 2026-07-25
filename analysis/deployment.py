@@ -203,6 +203,7 @@ class Provisioner:
             "credentials": credential_state if token_present else "required",
             "database": database_state,
             "dashboard_count": len(dashboard["dashboards"]),
+            "dashboard_packs": dashboard.get("packs", []),
             "missing": sorted(missing),
         }
         atomic_write(
@@ -218,7 +219,7 @@ class Provisioner:
             "last_attempt": None,
             "last_successful_provisioning": None,
             "credentials": "unknown", "database": "unknown",
-            "dashboard_count": 0, "missing": [],
+            "dashboard_count": 0, "dashboard_packs": [], "missing": [],
         }
 
 
@@ -251,6 +252,7 @@ class StackLifecycle:
             "stopped" if services else "not created")
         influx_port = os.getenv("INFLUXDB_PORT", "8181")
         grafana_port = os.getenv("GRAFANA_PORT", "3000")
+        provisioning = self.provisioner.status()
         return {
             "docker_available": docker_available,
             "docker_daemon_available": (
@@ -265,7 +267,8 @@ class StackLifecycle:
                 "reachable" if online and self.http(
                     f"http://127.0.0.1:{grafana_port}/api/health")
                 else "unavailable"),
-            "provisioning": self.provisioner.status(),
+            "provisioning": provisioning,
+            "dashboard_packs": provisioning.get("dashboard_packs", []),
         }
 
     def start(self):

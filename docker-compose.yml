@@ -139,6 +139,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/runtime-dashboard/managed/infrastructure/itp-infrastructure-overview.json
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
     depends_on:
       - influxdb3-core

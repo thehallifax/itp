@@ -44,6 +44,7 @@ from analysis.notifications import (
     NotificationChannelRegistry, NotificationEngine, NotificationStore)
 from analysis.deployment import (
     DeploymentError, DockerCompose, Provisioner, StackLifecycle)
+from analysis.demo import DemoEngine
 
 
 def load_root_env():
@@ -524,6 +525,11 @@ def main():
     setup_parser.add_argument("--start", action="store_true", default=None)
     setup_parser.add_argument("--force", action="store_true")
     setup_parser.add_argument("--health-timeout", type=int, default=180)
+    demo_parser = commands.add_parser(
+        "demo", help="start and seed an isolated demonstration environment")
+    demo_parser.add_argument("--seed", type=int, default=1001)
+    demo_parser.add_argument("--days", type=int, default=30)
+    demo_parser.add_argument("--json", action="store_true")
     profile_parser = commands.add_parser("profile")
     actions = profile_parser.add_subparsers(dest="action", required=True)
     actions.add_parser("list")
@@ -571,6 +577,31 @@ def main():
             start=args.start,
             force=args.force,
             health_timeout=args.health_timeout))
+        return
+    if args.group == "demo":
+        load_root_env()
+        engine = DemoEngine(ROOT, seed=args.seed, days=args.days)
+        # Demo isolation applies to the entire child Compose environment and
+        # prevents the root deployment token/database/project from being used.
+        os.environ.update(engine.environment())
+        config, _ = engine.prepare()
+        compose_runtime = DockerCompose(ROOT, environment=engine.environment)
+        engine.lifecycle = StackLifecycle(
+            compose_runtime,
+            Provisioner(
+                ROOT, config, engine.runtime, compose_runtime,
+                env_path=engine.env_path))
+        result = engine.run()
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print("ITP demo environment is ready.")
+            print(f"Telemetry: {result['points_written']} points over "
+                  f"{result['days']} days")
+            print(f"Pipeline runs: {result['pipeline_runs']}")
+            print(f"Notifications: {result['notifications']}")
+            print("Grafana: http://localhost:3300")
+            print("Runtime: runtime/demo")
         return
     if args.group == "doctor":
         report = DoctorEngine(
@@ -690,7 +721,12 @@ def main():
                   + f"InfluxDB: {result['stack']['influxdb']}\n"
                   + f"Grafana: {result['stack']['grafana']}\n"
                   + "Provisioning: "
-                  + result["stack"]["provisioning"]["status"])
+                  + result["stack"]["provisioning"]["status"] + "\n"
+                  + "Dashboard packs: "
+                  + (", ".join(
+                      f"{value['id']}@{value['version']}"
+                      for value in result["stack"]["dashboard_packs"])
+                     or "none"))
         elif args.once:
             result = OperatorDaemon(
                 ROOT, config, runtime_dir=runtime_dir).run(once=True)

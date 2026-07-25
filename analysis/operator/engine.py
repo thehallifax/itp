@@ -339,6 +339,7 @@ class OperatorStatusEngine:
             service_health = []
         service_health.sort(key=lambda value: value["service"])
         from .daemon import DaemonStateStore
+        from analysis.notifications import NotificationEngine
         return {
             "schema_version": 1,
             "generated_at": _utc(self.now()),
@@ -347,8 +348,12 @@ class OperatorStatusEngine:
             "connectors": connectors,
             "service_health": service_health,
             "daemon": DaemonStateStore(self.runtime_dir).snapshot(self.now()),
+            "notifications": NotificationEngine(
+                self.runtime_dir, self.config.get("notifications")).summary(),
             "latest_pipeline_run": (
                 latest.get("pipeline_run") if latest else None),
+            "latest_connector_results": (
+                latest.get("connectors", []) if latest else []),
         }
 
 
@@ -402,4 +407,12 @@ def render_status(payload):
     lines.append("Latest PipelineRun: " + (
         f"{latest['run_id']} ({latest['status']})"
         if latest else "Never Run"))
+    notifications = payload["notifications"]
+    lines.extend((
+        f"Active notifications: {notifications['active_count']}",
+        "Highest active severity: "
+        f"{notifications['highest_active_severity'] or 'none'}",
+        "Failed notification deliveries: "
+        f"{notifications['failed_delivery_count']}",
+    ))
     return "\n".join(lines)

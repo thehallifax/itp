@@ -43,6 +43,7 @@ class ConnectorMetadata:
     configuration_checker: str = ""
     health_adapter: str = ""
     remediation_command: str = ""
+    dashboard_manifest: str = ""
 
     @property
     def manual_only(self):
@@ -131,6 +132,8 @@ class ConnectorMetadataRegistry:
                         raw.get("remediation_command")
                         or "python -m collectors connectors inspect "
                         + str(raw["id"])),
+                    dashboard_manifest=str(
+                        raw.get("dashboard_manifest") or ""),
                 ))
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("invalid connector registry entry") from exc
@@ -223,6 +226,11 @@ class ConnectorMetadataRegistry:
                 raise ValueError(
                     f"connector {connector.id} documentation does not exist: "
                     f"{connector.documentation}")
+            if connector.dashboard_manifest and not (
+                    self.root / connector.dashboard_manifest).is_file():
+                raise ValueError(
+                    f"connector {connector.id} dashboard manifest does not "
+                    f"exist: {connector.dashboard_manifest}")
             for template in connector.secret_handling.get("templates", []):
                 if not (self.root / template).is_file():
                     raise ValueError(

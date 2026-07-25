@@ -51,7 +51,7 @@ def test_dashboard_folders_and_uids_are_fixed():
         "itp-infrastructure-overview", "mist-infrastructure-overview",
         "fortigate-infrastructure-overview", "paloalto-operational-overview",
         "itp-operations-wallboard", "itp-collector-health",
-        "itp-virtualisation-overview",
+        "itp-virtualisation-overview", "itp-snmp-overview",
     }
 
 

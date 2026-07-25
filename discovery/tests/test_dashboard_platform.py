@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from analysis.dashboards import DashboardRegistry, FOLDERS
+from analysis.dashboards import (
+    DashboardPackRegistry, DashboardRegistry, FOLDERS)
+from collectors.connector_registry import ConnectorMetadataRegistry
 from analysis.wallboard import WallboardEngine
 
 
@@ -23,13 +25,15 @@ def test_manifests_are_complete_unique_and_future_extensible(tmp_path):
     assert all(item.version == 1 for item in value)
     assert all(item.path.name in {"dashboard-manifest.yml", "platform-manifest.yml"}
                for item in value)
+    assert isinstance(registry(tmp_path, {}), DashboardPackRegistry)
 
 
 def test_always_dashboards_and_disabled_collectors_are_omitted(tmp_path):
     resolved = registry(tmp_path, {
         "mist": False, "fortigate": False, "paloalto": False, "snmp": True}).generate()
     assert {value["uid"] for value in resolved["dashboards"]} == {
-        "itp-operations-wallboard", "itp-infrastructure-overview", "itp-collector-health"}
+        "itp-operations-wallboard", "itp-infrastructure-overview",
+        "itp-collector-health", "itp-snmp-overview"}
     assert "wireless" not in resolved["capabilities"]
     assert "firewall" not in resolved["capabilities"]
     assert not list((tmp_path / "managed/vendor").glob("*.json"))
@@ -41,7 +45,7 @@ def test_enabled_vendor_dashboards_and_capabilities_are_selected(tmp_path):
     assert {value["uid"] for value in resolved["dashboards"]} == {
         "itp-operations-wallboard", "itp-infrastructure-overview", "itp-collector-health",
         "mist-infrastructure-overview", "fortigate-infrastructure-overview",
-        "paloalto-operational-overview"}
+        "paloalto-operational-overview", "itp-snmp-overview"}
     assert set(resolved["capabilities"]) == {
         "firewall", "internet", "inventory", "switching", "telemetry", "wireless"}
     assert len(list((tmp_path / "managed/vendor").glob("*.json"))) == 3
@@ -64,7 +68,56 @@ def test_generation_is_deterministic_managed_and_removes_stale_only(tmp_path):
     for path in (tmp_path / "managed").glob("*/*.json"):
         dashboard = json.loads(path.read_text())
         assert "itp-managed" in dashboard["tags"]
+        assert any(value.startswith("itp-pack-version:")
+                   for value in dashboard["tags"])
         assert dashboard["editable"] is False
+
+
+def test_pack_versions_metadata_and_disabled_pack_cleanup(tmp_path):
+    output = tmp_path / "managed"
+    enabled = DashboardRegistry(
+        ROOT, {"collectors": {"snmp": {"enabled": True}}},
+        output, tmp_path / "dashboards.yml").generate()
+    assert {value["id"] for value in enabled["packs"]} == {"platform", "snmp"}
+    assert (output / "infrastructure/itp-snmp-overview.json").is_file()
+    disabled = DashboardRegistry(
+        ROOT, {"collectors": {"snmp": {"enabled": False}}},
+        output, tmp_path / "dashboards.yml").generate()
+    assert {value["id"] for value in disabled["packs"]} == {"platform"}
+    assert not (output / "infrastructure/itp-snmp-overview.json").exists()
+    user = tmp_path / "user-dashboard.json"
+    user.write_text("{}")
+    assert user.exists()
+
+
+def test_connector_metadata_links_dashboard_manifests():
+    metadata = ConnectorMetadataRegistry.load(ROOT)
+    for name in ("snmp", "mist", "fortigate", "paloalto"):
+        connector = metadata.get(name)
+        assert connector.dashboard_manifest
+        assert (ROOT / connector.dashboard_manifest).is_file()
+
+
+def test_snmp_example_pack_is_classic_and_flightsql_compatible():
+    dashboard = json.loads(
+        (ROOT / "dashboards/Network/snmp-overview.json").read_text())
+    assert dashboard["uid"] == "itp-snmp-overview"
+    assert isinstance(dashboard["panels"], list) and dashboard["panels"]
+    assert "elements" not in dashboard and "layout" not in dashboard
+    for panel in dashboard["panels"]:
+        for target in panel["targets"]:
+            assert target["rawQuery"] is True
+            assert target["format"] == "table"
+            assert target["rawSql"]
+
+
+def test_grafana_uses_infrastructure_overview_as_managed_home():
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    environment = compose["services"]["grafana"]["environment"]
+    assert (
+        "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH="
+        "/var/lib/grafana/runtime-dashboard/managed/infrastructure/"
+        "itp-infrastructure-overview.json") in environment
 
 
 def test_normalized_provisioning_has_fixed_unique_folders(tmp_path):

@@ -36,7 +36,7 @@ class Manifest:
     path: Path
 
 
-class DashboardRegistry:
+class DashboardPackRegistry:
     """Select and materialize only managed dashboards for enabled collectors."""
 
     def __init__(self, root, config, output_root=None, provisioning_path=None):
@@ -101,18 +101,29 @@ class DashboardRegistry:
             for value in selected_manifests if value.collector != "platform"
         }
         dashboards = []
+        packs = []
         for manifest in selected_manifests:
+            pack_dashboards = []
             for declaration in manifest.dashboards:
                 if not set(declaration.get("requires_capabilities") or []) <= set(capabilities):
                     continue
-                dashboards.append({**declaration, "collector": manifest.collector,
-                    "manifest_version": manifest.version})
+                value = {**declaration, "collector": manifest.collector,
+                         "manifest_version": manifest.version}
+                dashboards.append(value)
+                pack_dashboards.append(declaration["uid"])
+            packs.append({
+                "id": manifest.collector,
+                "version": manifest.version,
+                "dashboards": sorted(pack_dashboards),
+                "capabilities": list(manifest.capabilities),
+            })
         dashboards.sort(key=lambda value: (value["folder"], value["uid"]))
         uids = [value["uid"] for value in dashboards]
         if len(uids) != len(set(uids)): raise ValueError("resolved dashboard UIDs must be unique")
         return {"schema_version": 1, "enabled_collectors": sorted(enabled),
             "capabilities": capabilities,
             "collector_capabilities": collector_capabilities,
+            "packs": sorted(packs, key=lambda value: value["id"]),
             "dashboards": dashboards}
 
     def _source(self, declaration):
@@ -137,6 +148,7 @@ class DashboardRegistry:
             raise ValueError(f"dashboard {path} uses unsupported v2 schema")
         tags = set(dashboard.get("tags") or [])
         tags.update(("itp", "itp-managed", f"itp-collector:{declaration['collector']}"))
+        tags.add(f"itp-pack-version:{declaration['manifest_version']}")
         tags.update(f"itp-capability:{value}" for value in capabilities)
         tags.update(declaration.get("tags") or [])
         deployment_id = str(self.config.get("deployment_id") or "").strip()
@@ -183,3 +195,7 @@ class DashboardRegistry:
         atomic_write(self.provisioning_path,
             yaml.safe_dump(self.provisioning(), sort_keys=False))
         return resolved
+
+
+# Backwards-compatible public name used by existing collectors and profiles.
+DashboardRegistry = DashboardPackRegistry

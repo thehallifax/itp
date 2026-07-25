@@ -1,4 +1,4 @@
 """Capability-aware managed dashboard platform."""
-from .registry import DashboardRegistry, FOLDERS
+from .registry import DashboardPackRegistry, DashboardRegistry, FOLDERS
 
-__all__ = ["DashboardRegistry", "FOLDERS"]
+__all__ = ["DashboardPackRegistry", "DashboardRegistry", "FOLDERS"]

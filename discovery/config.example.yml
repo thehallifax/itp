@@ -97,6 +97,22 @@ state_history:
   volatile_fields_policy: default
   expected_sources: []
 
+# Optional OPS-009 notification delivery. Omission remains fully compatible.
+notifications:
+  enabled: false
+  minimum_severity: warning
+  repeat_suppression_seconds: 3600
+  daemon_heartbeat_stale_seconds: 30
+  channels:
+    console:
+      enabled: true
+    webhook:
+      enabled: false
+      url: ${NOTIFICATION_WEBHOOK_URL}
+      timeout_seconds: 5
+      headers:
+        Authorization: ${NOTIFICATION_WEBHOOK_AUTHORIZATION}
+
 collectors:
   snmp:
     enabled: true

@@ -142,6 +142,7 @@ def test_status_reports_services_endpoints_and_provisioning(
     assert result["compose_project_state"] == "running"
     assert result["influxdb"] == result["grafana"] == "reachable"
     assert result["provisioning"]["provisioning_version"] == 1
+    assert {value["id"] for value in result["dashboard_packs"]} == {"platform"}
 
 
 def test_first_service_provisioning_bootstraps_token_once(
