@@ -7,6 +7,7 @@ profiles when multiple isolated customer estates must run on the same host.
 
 - Docker Desktop or Docker Engine
 - Docker Compose v2 (`docker compose version`)
+- Python 3.9 or later
 - Available TCP ports 3000 and 8181 by default
 
 Clone ITP and run the bootstrap wizard:
@@ -20,11 +21,16 @@ cd itp
 ./itp status
 ```
 
-On Windows:
+On Windows PowerShell:
 
 ```powershell
-py scripts/itp.py setup
+.\itp.ps1 setup
 ```
+
+The launcher locates Python, creates `.venv`, and installs runtime dependencies
+on the first invocation. It synchronises dependencies only when the tracked
+project definition changes. Activation and global package installation are not
+required.
 
 The wizard asks for the deployment name, deployment type, and Grafana port. It
 then:
@@ -38,6 +44,26 @@ then:
 
 When startup completes, open the printed dashboard URL, normally
 `http://localhost:3000`.
+
+## Evaluate with demo data
+
+If you want to evaluate the interface before configuring real connectors, run:
+
+```sh
+./itp demo
+```
+
+On Windows PowerShell:
+
+```powershell
+.\itp.ps1 demo
+```
+
+The demo is a separate Compose project on Grafana port 3300 and InfluxDB port
+8281. It provisions dashboard packs and seeds 30 days of deterministic
+telemetry, pipeline runs, and notification history. It cannot target the root
+deployment database or runtime directory. Continue with
+[Demo Environment](demo.md) for details.
 
 ## Automated setup
 
@@ -190,3 +216,22 @@ authorization headers should be supplied through the environment placeholders
 shown in `.env.example`; they are never included in notification state or
 delivery errors. See [Notifications](notifications.md) for configuration,
 deduplication, recovery, acknowledgement, and troubleshooting.
+
+## Bootstrap troubleshooting
+
+- **Python is not installed:** install Python 3.9 or later from your operating
+  system package manager or [python.org](https://www.python.org/downloads/),
+  then rerun `./itp` or `.\itp.ps1`.
+- **Python is unsupported:** upgrade to Python 3.9 or later. The launcher does
+  not install or modify system Python.
+- **PowerShell blocks the launcher:** permit the current session with
+  `Set-ExecutionPolicy -Scope Process Bypass`, then rerun `.\itp.ps1`.
+- **Installation is offline:** the first run needs the packages declared by
+  `pyproject.toml`. Connect temporarily, configure an internal Python package
+  index, or pre-populate pip's package cache, then rerun the command.
+- **An interrupted installation left `.venv` incomplete:** rerun the command.
+  ITP safely replaces only the repository-local incomplete environment. If a
+  process is locking it, close that process, remove `.venv`, and retry.
+
+Bootstrap progress and installation diagnostics are written to stderr, so
+commands such as `./itp status --json` keep stdout machine-readable.

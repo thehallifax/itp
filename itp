@@ -1,7 +1,31 @@
 #!/bin/sh
 set -eu
+
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-if [ -x "$ROOT_DIR/.venv/bin/python" ]; then
-  exec "$ROOT_DIR/.venv/bin/python" "$ROOT_DIR/scripts/itp.py" "$@"
+BOOTSTRAP="$ROOT_DIR/scripts/bootstrap.py"
+
+if [ ! -f "$BOOTSTRAP" ]; then
+    echo "ITP bootstrap error: missing scripts/bootstrap.py. Restore the repository and rerun ./itp." >&2
+    exit 1
 fi
-exec python3 "$ROOT_DIR/scripts/itp.py" "$@"
+
+is_supported_python() {
+    "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+        >/dev/null 2>&1
+}
+
+PYTHON=""
+for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && is_supported_python "$candidate"; then
+        PYTHON=$(command -v "$candidate")
+        break
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo "ITP bootstrap error: Python 3.9 or later was not found." >&2
+    echo "Install a supported Python release, then rerun ./itp." >&2
+    exit 1
+fi
+
+exec "$PYTHON" "$BOOTSTRAP" "$@"

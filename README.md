@@ -1,299 +1,220 @@
 # ITP — Infrastructure Telemetry Platform
 
-ITP is an evidence-driven infrastructure telemetry and operational intelligence
-platform for multi-site organisations and managed estates.
+**A self-hosted platform that turns infrastructure telemetry into an immediate, explainable operational view.**
 
 [![Project status](https://img.shields.io/badge/status-Alpha%202-orange)](docs/releases/v0.2.0-alpha.2.md)
 [![Validation](https://github.com/thehallifax/itp/actions/workflows/validate.yml/badge.svg)](https://github.com/thehallifax/itp/actions/workflows/validate.yml)
 ![Python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)
 ![Virtualisation](https://img.shields.io/badge/virtualisation-VMware%20%7C%20Hyper--V%20%7C%20Proxmox-5b5bdb)
 
-![ITP Operations Wallboard — network and wireless estate](docs/images/alpha-2/operations-wallboard-sbc.png)
+- Deploy with one guided setup command
+- Collect network, security, compute, and virtualisation telemetry
+- Open Grafana with managed dashboards already installed
+- Turn evidence into service health, issues, risks, and recommendations
+- Operate single sites, multi-site estates, and isolated customer deployments
 
-Infrastructure teams often have monitoring data split across vendor portals,
-pollers, and dashboards, making it difficult to understand service impact
-across a site or estate. ITP collects that evidence, resolves it into canonical
-assets and services, and produces one explainable current-state operational
-view without hiding vendor detail needed for investigation.
+> ITP is Alpha software intended for evaluation and controlled deployments.
 
-## Key capabilities
+## What is ITP?
 
-- SNMP discovery plus native Juniper Mist, FortiGate, and Palo Alto collectors
-- Canonical infrastructure, inventory, site, and virtualisation models
-- Deterministic Operations Engine for issues, risks, and recommendations
-- Vendor-neutral Service Health with supporting assets and evidence
-- Capability-aware Grafana provisioning and vendor drill-down dashboards
-- Single-screen Operations Wallboard with a consolidated action queue
-- Single-site, multi-site, estate, and isolated multi-customer deployment models
-- Read-only VMware vSphere, Microsoft Hyper-V, and Proxmox VE intelligence
-- InfluxDB 3, FlightSQL, Grafana, Telegraf, and Docker Compose deployment
+ITP gives infrastructure teams one place to collect, normalise, and understand
+telemetry that would otherwise be split across vendor portals, SNMP tools, and
+unrelated dashboards.
 
-ITP is Alpha software. It is intended for evaluation and controlled deployments,
-not represented as production-ready.
+It helps answer the practical questions operators face every day: What is
+offline? Which service is affected? Is telemetry current? What needs attention
+first? The platform keeps vendor detail available for investigation while
+presenting a consistent operational view across the estate.
 
-## Architecture
+ITP is designed for IT administrators, infrastructure engineers, MSP
+consultants, and technical teams managing schools, businesses, labs, or
+multi-customer environments.
 
-Collectors own authentication, discovery, and collection. After collection,
-identity, normalisation, operational rules, service evaluation, and
-presentation remain deterministic and vendor-neutral.
+## Features
 
-```mermaid
-flowchart LR
-    C["Collectors<br/>SNMP · Mist · FortiGate · Palo Alto<br/>VMware · Hyper-V · Proxmox"]
-    M["Canonical Models<br/>Assets · Sites · Telemetry · Virtualisation"]
-    O["Operational Intelligence<br/>Operations Engine · Service Health"]
-    P["Presentation<br/>Wallboard · Dashboards · Evidence"]
-    C --> M --> O --> P
-```
+### Deployment
 
-The platform covers networking, wireless, WAN, firewalls, security, compute,
-storage, printing, inventory, lifecycle, collector health, and virtualisation.
-Missing or untrusted evidence produces `Unknown` rather than an invented healthy
-or failed state.
+- Guided `./itp setup` experience
+- Start, stop, restart, logs, status, and Doctor commands
+- Automatic InfluxDB and Grafana provisioning
+- Single-site, multi-site, estate, and customer-isolated profiles
 
-See [Architecture](docs/architecture.md),
-[canonical assets](docs/canonical-asset-model.md),
-[Infrastructure State](docs/infrastructure-state.md), and
-[canonical site identity](docs/architecture/site-hierarchy.md).
+### Telemetry
 
-## Operational intelligence
+- SNMP discovery and collection
+- Native read-only vendor integrations
+- Canonical inventory, availability, performance, interface, and service data
+- Deterministic freshness, state history, and change tracking
 
-The deterministic [Operations Engine](docs/operations-engine.md) turns
-canonical evidence into Active Issues, Operational Risks, and Recommendations.
-Rules use explicit evidence and thresholds—no LLMs, probabilistic scoring, or
-cloud reasoning services.
+### Dashboards
 
-[Service Health](docs/service-health.md) evaluates enabled vendor-neutral
-services as `Healthy`, `Warning`, `Critical`, `Unknown`, or `Not Enabled`.
-Results retain summaries, affected assets, site scope, and evidence.
+- Infrastructure Overview as the default Grafana landing page
+- Operations Wallboard and Collector Health
+- Automatically installed dashboard packs for enabled connectors
+- Stable managed dashboards without affecting user-created content
 
-The [Operations Wallboard](docs/operations-wallboard.md) presents generated
-current-state service health, infrastructure counts, collector state, and a
-priority-ordered Action Required queue. Vendor dashboards remain available for
-engineering drill-down.
+### Notifications
 
-## Supported collectors
+- Console and generic webhook delivery
+- Critical, warning, informational, and recovery events
+- Deduplication, acknowledgement, and repeat suppression
+- Secret-safe delivery records
 
-| Collector | Collection path |
+### Operations
+
+- Vendor-neutral Service Health
+- Deterministic issues, risks, and recommendations
+- Continuous scheduled collection with daemon health
+- Read-only diagnostics through ITP Doctor
+
+### Supported platforms
+
+- InfluxDB 3, Grafana, Telegraf, and Docker Compose
+- VMware vSphere
+- Microsoft Hyper-V
+- Proxmox VE
+- Linux, macOS, and Windows operator workflows
+
+## Screenshots
+
+| Infrastructure dashboard | Platform status |
 | --- | --- |
-| SNMP | Discovery → generated Telegraf inputs → canonical telemetry |
-| Juniper Mist | Native HTTPS API → canonical network and wireless signals |
-| FortiGate | Native HTTPS API → canonical firewall and interface signals |
-| Palo Alto PAN-OS | Read-only XML API → canonical firewall and security signals |
+| ![ITP infrastructure dashboard](docs/images/hero-dashboard.png) | ![ITP status command](docs/images/status-cli.png) |
 
-Collectors ship with the repository and are enabled through configuration. A
-collector owns authentication, discovery, collection, and adaptation only; it
-must not contain operational or dashboard policy.
+| Doctor diagnostics | Guided setup |
+| --- | --- |
+| ![ITP Doctor command](docs/images/doctor-cli.png) | ![ITP setup wizard](docs/images/setup.png) |
 
-Inspect the authoritative connector catalogue without configuration or
-credentials:
+> Screenshot placeholders will be replaced with current release captures.
 
-```sh
-python -m collectors connectors list
-python -m collectors connectors inspect paloalto --json
-```
+## Quick Start
 
-The [connector registry](docs/connector-registry.md) records supported domains,
-deployment types, setup maturity, validation/status capabilities, secret
-handling, documentation, and implementation references.
+### Prerequisites
 
-## Virtualisation
+- Git
+- Python 3.9 or later
+- Docker Desktop or Docker Engine
+- Docker Compose v2
 
-ITP normalises read-only virtualisation evidence into canonical managers,
-clusters, hosts, workloads, storage, networks, and snapshots. Provider
-management failure alone does not prove workload outage.
-
-<table>
-  <tr>
-    <th>VMware vSphere</th>
-    <th>Microsoft Hyper-V</th>
-    <th>Proxmox VE</th>
-  </tr>
-  <tr>
-    <td><img src="docs/images/alpha-2/operations-wallboard-vmware.png" alt="VMware Operations Wallboard"></td>
-    <td><img src="docs/images/alpha-2/operations-wallboard-hyperv.png" alt="Hyper-V Operations Wallboard"></td>
-    <td><img src="docs/images/alpha-2/operations-wallboard-proxmox.png" alt="Proxmox Operations Wallboard"></td>
-  </tr>
-</table>
-
-See [Virtualisation intelligence](docs/virtualisation.md) and the individual
-[VMware](docs/collectors/vmware.md), [Hyper-V](docs/collectors/hyperv.md), and
-[Proxmox](docs/collectors/proxmox.md) guides.
-
-## Multi-site and estate support
-
-A deployment profile is the isolation boundary for one customer or
-organisation. Configuration, secrets, runtime state, Compose projects,
-telemetry databases, and Grafana instances remain profile-scoped.
-
-Within a profile, canonical site IDs support both individual-site views and an
-aggregate estate view. Multiple isolated profiles can run concurrently. See
-[deployment profiles](docs/deployment-profiles.md) and
-[deployment models](docs/deployment-models.md).
-
-## Getting started
-
-Requirements: Git, Docker, and Docker Compose v2.
+### 1. Clone
 
 ```sh
 git clone https://github.com/thehallifax/itp.git
 cd itp
+```
+
+### 2. Run setup
+
+```sh
 ./itp setup
-./itp doctor
-./itp start
-./itp status
 ```
 
-The setup wizard checks Docker, Compose, and required ports; creates `.env` and
-`discovery/config.yml` from tracked templates; validates the result; and can
-start the platform and wait for service health. On Windows, run
-`py scripts/itp.py setup`.
+The wizard creates local configuration, checks prerequisites, and offers to
+start the platform. ITP creates and maintains its project-local Python
+environment automatically.
 
-For unattended bootstrap:
+On Windows PowerShell:
 
-```sh
-./itp setup --non-interactive \
-  --deployment-name "ITP Lab" \
-  --deployment-type "Home Lab" \
-  --grafana-port 3000 \
-  --start
+```powershell
+.\itp.ps1 setup
 ```
 
-Existing configuration is preserved unless an interactive update is confirmed
-or `--force` is supplied. Open Grafana at the URL printed by the wizard.
-Datasources, folders, and enabled dashboard packs are provisioned automatically.
-See the [Quick Start](docs/quick-start.md) for configuration and credential
-next steps.
-
-Day-to-day stack lifecycle is handled by ITP:
+### 3. Start ITP
 
 ```sh
 ./itp start
-./itp restart
-./itp logs --service grafana --tail 100
-./itp stop
 ```
 
-`start`, `stop`, and `restart` support `--json`. They wrap the tracked Compose
-deployment and run idempotent provisioning for runtime directories, InfluxDB,
-Grafana datasource configuration, and bundled managed dashboards. Existing
-credentials are preserved. See [Deployment](docs/deployment.md) and
-[Provisioning](docs/provisioning.md).
+Running this command again is safe. It also provisions the datasource and
+dashboard packs required by the enabled connectors.
 
-For a customer-scoped deployment:
+### 4. Check the deployment
 
 ```sh
-./itp profile list
-./itp profile init-secrets <profile>
-./itp profile validate <profile>
-./itp profile up <profile>
-./itp profile status <profile>
-```
-
-Enable a collector by configuring its endpoint, setting `enabled: true`, and
-copying only its required `.env.example` secret template to a local `.env`
-file. Never commit populated secrets, root `.env`, customer evidence, or
-generated runtime state.
-
-See [Getting Started](docs/getting-started.md),
-[Installation](docs/INSTALL.md), and the
-[Operator Guide](docs/operator-guide.md).
-
-Diagnose a deployment without changing it:
-
-```sh
-./itp doctor --offline
 ./itp doctor
-```
-
-See [ITP Doctor](docs/doctor.md) for JSON automation, strict mode, connector
-selection, exit codes, and redaction guarantees.
-
-Run enabled root-deployment connectors once and inspect operational status:
-
-```sh
-./itp collect
 ./itp status
 ```
 
-Both commands support `--json`. Collection uses the same registry and scheduler
-as the long-running collector service and records a canonical `PipelineRun`.
-Status reports deployment identity, enabled connectors, service health, last
-successful collection, and common freshness states without exposing credential
-values. Profile-scoped collection commands remain available under
-`./itp profile`.
+### 5. Open Grafana
 
-For continuous root-deployment collection:
+Visit [http://localhost:3000](http://localhost:3000), or use the URL printed by
+setup if you selected another port.
 
-```sh
-./itp daemon
-./itp status
-```
+Next, add connector credentials under `secrets/`, enable the required
+connectors, and run `./itp restart`. See the
+[Quick Start guide](docs/quick-start.md) for the complete first-deployment
+walkthrough.
 
-The default command starts a single background daemon. Use
-`./itp daemon --foreground` for container or service-manager operation, or
-`./itp daemon --once` for one lock-protected cycle. Connector discovery and
-collection continue at their configured intervals; failures are isolated and
-recorded without stopping other connectors. Daemon heartbeat, uptime, current
-work, and last success are included in status output.
+### Try the isolated demo
 
-Operational notifications consume the same connector freshness, daemon state,
-Doctor results, and `PipelineRun` outcomes:
+To explore ITP without connecting production infrastructure:
 
 ```sh
-./itp notifications evaluate
-./itp notifications list
-./itp notifications test
+./itp demo
 ```
 
-Notifications are disabled by default. Phase 1 provides console and generic
-JSON webhook delivery with deterministic deduplication, recovery events,
-acknowledgement, and secret-safe delivery records. See
-[Notifications](docs/notifications.md).
+The command starts a separate `itp-demo` Compose project, installs the managed
+dashboard packs, and seeds 30 days of repeatable telemetry. Open
+[http://localhost:3300](http://localhost:3300). It does not write to the root
+deployment or its InfluxDB volume. See the [Demo Environment](docs/demo.md)
+guide for data coverage and cleanup.
 
-## Repository layout
+On Windows PowerShell, use `.\itp.ps1 demo`.
 
-```text
-collectors/          collector framework and vendor implementations
-analysis/            canonical state, operations, services, sites and virtualisation
-telemetry/           vendor-neutral telemetry contracts
-dashboards/          version-controlled Grafana dashboards
-grafana/             datasource and dashboard provisioning
-profiles/            tracked customer deployment definitions
-runtime/             generated, profile-isolated operational state
-config/              site and platform configuration
-discovery/           SNMP discovery and compatible configuration
-scripts/             installation, update and evidence tooling
-docs/                architecture, operator and collector documentation
-```
+## Supported Connectors
 
-## Current Alpha limitations
+| Connector | Coverage |
+| --- | --- |
+| SNMP | Discovery, switches, access points, printers, UPS, NAS, and generic infrastructure |
+| Juniper Mist | Network and wireless telemetry through the Mist API |
+| FortiGate | Firewall, system, performance, and interface telemetry |
+| Palo Alto PAN-OS | Firewall, security, interface, licensing, and content telemetry |
+| VMware vSphere | Managers, clusters, hosts, workloads, storage, and networks |
+| Microsoft Hyper-V | Hosts, workloads, storage, and virtual networks |
+| Proxmox VE | Clusters, nodes, virtual machines, containers, and storage |
 
-- Operator review is required before deployment and upgrades.
-- State history is filesystem-backed and manually invoked; scheduled capture,
-  retention pruning, and history queries are not yet implemented.
-- Provider and infrastructure-domain coverage is incomplete.
-- Optional API fields may produce `Unknown` rather than inferred health.
-- Service-impact rules are deliberately conservative.
-- Platform high availability is not included.
-- Vendor credentials remain operator-managed and are stored only under
-  `secrets/`; the bootstrap wizard does not request or copy secrets.
+Connector availability and setup maturity are recorded in the
+[connector registry](docs/connector-registry.md). Supported connectors ship
+with ITP and are enabled through configuration—no code changes are required.
+
+## Documentation
+
+- [Quick Start](docs/quick-start.md)
+- [Demo Environment](docs/demo.md)
+- [Deployment](docs/deployment.md)
+- [Provisioning](docs/provisioning.md)
+- [Operator Guide](docs/operator-guide.md)
+- [Connector Registry](docs/connector-registry.md)
+- [Dashboard Platform](docs/dashboard-platform.md)
+- [Notifications](docs/notifications.md)
+- [ITP Doctor](docs/doctor.md)
+- [Multi-customer Profiles](docs/deployment-profiles.md)
+- [Architecture](docs/architecture.md)
+- [Upgrading](docs/UPGRADING.md)
+- [Security Policy](SECURITY.md)
 
 ## Roadmap
 
-**OPS-008 Phase 1 — State History and Change Detection** is implemented with
-canonical snapshots, deterministic change sets, and atomic filesystem storage.
-The next phase will add:
+Current priorities are:
 
-- scheduling after successful canonical analysis;
-- bounded retention and recovery behavior;
-- history query interfaces;
-- state-transition evidence for operational rules.
+- Safe update, backup, and restore workflows
+- Broader and deeper connector telemetry
+- Additional curated dashboard packs
+- Operational history and lifecycle improvements
+- Cross-platform release packaging, performance, and security hardening
 
-Later work will expand relationships, lifecycle intelligence, collectors, and
-service coverage without weakening the canonical vendor-neutral architecture.
+See the [project roadmap](ROADMAP.md), [technical roadmap](docs/roadmap.md),
+and [changelog](CHANGELOG.md) for milestone detail.
 
-See the [Alpha 2 release notes](docs/releases/v0.2.0-alpha.2.md),
-[OPS-008 architecture](docs/ops-008-state-history.md), [changelog](CHANGELOG.md),
-[contribution guide](CONTRIBUTING.md), and
-[security policy](SECURITY.md).
+## Contributing
+
+Bug reports, documentation improvements, tests, connector enhancements, and
+dashboard contributions are welcome. Please read
+[CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request, and
+never include credentials, customer data, or generated runtime state.
+
+## License
+
+License terms have not yet been published in this repository. Until a license
+file is added, do not assume permission to use, modify, or redistribute the
+project outside applicable copyright law.
