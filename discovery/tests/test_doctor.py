@@ -45,7 +45,23 @@ def repository(tmp_path, *, config=True, env=True):
                       "influxdb3-core", "telegraf")}}))
     if env:
         (tmp_path / ".env").write_text(
-            "GRAFANA_PORT=39001\nINFLUXDB_PORT=39002\n")
+            "GRAFANA_PORT=39001\n"
+            "INFLUXDB_PORT=39002\n"
+            "INFLUXDB_BUCKET=test_database\n"
+            "INFLUXDB_ORG=test_org\n"
+            "INFLUXDB_NODE_ID=test-node\n"
+            "ITP_DEPLOYMENT_ID=00000000-0000-4000-8000-000000000001\n"
+            "TZ=UTC\n"
+            "TELEGRAF_COLLECTION_INTERVAL=60s\n")
+    datasource = tmp_path / "grafana/provisioning/datasources/influxdb.yml"
+    datasource.parent.mkdir(parents=True, exist_ok=True)
+    datasource.write_text(yaml.safe_dump({
+        "apiVersion": 1,
+        "datasources": [{
+            "uid": "ffsu5ap2kr5dse",
+            "jsonData": {"dbName": "${INFLUXDB_BUCKET}"},
+        }],
+    }))
     if config:
         (tmp_path / "discovery/config.yml").write_text(yaml.safe_dump({
             "schema_version": 1,
@@ -116,7 +132,7 @@ def test_missing_local_runtime_files_still_produce_report(
     (root / missing).unlink()
     report = engine(root, offline=True).run()
     assert check(report, check_id).status == "warn"
-    assert report.exit_code() == 0
+    assert report.exit_code() == (1 if missing == ".env" else 0)
 
 
 def test_malformed_yaml_and_state_history_configuration(tmp_path):
@@ -239,19 +255,31 @@ def test_json_and_human_rendering_contract(tmp_path):
     assert "State History" in human and "[SKIP]" in human
 
 
-def test_cli_exit_codes_json_alias_and_no_runtime_dependency(tmp_path):
-    unknown = subprocess.run(
-        [sys.executable, "-m", "collectors", "doctor",
-         "--connector", "unknown", "--offline"],
-        cwd=ROOT, text=True, capture_output=True)
-    assert unknown.returncode == 2
-    assert "unknown connector" in unknown.stderr
-    selected = subprocess.run(
-        [sys.executable, "-m", "collectors", "doctor",
-         "--connector", "telegraf-snmp", "--offline", "--json"],
-        cwd=ROOT, text=True, capture_output=True)
-    assert selected.returncode == 0
-    payload = json.loads(selected.stdout)
+def test_cli_exit_codes_json_alias_and_no_runtime_dependency(
+        tmp_path, monkeypatch, capsys, caplog):
+    import collectors.__main__ as cli
+
+    root = repository(tmp_path)
+    registry = ConnectorMetadataRegistry.load(ROOT)
+    monkeypatch.setattr(
+        "analysis.doctor.engine.ConnectorMetadataRegistry.load",
+        lambda _root: registry)
+    monkeypatch.setattr(cli, "ROOT", root)
+    monkeypatch.setattr(
+        sys, "argv", ["collectors", "doctor", "--connector", "unknown",
+                     "--offline"])
+    with pytest.raises(SystemExit) as unknown:
+        cli.main()
+    assert unknown.value.code == 2
+    assert "unknown connector" in caplog.text
+
+    monkeypatch.setattr(
+        sys, "argv", ["collectors", "doctor", "--connector",
+                     "telegraf-snmp", "--offline", "--json"])
+    with pytest.raises(SystemExit) as selected:
+        cli.main()
+    assert selected.value.code == 0
+    payload = json.loads(capsys.readouterr().out)
     assert payload["mode"]["connector"] == "snmp"
 
 

@@ -1,33 +1,35 @@
 # Install ITP
 
-Requirements: Git, Python 3.9 or later, Docker Engine or Docker Desktop, Docker
-Compose v2, and ports 3000 and 8181 available.
+Requirements: Git, Python 3.9 or later, Docker Engine or Docker Desktop, and
+Docker Compose v2.
 
 ```sh
 git clone <repository-url> itp
 cd itp
-cp .env.example .env
-cp discovery/config.example.yml discovery/config.yml
+./itp setup
 ```
 
-Set unique `INFLUXDB_NODE_ID`, database/token settings, and Grafana password in `.env`.
-Keep collectors disabled until their optional secret file is populated. For example:
+Setup recommends available host ports, writes a stable deployment identity and
+complete InfluxDB settings, and leaves every external collector disabled. Keep
+collectors disabled until their optional secret file is populated. For example:
 
 ```sh
 cp secrets/mist.env.example secrets/mist.env
 cp secrets/fortigate.env.example secrets/fortigate.env
 ```
 
-Start and validate:
+If setup was completed without starting services:
 
 ```sh
-docker compose up -d --build
-docker compose ps
-docker compose run --rm collector python -m collectors validate
+./itp start
+./itp doctor
+./itp status
 ```
 
-Grafana is available on `http://localhost:${GRAFANA_PORT:-3000}` and InfluxDB on port
-8181. Dashboards, folders, and the FlightSQL datasource are provisioned automatically.
+Grafana and InfluxDB use the URLs printed by setup. Container ports remain 3000
+and 8181 while `GRAFANA_PORT` and `INFLUXDB_PORT` select host-published ports.
+Dashboards, folders, and the FlightSQL datasource are provisioned automatically
+against the configured `INFLUXDB_BUCKET`.
 Alternatively run `./scripts/install.sh` or `./scripts/Install-ITP.ps1`.
 
 On Windows PowerShell, the self-bootstrapping path is:

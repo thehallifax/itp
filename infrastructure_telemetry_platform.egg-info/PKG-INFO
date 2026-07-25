@@ -34,188 +34,231 @@ Dynamic: license-file
 
 # ITP — Infrastructure Telemetry Platform
 
-ITP discovers infrastructure, collects operational telemetry, stores it in
-InfluxDB 3, and presents it through Grafana. It is designed for repeatable MSP
-and consultant deployments: supported collectors ship with the repository and
-are enabled through configuration, not code changes.
+**A self-hosted platform that turns infrastructure telemetry into an immediate, explainable operational view.**
 
-The project retains its established SNMP discovery, generated Telegraf inputs,
-InfluxDB storage, Grafana dashboards, Docker Compose workflow, and native Mist
-collector. The ITP name is an architectural evolution of the project, not a
-rewrite.
+[![Project status](https://img.shields.io/badge/status-Alpha%202-orange)](docs/releases/v0.2.0-alpha.2.md)
+[![Validation](https://github.com/thehallifax/itp/actions/workflows/validate.yml/badge.svg)](https://github.com/thehallifax/itp/actions/workflows/validate.yml)
+![Python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)
+![Virtualisation](https://img.shields.io/badge/virtualisation-VMware%20%7C%20Hyper--V%20%7C%20Proxmox-5b5bdb)
 
-## Quick start
+- Deploy with one guided setup command
+- Collect network, security, compute, and virtualisation telemetry
+- Open Grafana with managed dashboards already installed
+- Turn evidence into service health, issues, risks, and recommendations
+- Operate single sites, multi-site estates, and isolated customer deployments
+
+> ITP is Alpha software intended for evaluation and controlled deployments.
+
+## What is ITP?
+
+ITP gives infrastructure teams one place to collect, normalise, and understand
+telemetry that would otherwise be split across vendor portals, SNMP tools, and
+unrelated dashboards.
+
+It helps answer the practical questions operators face every day: What is
+offline? Which service is affected? Is telemetry current? What needs attention
+first? The platform keeps vendor detail available for investigation while
+presenting a consistent operational view across the estate.
+
+ITP is designed for IT administrators, infrastructure engineers, MSP
+consultants, and technical teams managing schools, businesses, labs, or
+multi-customer environments.
+
+## Features
+
+### Deployment
+
+- Guided `./itp setup` experience
+- Start, stop, restart, logs, status, and Doctor commands
+- Automatic InfluxDB and Grafana provisioning
+- Single-site, multi-site, estate, and customer-isolated profiles
+
+### Telemetry
+
+- SNMP discovery and collection
+- Native read-only vendor integrations
+- Canonical inventory, availability, performance, interface, and service data
+- Deterministic freshness, state history, and change tracking
+
+### Dashboards
+
+- Infrastructure Overview as the default Grafana landing page
+- Operations Wallboard and Collector Health
+- Automatically installed dashboard packs for enabled connectors
+- Stable managed dashboards without affecting user-created content
+
+### Notifications
+
+- Console and generic webhook delivery
+- Critical, warning, informational, and recovery events
+- Deduplication, acknowledgement, and repeat suppression
+- Secret-safe delivery records
+
+### Operations
+
+- Vendor-neutral Service Health
+- Deterministic issues, risks, and recommendations
+- Continuous scheduled collection with daemon health
+- Read-only diagnostics through ITP Doctor
+
+### Supported platforms
+
+- InfluxDB 3, Grafana, Telegraf, and Docker Compose
+- VMware vSphere
+- Microsoft Hyper-V
+- Proxmox VE
+- Linux, macOS, and Windows operator workflows
+
+## Screenshots
+
+| Infrastructure dashboard | Platform status |
+| --- | --- |
+| ![ITP infrastructure dashboard](docs/images/hero-dashboard.png) | ![ITP status command](docs/images/status-cli.png) |
+
+| Doctor diagnostics | Guided setup |
+| --- | --- |
+| ![ITP Doctor command](docs/images/doctor-cli.png) | ![ITP setup wizard](docs/images/setup.png) |
+
+> Screenshot placeholders will be replaced with current release captures.
+
+## Quick Start
+
+### Prerequisites
+
+- Git
+- Python 3.9 or later
+- Docker Desktop or Docker Engine
+- Docker Compose v2
+
+### 1. Clone
 
 ```sh
-git clone <repository-url> itp
+git clone https://github.com/thehallifax/itp.git
 cd itp
-cp .env.example .env
-cp discovery/config.example.yml discovery/config.yml
-# Edit stack settings and collector enablement, then add only the credentials
-# required by enabled collectors.
-cp secrets/mist.env.example secrets/mist.env  # only when enabling Mist
-cp secrets/fortigate.env.example secrets/fortigate.env  # only on a FortiGate edge
-docker compose up -d --build
 ```
 
-For a guided deployment, run `./scripts/install.sh` on Linux/macOS or
-`./scripts/Install-ITP.ps1` on Windows. See [installation](docs/INSTALL.md),
-[upgrades](docs/UPGRADING.md), and the [canonical schema](docs/SCHEMA.md).
-
-Create an InfluxDB administrator token when bootstrapping a new deployment, then
-set `INFLUXDB_TOKEN` in the root `.env` and restart the affected services. Never
-commit `.env`, `secrets/*.env`, generated inventory, or tokens.
-
-## Supported collectors
-
-| Collector | Enablement | Telemetry path |
-| --- | --- | --- |
-| SNMP | `collectors.snmp.enabled: true` | Discovery → generated Telegraf inputs → InfluxDB |
-| Juniper Mist | `collectors.mist.enabled: true` | Native HTTPS API → shared telemetry contract → InfluxDB |
-| FortiGate | `collectors.fortigate.enabled: true` | Native edge HTTPS API → normalized and compatible telemetry → InfluxDB |
-
-Every supported collector is included in the collector image. To enable one:
-
-1. Add its credentials under `secrets/`.
-2. Set `enabled: true` and configure its intervals/endpoints in
-   `discovery/config.yml`.
-3. Restart `collector` (and `discovery` for SNMP changes).
-
-No source-code or image changes are required. A disabled native collector does
-not require its secret file and the collector service remains healthy while
-idle.
-
-## Collector philosophy
-
-A collector owns only authentication, discovery, and collection. Translating a
-vendor response into the shared telemetry contract is the final collection
-boundary. After that boundary, normalisation rules, inventory, storage, health
-scoring, lifecycle tracking, change detection, dashboards, and reporting are
-vendor-neutral.
-
-Collectors must not contain dashboard logic, depend on Grafana, know about
-other collectors, or invent collector-specific storage paths. See
-[Architecture](docs/architecture.md) for the enforced boundaries.
-
-## Configuration and credentials
-
-- Root `.env`: Docker Compose interpolation, InfluxDB, Grafana, Telegraf, and
-  ports.
-- `secrets/*.env`: vendor credentials, injected only into the service that needs
-  them. Examples are safe to commit; populated files are ignored and excluded
-  from Docker build contexts.
-- `discovery/config.yml`: collector enable flags, intervals, approved networks,
-  and API endpoints. Start from `discovery/config.example.yml`.
-
-`collectors/config.py` expands whole-value environment placeholders such as
-`${MIST_ORG_ID}`. Unset placeholders become empty values; an enabled collector
-then fails with the required variable names without exposing credential values.
-
-Mist tenants are regional. Match `base_url` to the tenant portal—for example,
-`manage.ac2.mist.com` uses `https://api.ac2.mist.com`. A wrong region commonly
-appears as authentication or organization-access failure.
-
-## Central and edge runtime modes
-
-The same collector image runs in `central` or `edge` mode through
-`ITP_RUNTIME_MODE`. It defaults to `central` for compatibility with existing Mist
-deployments. Mist defaults to central placement; FortiGate API and SNMP default to edge.
-Incompatible collectors are logged and skipped. See the
-[edge architecture](docs/edge-collector-architecture.md).
+### 2. Run setup
 
 ```sh
-cp secrets/fortigate.env.example secrets/fortigate.env
-# Edit the secret file and enable collectors.fortigate with execution: edge.
-ITP_RUNTIME_MODE=edge docker compose run --rm collector python -m collectors inspect fortigate
-ITP_RUNTIME_MODE=edge docker compose run --rm collector python -m collectors collect fortigate
-ITP_RUNTIME_MODE=edge docker compose up -d --force-recreate collector
-docker compose logs --since=5m collector
+./itp setup
 ```
 
-The one-shot `collect` command writes telemetry and health. `inspect` validates API and
-normalization behavior without writing telemetry. SNMP remains a fallback, interface
-counter enrichment source, and option for devices without a suitable API. See the
-[FortiGate collector guide](collectors/fortigate/README.md).
+The wizard detects your timezone, recommends available ports, selects a safe
+collection interval, creates complete local configuration, and offers an
+isolated demo and staged platform startup. External collectors remain disabled
+until you explicitly configure and enable them. ITP creates and maintains its
+project-local Python environment automatically.
 
-## Repository layout
+On Windows PowerShell:
 
-```text
-collectors/          collector contracts, registry, scheduler, inventory and writers
-  snmp/              SNMP implementation and Telegraf generation
-  mist/              native Mist API implementation
-telemetry/           future vendor-neutral telemetry helpers
-analysis/            future health, lifecycle and change analysis
-dashboards/          version-controlled Grafana dashboards
-runtime/inventory/   generated shared inventory and its documented contract
-config/              configuration guidance, examples and template conventions
-discovery/           compatible SNMP discovery command and deployment config
-grafana/             Grafana provisioning
-telegraf/            base and generated Telegraf configuration
-docs/                concise architecture and roadmap documentation
+```powershell
+.\itp.ps1 setup
 ```
 
-The historical `discovery/discover.py` command and configuration paths remain in
-place for deployment compatibility.
+If Windows blocks local scripts, see the
+[PowerShell execution-policy guidance](docs/quick-start.md#powershell-execution-policy).
+ITP cannot override an organisation-enforced policy.
 
-## Typical operations
+See [Platform prerequisites](docs/platform-prerequisites.md) for Windows
+virtualization, macOS architecture, and Linux Docker guidance.
+
+### 3. Start ITP
 
 ```sh
-python -m collectors list
-docker compose run --rm discovery python /app/discover.py once --config /app/config.yml
-docker compose run --rm collector python -m collectors inspect mist
-docker compose up -d
-docker compose logs --tail=200 discovery collector telegraf
+./itp start
 ```
 
-Open Grafana at `http://localhost:${GRAFANA_PORT}`. Dashboard providers create
-the fixed Overview, Network, Wireless, Security, Compute, Vendor, and Health
-folders automatically. Existing vendor measurements remain available while
-collectors also emit the versioned canonical measurements.
+Running this command again is safe. It also provisions the datasource and
+dashboard packs required by the enabled connectors.
 
-### Inventory operations
-
-The Inventory Engine mirrors collector observations into
-`runtime/inventory/assets.json` while preserving the existing `devices.json`.
-It provides stable source identity, reconciliation evidence, and lifecycle
-evaluation without changing telemetry.
+### 4. Check the deployment
 
 ```sh
-docker compose exec collector python -m collectors inventory summary
-docker compose exec collector python -m collectors inventory list
-docker compose exec collector python -m collectors inventory show ASSET_ID --json
-docker compose exec collector python -m collectors inventory reconcile
-docker compose exec collector python -m collectors inventory lifecycle
-docker compose exec collector python -m collectors inventory sources
-docker compose exec collector python -m collectors inventory history --limit 20
-docker compose exec collector python -m collectors inventory retire ASSET_ID --reason "decommissioned"
-docker compose exec collector python -m collectors inventory restore ASSET_ID --reason "returned to service"
-docker compose exec collector python -m collectors inventory changes --since 7d --limit 50
-docker compose exec collector python -m collectors inventory changes-summary --since 7d
+./itp doctor
+./itp status
 ```
 
-See [runtime inventory](runtime/inventory/README.md) for identity rules,
-lifecycle states, reconciliation states, persistence, and safe file inspection.
+### 5. Open Grafana
 
-Lifecycle evaluation runs hourly by default. Assets age only after a complete,
-successful discovery for their own source fails to observe them; collector
-failures, disabled sources, partial discovery, and platform downtime do not age
-inventory. Lifecycle remains CLI/file-visible and is not duplicated into
-InfluxDB or Grafana in this milestone.
+Visit [http://localhost:3000](http://localhost:3000), or use the URL printed by
+setup if you selected another port.
 
-Inventory change detection runs during discovery ingestion and records only
-meaningful normalized fields in `runtime/inventory/change_history.json`.
-Protected serial, MAC, and source IDs are never silently replaced; conflicts are
-high severity. Telemetry fluctuations and lifecycle state changes are excluded.
+Next, add connector credentials under `secrets/`, enable the required
+connectors, and run `./itp restart`. See the
+[Quick Start guide](docs/quick-start.md) for the complete first-deployment
+walkthrough.
 
-SNMP safety limits, credential rotation, troubleshooting, and generated-file
-ownership are documented in [SNMP discovery](discovery/README.md). Mist mappings,
-permissions, and collection scope are documented in the
-[Mist collector guide](collectors/mist/README.md).
+### Try the isolated demo
+
+To explore ITP without connecting production infrastructure:
+
+```sh
+./itp demo
+```
+
+The command starts a separate `itp-demo` Compose project, installs the managed
+dashboard packs, and seeds 30 days of repeatable telemetry. Open
+[http://localhost:3300](http://localhost:3300). It does not write to the root
+deployment or its InfluxDB volume. See the [Demo Environment](docs/demo.md)
+guide for data coverage and cleanup.
+
+On Windows PowerShell, use `.\itp.ps1 demo`.
+
+## Supported Connectors
+
+| Connector | Coverage |
+| --- | --- |
+| SNMP | Discovery, switches, access points, printers, UPS, NAS, and generic infrastructure |
+| Juniper Mist | Network and wireless telemetry through the Mist API |
+| FortiGate | Firewall, system, performance, and interface telemetry |
+| Palo Alto PAN-OS | Firewall, security, interface, licensing, and content telemetry |
+| VMware vSphere | Managers, clusters, hosts, workloads, storage, and networks |
+| Microsoft Hyper-V | Hosts, workloads, storage, and virtual networks |
+| Proxmox VE | Clusters, nodes, virtual machines, containers, and storage |
+
+Connector availability and setup maturity are recorded in the
+[connector registry](docs/connector-registry.md). Supported connectors ship
+with ITP and are enabled through configuration—no code changes are required.
+
+## Documentation
+
+- [Quick Start](docs/quick-start.md)
+- [Platform Prerequisites](docs/platform-prerequisites.md)
+- [Demo Environment](docs/demo.md)
+- [Deployment](docs/deployment.md)
+- [Provisioning](docs/provisioning.md)
+- [Operator Guide](docs/operator-guide.md)
+- [Connector Registry](docs/connector-registry.md)
+- [Dashboard Platform](docs/dashboard-platform.md)
+- [Notifications](docs/notifications.md)
+- [ITP Doctor](docs/doctor.md)
+- [Multi-customer Profiles](docs/deployment-profiles.md)
+- [Architecture](docs/architecture.md)
+- [Upgrading](docs/UPGRADING.md)
+- [Security Policy](SECURITY.md)
 
 ## Roadmap
 
-The Inventory Engine, scheduled lifecycle, and inventory change-detection
-foundations are implemented. The next milestones are Health Scoring,
-Relationship Engine, and additional collectors. See the
-[roadmap](docs/roadmap.md); it intentionally describes boundaries rather than
-speculative implementations.
+Current priorities are:
+
+- Safe update, backup, and restore workflows
+- Broader and deeper connector telemetry
+- Additional curated dashboard packs
+- Operational history and lifecycle improvements
+- Cross-platform release packaging, performance, and security hardening
+
+See the [project roadmap](ROADMAP.md), [technical roadmap](docs/roadmap.md),
+and [changelog](CHANGELOG.md) for milestone detail.
+
+## Contributing
+
+Bug reports, documentation improvements, tests, connector enhancements, and
+dashboard contributions are welcome. Please read
+[CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request, and
+never include credentials, customer data, or generated runtime state.
+
+## License
+
+License terms have not yet been published in this repository. Until a license
+file is added, do not assume permission to use, modify, or redistribute the
+project outside applicable copyright law.

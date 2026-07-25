@@ -8,7 +8,8 @@ profiles when multiple isolated customer estates must run on the same host.
 - Docker Desktop or Docker Engine
 - Docker Compose v2 (`docker compose version`)
 - Python 3.9 or later
-- Available TCP ports 3000 and 8181 by default
+- Available host TCP ports (the wizard recommends alternatives when 3000 or
+  8181 is occupied)
 
 Clone ITP and run the bootstrap wizard:
 
@@ -58,15 +59,22 @@ ITP cannot bypass an execution policy enforced through organisational Group
 Policy. In a managed environment, ask the administrator to permit signed or
 local scripts.
 
-The wizard asks for the deployment name, deployment type, and Grafana port. It
-then:
+The wizard asks for a deployment name and type, detected IANA timezone,
+recommended Grafana and InfluxDB host ports, a safe collection-interval preset,
+whether to load the isolated demo, and whether to start services. It then:
 
 1. Verifies Docker and Docker Compose.
-2. Checks the Grafana and InfluxDB ports.
+2. Finds available Grafana and InfluxDB host ports.
 3. Creates `.env` and `discovery/config.yml` from tracked examples when absent.
-4. Adds deployment metadata and the selected Grafana port.
+4. Writes a stable deployment UUID and complete database, organisation,
+   timezone, port, and collection settings.
 5. Runs `docker compose config --quiet`.
-6. Optionally starts the platform and waits for its services to become ready.
+6. Optionally bootstraps InfluxDB, provisions the configured database and
+   dashboards, starts the remaining services, and waits for readiness.
+
+All external collectors, including SNMP, remain disabled after fresh setup.
+Nothing contacts infrastructure until credentials/configuration are added and
+the collector is explicitly enabled.
 
 When startup completes, open the printed dashboard URL, normally
 `http://localhost:3000`.
@@ -99,7 +107,10 @@ All prompts can be replaced with command-line options:
 ./itp setup --non-interactive \
   --deployment-name "North Campus" \
   --deployment-type "School" \
+  --timezone "Australia/Perth" \
   --grafana-port 3000 \
+  --influxdb-port 8181 \
+  --collection-interval 60s \
   --start
 ```
 
@@ -113,10 +124,15 @@ Interactive mode asks before updating the fields owned by the wizard. For
 automation, `--force` explicitly permits updates to:
 
 - `GRAFANA_PORT` in `.env`
+- `INFLUXDB_PORT`, `TZ`, and `TELEGRAF_COLLECTION_INTERVAL` in `.env`
 - `deployment.name` and `deployment.type` in `discovery/config.yml`
 - `customer` and `site` slugs derived from the deployment name
 
 Other environment variables and configuration sections are retained.
+Blank generated `INFLUXDB_BUCKET` and `INFLUXDB_ORG` values are repaired with
+the canonical `local_system` and `itp` defaults. Non-empty custom database and
+organisation values are preserved. The deprecated `INFLUXDB_HTTP_PORT` is
+migrated to `INFLUXDB_PORT`; conflicting values must be resolved explicitly.
 
 ## Enable collectors
 

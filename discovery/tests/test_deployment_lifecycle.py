@@ -39,9 +39,18 @@ def deployment(tmp_path, runner, monkeypatch, *, token=True):
     else:
         monkeypatch.delenv("INFLUXDB_TOKEN", raising=False)
     env = tmp_path / ".env"
-    env.write_text(
-        "INFLUXDB_TOKEN=opaque-secret-token\n" if token else
-        "INFLUXDB_TOKEN=\n")
+    env.write_text("\n".join((
+        "INFLUXDB_BUCKET=local_system",
+        "INFLUXDB_ORG=itp",
+        "INFLUXDB_PORT=8181",
+        "GRAFANA_PORT=3000",
+        "TZ=UTC",
+        "TELEGRAF_COLLECTION_INTERVAL=60s",
+        "ITP_DEPLOYMENT_ID=00000000-0000-4000-8000-000000000001",
+        "INFLUXDB_NODE_ID=itp-test",
+        "INFLUXDB_TOKEN=opaque-secret-token" if token else "INFLUXDB_TOKEN=",
+        "",
+    )))
     compose = DockerCompose(
         ROOT, runner=runner, which_fn=lambda name: f"/usr/bin/{name}",
         environment=lambda: {})
@@ -50,7 +59,7 @@ def deployment(tmp_path, runner, monkeypatch, *, token=True):
         ROOT, config, tmp_path / "runtime", compose, env_path=env)
     return compose, provisioner, StackLifecycle(
         compose, provisioner, http_fn=lambda _url: True,
-        port_fn=lambda _port: True)
+        port_fn=lambda _port: True, sleep_fn=lambda _: None)
 
 
 def test_start_stopped_and_start_already_running(tmp_path, monkeypatch):
@@ -126,7 +135,9 @@ def test_provisioning_first_repeat_credentials_and_partial_recovery(
     _, partial, _ = deployment(
         partial_root, Runner(), monkeypatch, token=False)
     assert partial.provision()["status"] == "partial"
-    partial.env_path.write_text("INFLUXDB_TOKEN=preserved-token\n")
+    partial.env_path.write_text(
+        partial.env_path.read_text().replace(
+            "INFLUXDB_TOKEN=", "INFLUXDB_TOKEN=preserved-token"))
     recovered = partial.provision()
     assert recovered["status"] == "complete"
     assert recovered["last_successful_provisioning"]

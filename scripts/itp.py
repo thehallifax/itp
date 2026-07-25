@@ -60,7 +60,7 @@ def load_root_env():
         value = value.strip()
         if " #" in value and not value.startswith(("'", '"')):
             value = value.split(" #", 1)[0].rstrip()
-        os.environ.setdefault(key.strip(), value.strip("'\""))
+        os.environ[key.strip()] = value.strip("'\"")
 
 
 def profile(value, *, secrets=True):
@@ -82,7 +82,8 @@ def describe(value):
 def compose(value, *arguments, capture=False):
     environment = {**os.environ, **value.env()}
     return subprocess.run(["docker", "compose", *arguments], cwd=ROOT, env=environment,
-                          check=True, text=True, capture_output=capture)
+                          check=True, text=True, encoding="utf-8",
+                          errors="replace", capture_output=capture)
 
 
 def port_available(port):
@@ -368,7 +369,8 @@ def bootstrap_influx(value):
         "--service-ports", "--no-deps", "influxdb3-core",
         "influxdb3", "serve", "--node-id", os.getenv("INFLUXDB_NODE_ID", f"{value.id}-node"),
         "--object-store=file", "--data-dir=/var/lib/influxdb3"],
-        cwd=ROOT, env=environment, check=True, text=True, stdout=subprocess.DEVNULL)
+        cwd=ROOT, env=environment, check=True, text=True, encoding="utf-8",
+        errors="replace", stdout=subprocess.DEVNULL)
     try:
         for _ in range(60):
             with socket.socket() as connection:
@@ -461,6 +463,20 @@ def create(profile_id):
     print(f"Next: ./itp profile validate {profile_id}")
 
 
+def run_demo(seed=1001, days=30):
+    load_root_env()
+    engine = DemoEngine(ROOT, seed=seed, days=days)
+    os.environ.update(engine.environment())
+    config, _ = engine.prepare()
+    compose_runtime = DockerCompose(ROOT, environment=engine.environment)
+    engine.lifecycle = StackLifecycle(
+        compose_runtime,
+        Provisioner(
+            ROOT, config, engine.runtime, compose_runtime,
+            env_path=engine.env_path))
+    return engine.run()
+
+
 def main():
     parser = argparse.ArgumentParser(prog="./itp", description=__doc__)
     commands = parser.add_subparsers(dest="group", required=True)
@@ -523,6 +539,10 @@ def main():
                               choices=("Home Lab", "School", "Business",
                                        "MSP", "Enterprise"))
     setup_parser.add_argument("--grafana-port", type=int)
+    setup_parser.add_argument("--influxdb-port", type=int)
+    setup_parser.add_argument("--timezone")
+    setup_parser.add_argument("--collection-interval")
+    setup_parser.add_argument("--demo", action="store_true", default=None)
     setup_parser.add_argument("--start", action="store_true", default=None)
     setup_parser.add_argument("--force", action="store_true")
     setup_parser.add_argument("--health-timeout", type=int, default=180)
@@ -551,6 +571,7 @@ def main():
         return
     if args.group == "setup":
         def setup_provision():
+            load_root_env()
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 setup_config = load_config(ROOT / "discovery/config.yml")
@@ -560,6 +581,7 @@ def main():
                 ROOT, setup_config, runtime, compose_runtime).provision()
 
         def setup_start():
+            load_root_env()
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 setup_config = load_config(ROOT / "discovery/config.yml")
@@ -570,29 +592,22 @@ def main():
                 Provisioner(ROOT, setup_config, runtime, compose_runtime)).start()
 
         BootstrapWizard(
-            ROOT, provision_fn=setup_provision, start_fn=setup_start).run(SetupOptions(
+            ROOT, provision_fn=setup_provision, start_fn=setup_start,
+            demo_fn=run_demo).run(SetupOptions(
             non_interactive=args.non_interactive,
             deployment_name=args.deployment_name,
             deployment_type=args.deployment_type,
             grafana_port=args.grafana_port,
+            influxdb_port=args.influxdb_port,
+            timezone=args.timezone,
+            collection_interval=args.collection_interval,
+            demo=args.demo,
             start=args.start,
             force=args.force,
             health_timeout=args.health_timeout))
         return
     if args.group == "demo":
-        load_root_env()
-        engine = DemoEngine(ROOT, seed=args.seed, days=args.days)
-        # Demo isolation applies to the entire child Compose environment and
-        # prevents the root deployment token/database/project from being used.
-        os.environ.update(engine.environment())
-        config, _ = engine.prepare()
-        compose_runtime = DockerCompose(ROOT, environment=engine.environment)
-        engine.lifecycle = StackLifecycle(
-            compose_runtime,
-            Provisioner(
-                ROOT, config, engine.runtime, compose_runtime,
-                env_path=engine.env_path))
-        result = engine.run()
+        result = run_demo(args.seed, args.days)
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True))
         else:

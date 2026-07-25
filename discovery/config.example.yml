@@ -115,7 +115,7 @@ notifications:
 
 collectors:
   snmp:
-    enabled: true
+    enabled: false
     execution: edge
   mist:
     enabled: false

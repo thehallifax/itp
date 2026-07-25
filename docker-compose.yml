@@ -64,6 +64,10 @@ services:
       context: .
       dockerfile: discovery/Dockerfile
     restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ}
     volumes:
       - ${ITP_DISCOVERY_CONFIG:-./discovery/config.yml}:/app/config.yml:ro
       - ${ITP_SITES_CONFIG:-./config/sites.yml}:/app/config/sites.yml:ro
@@ -97,6 +101,8 @@ services:
       - ITP_RUNTIME_MODE=${ITP_RUNTIME_MODE:-central}
       - INFLUXDB_HOST=${INFLUXDB_HOST}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+      - INFLUXDB_ORG=${INFLUXDB_ORG}
+      - TZ=${TZ}
       - ITP_PROFILE=${ITP_PROFILE:-}
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
       - ITP_RUNTIME_DIR=/app/runtime/${ITP_PROFILE:-legacy}
@@ -139,6 +145,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - TZ=${TZ}
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/runtime-dashboard/managed/infrastructure/itp-infrastructure-overview.json
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
     depends_on:

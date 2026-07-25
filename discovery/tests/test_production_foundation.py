@@ -65,7 +65,7 @@ def test_flightsql_datasource_is_provisioned_with_dashboard_uid():
     assert datasource["type"] == "influxdb"
     assert datasource["jsonData"] == {
         "version": "SQL",
-        "dbName": "local_system",
+        "dbName": "${INFLUXDB_BUCKET}",
         "httpMode": "POST",
         "insecureGrpc": True,
     }

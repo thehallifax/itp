@@ -83,7 +83,8 @@ def windows_virtualization_diagnostics(*, which=shutil.which, run=subprocess.run
     def captured(command):
         try:
             value = run(
-                command, text=True, stdout=subprocess.PIPE,
+                command, text=True, encoding="utf-8", errors="replace",
+                stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, check=False)
             return getattr(value, "stdout", "") if value.returncode == 0 else ""
         except OSError:
@@ -116,7 +117,8 @@ def windows_virtualization_diagnostics(*, which=shutil.which, run=subprocess.run
                 reg, "query",
                 r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion"
                 r"\Component Based Servicing\RebootPending",
-            ], text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            ], text=True, encoding="utf-8", errors="replace",
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 check=False)
             result["reboot_pending"] = pending.returncode == 0
         except OSError:
@@ -177,6 +179,7 @@ def check_windows_prerequisites(
     try:
         compose = run(
             [docker, "compose", "version"], text=True,
+            encoding="utf-8", errors="replace",
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     except OSError as exc:
         raise BootstrapError(
@@ -189,7 +192,8 @@ def check_windows_prerequisites(
     result["compose"] = True
     try:
         daemon = run(
-            [docker, "info"], text=True, stdout=subprocess.DEVNULL,
+            [docker, "info"], text=True, encoding="utf-8", errors="replace",
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, check=False)
     except OSError as exc:
         raise BootstrapError(
@@ -225,6 +229,7 @@ def check_runtime_prerequisites(
     result["docker"] = True
     compose = run(
         [docker, "compose", "version"], text=True,
+        encoding="utf-8", errors="replace",
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     if compose.returncode != 0:
         raise BootstrapError(
@@ -232,7 +237,8 @@ def check_runtime_prerequisites(
             "verify `docker compose version`")
     result["compose"] = True
     daemon = run(
-        [docker, "info"], text=True, stdout=subprocess.DEVNULL,
+        [docker, "info"], text=True, encoding="utf-8", errors="replace",
+        stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, check=False)
     if daemon.returncode != 0:
         raise BootstrapError(
@@ -296,7 +302,8 @@ def dependencies_current(environment, digest, *, run=subprocess.run):
         return False
     check = run(
         [str(python), "-c", "import httpx, yaml, pysnmp"],
-        text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        text=True, encoding="utf-8", errors="replace",
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         check=False)
     return check.returncode == 0
 
@@ -369,6 +376,7 @@ def ensure_environment(
                 "--disable-pip-version-check", "--quiet", "--upgrade",
                 "pip>=23.1", "setuptools>=68", "wheel",
             ], cwd=root, env=environment_variables, text=True,
+                encoding="utf-8", errors="replace",
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
             toolchain_output = getattr(toolchain, "stdout", "") or ""
         try:
@@ -381,7 +389,8 @@ def ensure_environment(
             install_arguments.append(str(root))
             result = run(
                 install_arguments, cwd=root, env=environment_variables,
-                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 check=False)
         except OSError as exc:
             raise BootstrapError(

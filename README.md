@@ -109,9 +109,11 @@ cd itp
 ./itp setup
 ```
 
-The wizard creates local configuration, checks prerequisites, and offers to
-start the platform. ITP creates and maintains its project-local Python
-environment automatically.
+The wizard detects your timezone, recommends available ports, selects a safe
+collection interval, creates complete local configuration, and offers an
+isolated demo and staged platform startup. External collectors remain disabled
+until you explicitly configure and enable them. ITP creates and maintains its
+project-local Python environment automatically.
 
 On Windows PowerShell:
 
