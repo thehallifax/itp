@@ -1,7 +1,7 @@
 # Install ITP
 
-Requirements: Git, Docker Engine or Docker Desktop, Docker Compose v2, and ports 3000 and
-8181 available.
+Requirements: Git, Python 3.9 or later, Docker Engine or Docker Desktop, Docker
+Compose v2, and ports 3000 and 8181 available.
 
 ```sh
 git clone <repository-url> itp
@@ -29,3 +29,20 @@ docker compose run --rm collector python -m collectors validate
 Grafana is available on `http://localhost:${GRAFANA_PORT:-3000}` and InfluxDB on port
 8181. Dashboards, folders, and the FlightSQL datasource are provisioned automatically.
 Alternatively run `./scripts/install.sh` or `./scripts/Install-ITP.ps1`.
+
+On Windows PowerShell, the self-bootstrapping path is:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+.\itp.ps1 setup
+.\itp.ps1 start
+```
+
+For one process without changing the persistent policy:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 setup
+```
+
+Use `pwsh` in place of `powershell.exe` for PowerShell 7. Organisation-enforced
+Group Policy cannot be bypassed by ITP and may require administrator approval.

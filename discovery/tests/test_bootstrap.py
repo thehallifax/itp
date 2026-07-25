@@ -137,6 +137,73 @@ def test_launch_forwards_arguments_and_exit_code(tmp_path, monkeypatch):
     assert calls == [[str(python), str(script), "status", "--json"]]
 
 
+@pytest.mark.parametrize("arguments,expected", [
+    (["help"], False),
+    (["demo", "--help"], False),
+    (["status", "--json"], True),
+    (["demo"], True),
+    (["setup"], True),
+    (["start"], True),
+    (["profile", "status", "customer"], True),
+    (["connectors", "list"], False),
+])
+def test_runtime_prerequisite_command_classification(arguments, expected):
+    assert bootstrap.command_requires_runtime(arguments) is expected
+
+
+def test_windows_prerequisites_report_git_without_blocking():
+    commands = []
+
+    def which(name):
+        return {"git": None, "docker": "C:/Docker/docker.exe"}.get(name)
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=0)
+
+    result = bootstrap.check_windows_prerequisites(
+        ["demo"], which=which, run=runner)
+    assert result == {
+        "git": False, "docker": True, "compose": True, "daemon": True}
+    assert commands == [
+        ["C:/Docker/docker.exe", "compose", "version"],
+        ["C:/Docker/docker.exe", "info"],
+    ]
+
+
+def test_windows_prerequisites_reject_missing_docker():
+    with pytest.raises(bootstrap.BootstrapError, match="Docker was not found"):
+        bootstrap.check_windows_prerequisites(
+            ["demo"], which=lambda name: None)
+
+
+def test_windows_prerequisites_reject_missing_compose_plugin():
+    def runner(command, **kwargs):
+        return SimpleNamespace(returncode=1)
+
+    with pytest.raises(bootstrap.BootstrapError, match="Compose v2"):
+        bootstrap.check_windows_prerequisites(
+            ["setup"], which=lambda name: "docker.exe"
+            if name == "docker" else None, run=runner)
+
+
+def test_windows_prerequisites_reject_stopped_daemon():
+    def runner(command, **kwargs):
+        return SimpleNamespace(
+            returncode=0 if command[1:3] == ["compose", "version"] else 1)
+
+    with pytest.raises(bootstrap.BootstrapError, match="not running"):
+        bootstrap.check_windows_prerequisites(
+            ["status"], which=lambda name: "docker.exe"
+            if name == "docker" else None, run=runner)
+
+
+def test_help_does_not_require_docker():
+    result = bootstrap.check_windows_prerequisites(
+        ["demo", "--help"], which=lambda name: None)
+    assert result["docker"] is False
+
+
 def test_progress_uses_stderr_and_does_not_contaminate_json_stdout(
         tmp_path, monkeypatch, capsys):
     python = tmp_path / ".venv/bin/python"
@@ -160,14 +227,54 @@ def test_progress_uses_stderr_and_does_not_contaminate_json_stdout(
     assert "ITP bootstrap: ready" in captured.err
 
 
+def test_windows_first_run_progress_identifies_selected_python(
+        tmp_path, monkeypatch):
+    progress = []
+    monkeypatch.setenv("ITP_BOOTSTRAP_SHOW_PROGRESS", "1")
+    monkeypatch.setenv("ITP_BOOTSTRAP_PYTHON_VERSION", "3.12")
+    monkeypatch.setenv("ITP_BOOTSTRAP_PYTHON_LABEL", "py -3")
+    monkeypatch.setattr(
+        bootstrap, "check_windows_prerequisites",
+        lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        bootstrap, "ensure_environment",
+        lambda *args, **kwargs: (
+            tmp_path / ".venv/Scripts/python.exe",
+            tmp_path / "scripts/itp.py"))
+    assert bootstrap.launch(
+        tmp_path, ["demo"], output=progress.append,
+        run=lambda command, **kwargs: SimpleNamespace(returncode=0)) == 0
+    assert progress[:2] == [
+        "ITP bootstrap: checking prerequisites",
+        "ITP bootstrap: using Python 3.12 via py -3",
+    ]
+
+
 def test_windows_launcher_is_thin_and_preserves_exit_code():
     text = (Path(__file__).resolve().parents[2] / "itp.ps1").read_text()
     assert "$PSScriptRoot" in text
     assert 'Join-Path $Root "scripts\\bootstrap.py"' in text
-    assert 'Get-Command py' in text
+    assert text.index('Name = "py"') < text.index('Name = "python"')
+    assert text.index('Name = "python"') < text.index('Name = "python3"')
+    assert 'Prefix = @("-3")' in text
+    assert "System.Diagnostics.ProcessStartInfo" in text
+    assert "$StartInfo.RedirectStandardError = $true" in text
+    assert "$Process.ExitCode -ne 0" in text
+    assert "sys.version_info >= (3, 9)" in text
+    assert "catch {" in text
+    assert "continue" in text
     assert "@args" in text
-    assert "exit $LASTEXITCODE" in text
+    assert "$BootstrapExitCode = $LASTEXITCODE" in text
+    assert "exit $BootstrapExitCode" in text
     assert "pip install" not in text
+    assert "ITP prerequisite check failed: Python was not found." in text
+    assert "Windows App Execution Aliases" in text
+    assert "Python $MinimumPython or later" in text
+    missing_start = text.index(
+        'if ($null -eq $Selected) {')
+    missing_end = text.index(
+        '$env:ITP_BOOTSTRAP_PYTHON_LABEL')
+    assert "exit 1" in text[missing_start:missing_end]
 
 
 def test_unix_launcher_is_location_relative_and_forwards_arguments():

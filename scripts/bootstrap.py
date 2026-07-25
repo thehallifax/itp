@@ -20,10 +20,68 @@ MINIMUM_PYTHON = (3, 9)
 BOOTSTRAP_SCHEMA = 1
 MARKER_NAME = ".itp-dependencies.json"
 DEPENDENCY_FILE = "pyproject.toml"
+WINDOWS_RUNTIME_COMMANDS = frozenset({
+    "demo", "setup", "provision", "start", "stop", "restart", "status", "logs",
+})
 
 
 class BootstrapError(RuntimeError):
     pass
+
+
+def command_requires_runtime(arguments):
+    arguments = list(arguments)
+    if not arguments or any(value in {"-h", "--help"} for value in arguments):
+        return False
+    if arguments[0] in WINDOWS_RUNTIME_COMMANDS:
+        return True
+    return len(arguments) > 1 and arguments[0] == "profile" and \
+        arguments[1] in {"up", "down", "restart", "status", "logs"}
+
+
+def check_windows_prerequisites(
+        arguments, *, which=shutil.which, run=subprocess.run):
+    """Check stack prerequisites without importing any third-party package."""
+    result = {
+        "git": bool(which("git")), "docker": False,
+        "compose": False, "daemon": False,
+    }
+    if not command_requires_runtime(arguments):
+        return result
+    docker = which("docker")
+    if not docker:
+        raise BootstrapError(
+            "Docker was not found. Install Docker Desktop for Windows from "
+            "https://www.docker.com/products/docker-desktop/, then open a new "
+            "PowerShell window and rerun the ITP command")
+    result["docker"] = True
+    try:
+        compose = run(
+            [docker, "compose", "version"], text=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    except OSError as exc:
+        raise BootstrapError(
+            "Docker could not be started. Repair Docker Desktop and rerun the "
+            "ITP command") from exc
+    if compose.returncode != 0:
+        raise BootstrapError(
+            "Docker Compose v2 is unavailable. Update Docker Desktop and verify "
+            "`docker compose version`, then rerun the ITP command")
+    result["compose"] = True
+    try:
+        daemon = run(
+            [docker, "info"], text=True, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, check=False)
+    except OSError as exc:
+        raise BootstrapError(
+            "Docker Desktop could not be contacted. Start Docker Desktop and "
+            "rerun the ITP command") from exc
+    if daemon.returncode != 0:
+        raise BootstrapError(
+            "Docker is installed but Docker Desktop is not running. Start "
+            "Docker Desktop, wait until it is ready, and rerun the ITP command")
+    result["daemon"] = True
+    return result
 
 
 def repository_root(source=__file__):
@@ -171,6 +229,18 @@ def ensure_environment(root, *, run=subprocess.run, output=None):
 
 
 def launch(root, arguments, *, run=subprocess.run, output=None):
+    output = output or (lambda message: print(message, file=sys.stderr))
+    show_progress = os.getenv("ITP_BOOTSTRAP_SHOW_PROGRESS") == "1"
+    if show_progress and command_requires_runtime(arguments):
+        output("ITP bootstrap: checking prerequisites")
+    if show_progress and os.getenv("ITP_BOOTSTRAP_PYTHON_VERSION"):
+        output(
+            "ITP bootstrap: using Python "
+            + os.environ["ITP_BOOTSTRAP_PYTHON_VERSION"]
+            + " via "
+            + os.getenv("ITP_BOOTSTRAP_PYTHON_LABEL", "python"))
+    if os.name == "nt":
+        check_windows_prerequisites(arguments, run=run)
     python, script = ensure_environment(root, run=run, output=output)
     try:
         result = run([str(python), str(script), *arguments], check=False)

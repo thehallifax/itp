@@ -28,6 +28,21 @@ On Windows PowerShell, use the equivalent launcher:
 .\itp.ps1 status
 ```
 
+If local script execution is blocked:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+For a single process without a persistent policy change:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 setup
+```
+
+Use `pwsh` instead of `powershell.exe` for PowerShell 7. An execution policy
+enforced by organisational Group Policy requires administrator assistance.
+
 ## Lifecycle commands
 
 ```sh
@@ -63,8 +78,12 @@ versions appear under `stack.dashboard_packs` in `./itp status --json`.
 - Use `./itp logs --service <service> --tail 200`.
 - Rerun `./itp start` to recover partial provisioning safely.
 - If bootstrap cannot locate Python, install Python 3.9 or later.
-- If PowerShell blocks `itp.ps1`, run
-  `Set-ExecutionPolicy -Scope Process Bypass` for the current session.
+- If PowerShell blocks `itp.ps1`, use `RemoteSigned` at `CurrentUser` scope or
+  the process-scoped command above.
+- If Windows App Execution Aliases redirect Python to the Microsoft Store,
+  install Python from python.org and disable the conflicting aliases.
+- Windows stack commands distinguish a missing Docker command, missing Compose
+  v2 plugin, and a stopped Docker Desktop daemon.
 - Dependency installation requires package-index access on the first run.
   Offline deployments must provide pip's cache or an internal package index.
 

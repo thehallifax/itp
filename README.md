@@ -119,6 +119,10 @@ On Windows PowerShell:
 .\itp.ps1 setup
 ```
 
+If Windows blocks local scripts, see the
+[PowerShell execution-policy guidance](docs/quick-start.md#powershell-execution-policy).
+ITP cannot override an organisation-enforced policy.
+
 ### 3. Start ITP
 
 ```sh

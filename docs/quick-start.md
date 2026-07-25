@@ -32,6 +32,32 @@ on the first invocation. It synchronises dependencies only when the tracked
 project definition changes. Activation and global package installation are not
 required.
 
+### PowerShell execution policy
+
+Windows may initially block local PowerShell scripts. The recommended
+per-user setting permits local scripts while requiring downloaded scripts to
+be signed:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Alternatively, run ITP once without changing the persistent user policy:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 demo
+```
+
+With PowerShell 7 installed, the equivalent is:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 demo
+```
+
+ITP cannot bypass an execution policy enforced through organisational Group
+Policy. In a managed environment, ask the administrator to permit signed or
+local scripts.
+
 The wizard asks for the deployment name, deployment type, and Grafana port. It
 then:
 
@@ -224,8 +250,17 @@ deduplication, recovery, acknowledgement, and troubleshooting.
   then rerun `./itp` or `.\itp.ps1`.
 - **Python is unsupported:** upgrade to Python 3.9 or later. The launcher does
   not install or modify system Python.
-- **PowerShell blocks the launcher:** permit the current session with
-  `Set-ExecutionPolicy -Scope Process Bypass`, then rerun `.\itp.ps1`.
+- **PowerShell blocks the launcher:** use the recommended
+  `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`, or
+  invoke the process-scoped command shown above. Organisation-enforced Group
+  Policy requires administrator assistance.
+- **Python opens the Microsoft Store:** install Python 3.9 or later from
+  python.org with `Add python.exe to PATH` and the Python launcher enabled.
+  Disable the `python.exe` and `python3.exe` Windows App Execution Aliases when
+  they redirect to the Store.
+- **Docker prerequisites fail:** install or update Docker Desktop, confirm
+  `docker compose version`, and wait for `docker info` to succeed before
+  rerunning the command.
 - **Installation is offline:** the first run needs the packages declared by
   `pyproject.toml`. Connect temporarily, configure an internal Python package
   index, or pre-populate pip's package cache, then rerun the command.
