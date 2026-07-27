@@ -106,6 +106,7 @@ services:
       - ITP_PROFILE=${ITP_PROFILE:-}
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
       - ITP_RUNTIME_DIR=/app/runtime/${ITP_PROFILE:-legacy}
+      - COLLECTOR_HEALTH_PATH=/app/runtime/${ITP_PROFILE:-legacy}/collector-health
       - SITES_CONFIG=/app/config/sites.yml
       - INVENTORY_PATH=/app/runtime/${ITP_PROFILE:-legacy}/inventory/devices.json
       - DASHBOARD_MANAGED_OUTPUT=/app/runtime/${ITP_PROFILE:-legacy}/dashboard/managed

@@ -54,6 +54,13 @@ Not Enabled services never degrade overall status. Their large cards are
 omitted and their names appear in a compact neutral header list. Unknown and
 Not Enabled are always grey.
 
+Before canonical service evidence exists, the wallboard consumes
+`runtime/dashboard/readiness.json`. A clean deployment displays **Monitoring
+not started**; an enabled collector without a successful run displays
+**Awaiting first collection**; failed or stale collection displays
+**Collectors unavailable**. These onboarding states never replace a real
+Warning or Critical service result.
+
 ## Printer exception policy
 
 Included conditions are printer offline, paper jam, waste-toner full or
@@ -75,6 +82,9 @@ so optional packs may be absent safely.
 Unclassified interfaces never become WAN uplinks. Without authoritative
 classification or traffic history, compact unavailable text replaces WAN
 graphs. Latency and packet loss remain absent until reliable telemetry exists.
+The empty state distinguishes Internet capability not enabled, waiting for WAN
+telemetry, collector unavailability and authoritative WAN classification
+missing.
 
 ## Data binding and filtering
 

@@ -283,7 +283,7 @@ def test_clean_bootstrap_and_deterministic_generation(tmp_path):
     second = engine.run(NOW)
     assert first == second
     assert rendered == (tmp_path / "grafana/wallboard.json").read_text()
-    assert first["overall_health"]["all"] == "Unknown"
+    assert first["overall_health"]["all"] == "Monitoring not started"
     assert first["freshness"]["status"] == "Unknown"
 
 

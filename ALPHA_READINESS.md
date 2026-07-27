@@ -2,10 +2,10 @@
 
 ## Dashboard polish
 
-- [ ] Replace raw "No data" states with operator-friendly wording
-- [ ] Replace unexplained "Unknown" states
-- [ ] Add collector/configuration guidance to empty panels
-- [ ] Confirm dashboard edits survive regeneration
+- [x] Replace raw "No data" states with operator-friendly wording
+- [x] Replace unexplained "Unknown" states
+- [x] Add collector/configuration guidance to empty panels
+- [x] Confirm dashboard edits survive regeneration
 - [ ] Check titles, units and refresh intervals for consistency
 
 ## Demo and privacy

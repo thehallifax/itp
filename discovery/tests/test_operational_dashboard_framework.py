@@ -15,7 +15,7 @@ def test_infrastructure_overview_is_classic_json_with_stable_uid():
     assert isinstance(dashboard["panels"], list)
     assert "elements" not in dashboard
     assert "layout" not in dashboard
-    assert len({panel["id"] for panel in dashboard["panels"]}) == 31
+    assert len({panel["id"] for panel in dashboard["panels"]}) == 33
 
 
 def test_overview_contains_required_operational_panels_and_honest_placeholders():

@@ -184,7 +184,8 @@ async def _run(args):
               else render_human(report, args.strict))
         raise SystemExit(report.exit_code(args.strict))
     if args.command == "connectors":
-        registry = ConnectorMetadataRegistry.load(ROOT)
+        registry = ConnectorMetadataRegistry.load(
+            ROOT, validation_mode="runtime")
         if args.action == "list":
             if args.json:
                 print(json.dumps(registry.to_dict(), indent=2, sort_keys=True))
@@ -265,7 +266,8 @@ async def _run(args):
         registry = DashboardRegistry(ROOT, config,
             os.getenv("DASHBOARD_MANAGED_OUTPUT", str(ROOT / "runtime/dashboard/managed")),
             os.getenv("DASHBOARD_PROVISIONING",
-                      str(ROOT / "grafana/provisioning/dashboards/dashboards.yml")))
+                      str(ROOT / "grafana/provisioning/dashboards/dashboards.yml")),
+            registry_validation_mode="runtime")
         result = registry.generate() if args.action == "generate" else registry.resolve()
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True))
@@ -368,7 +370,9 @@ async def _run(args):
             dashboard_dir=settings.get("dashboard_path", "/app/runtime/dashboard"),
             status_freshness_seconds=settings.get("status_freshness_seconds", 300),
             sites_config=settings.get("sites_config", "/app/config/sites.yml"),
-            sites_output=settings.get("sites_output", "/app/runtime/sites"))
+            sites_output=settings.get("sites_output", "/app/runtime/sites"),
+            readiness_config=config,
+            registry_validation_mode="runtime")
         if args.action == "adapters":
             for adapter in SignalAdapter.registered(engine.inventory_dir):
                 print(f"{adapter.name}\t{adapter.priority}")
@@ -506,7 +510,8 @@ async def _run(args):
     dashboard_registry = DashboardRegistry(ROOT, config,
         os.getenv("DASHBOARD_MANAGED_OUTPUT", str(ROOT / "runtime/dashboard/managed")),
         os.getenv("DASHBOARD_PROVISIONING",
-                  str(ROOT / "grafana/provisioning/dashboards/dashboards.yml")))
+                  str(ROOT / "grafana/provisioning/dashboards/dashboards.yml")),
+        registry_validation_mode="runtime")
     dashboard_registry.generate()
     infrastructure = InfrastructureStateEngine(
         inventory_dir=infrastructure_settings.get("inventory_path", "/app/runtime/inventory"),
@@ -515,7 +520,9 @@ async def _run(args):
         dashboard_dir=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard"),
         status_freshness_seconds=infrastructure_settings.get("status_freshness_seconds", 300),
         sites_config=infrastructure_settings.get("sites_config", "/app/config/sites.yml"),
-        sites_output=infrastructure_settings.get("sites_output", "/app/runtime/sites")) \
+        sites_output=infrastructure_settings.get("sites_output", "/app/runtime/sites"),
+        readiness_config=config,
+        registry_validation_mode="runtime") \
         if infrastructure_settings.get("enabled", True) else None
     operations = OperationsEngine(
         inventory_dir=operations_settings.get("inventory_path", "/app/runtime/inventory"),

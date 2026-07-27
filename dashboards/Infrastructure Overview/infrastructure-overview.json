@@ -41,7 +41,9 @@
     {"description": "Generated from sites in runtime/dashboard/infrastructure-summary.json.", "gridPos": {"h": 5, "w": 6, "x": 0, "y": 28}, "id": 28, "targets": [], "title": "Sites", "type": "stat"},
     {"description": "Generated from healthy_sites in runtime/dashboard/infrastructure-summary.json.", "gridPos": {"h": 5, "w": 6, "x": 6, "y": 28}, "id": 29, "targets": [], "title": "Healthy Sites", "type": "stat"},
     {"description": "Generated from warning_sites in runtime/dashboard/infrastructure-summary.json.", "gridPos": {"h": 5, "w": 6, "x": 12, "y": 28}, "id": 30, "targets": [], "title": "Warning Sites", "type": "stat"},
-    {"description": "Generated from critical_sites in runtime/dashboard/infrastructure-summary.json.", "gridPos": {"h": 5, "w": 6, "x": 18, "y": 28}, "id": 31, "targets": [], "title": "Critical Sites", "type": "stat"}
+    {"description": "Generated from critical_sites in runtime/dashboard/infrastructure-summary.json.", "gridPos": {"h": 5, "w": 6, "x": 18, "y": 28}, "id": 31, "targets": [], "title": "Critical Sites", "type": "stat"},
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 33}, "id": 32, "panels": [], "title": "Getting Started", "type": "row"},
+    {"description": "Canonical first-run readiness generated from deployment, registry, collector, inventory and operations state.", "gridPos": {"h": 9, "w": 24, "x": 0, "y": 34}, "id": 33, "targets": [], "title": "Setup Status", "type": "table"}
   ],
   "refresh": "30s",
   "schemaVersion": 42,

@@ -14,7 +14,13 @@ DATASOURCE = {"type": "grafana-testdata-datasource", "uid": "itp-runtime-values"
 HEALTH_COLORS = {"Healthy": "green", "Fresh": "green", "Warning": "orange",
                  "Stale": "orange", "Critical": "red", "Failed": "red",
                  "Unknown": "gray", "Not Enabled": "gray",
-                 "Awaiting telemetry": "gray"}
+                 "Awaiting telemetry": "gray",
+                 "Monitoring not started": "gray",
+                 "Awaiting first collection": "gray",
+                 "Collectors unavailable": "red",
+                 "Unavailable": "red",
+                 "Waiting for first run": "gray",
+                 "Waiting for first success": "gray"}
 PROVIDER_LABELS = {"vmware": "VMware", "hyperv": "Hyper-V", "proxmox": "Proxmox"}
 OBJECT_LABELS = {"cluster": "Cluster", "host": "Host", "storage": "Storage",
                  "vm": "Virtual Machine", "virtual_machine": "Virtual Machine",
@@ -61,7 +67,7 @@ def _stat(panel, rows, field, health=False):
         "excludeByName": {"scope": True}, "renameByName": {"value": display_field}}}]
     panel["fieldConfig"] = {"defaults": {"color": {"mode": "thresholds"},
         "mappings": _mapping() if health else [],
-        "noValue": "No data",
+        "noValue": "State unavailable",
         "thresholds": {"mode": "absolute", "steps": [{"color": "green" if health else "blue", "value": None}]}},
         "overrides": []}
     # Grafana 13's Stat reducer ignores string-only CSV fields when numeric
@@ -197,9 +203,15 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         for value in summary["site_options"])
     panels = {value["title"]: value for value in dashboard["panels"]}
     freshness = summary["freshness"]
+    readiness = summary.get("readiness") or {}
+    readiness_state = readiness.get("overall", {}).get("state")
     issue_rows = [{"scope": scope["scope"],
         "value": (f"{scope['active_issues']} active issues"
-                  if scope["active_issues"] else "No active issues")}
+                  if scope["active_issues"] else {
+                      "not_configured": "Monitoring not configured",
+                      "waiting_first_collection": "Waiting for first collection",
+                      "unavailable": "Collection unavailable",
+                  }.get(readiness_state, "No active issues"))}
         for scope in summary["scopes"]]
     panels["Site Operational Status"]["type"] = "stat"
     panels["Site Operational Status"]["options"] = copy.deepcopy(
@@ -261,7 +273,13 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
             value = next(item for item in
                 summary["service_scopes"][scope["scope"]]["services"]
                 if item["service"] == name)
-            service_rows.append({"scope": scope["scope"], "value": value["status"]})
+            status = value["status"]
+            if status == "Unknown":
+                status = {
+                    "waiting_first_collection": "Awaiting telemetry",
+                    "unavailable": "Unavailable",
+                }.get(readiness_state, status)
+            service_rows.append({"scope": scope["scope"], "value": status})
             summaries.append(f"{scope['display_name']}: {value.get('summary', '')}")
         _stat(panels[title], service_rows, "value", True)
         panels[title]["description"] = (
@@ -306,8 +324,20 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     else:
         panel = panels["WAN Traffic"]; panel["type"] = "text"; panel.pop("datasource", None)
         panel["targets"] = []; panel["transformations"] = []
-        panel["options"] = {"mode": "markdown", "content":
-            "## Traffic unavailable\n\nNo time series exists for an authoritatively classified WAN uplink."}
+        message = {
+            "not_configured": (
+                "## Internet capability not enabled\n\n"
+                "Enable a collector that provides authoritative Internet telemetry."),
+            "waiting_first_collection": (
+                "## Waiting for WAN telemetry\n\n"
+                "Complete the first successful collection."),
+            "unavailable": (
+                "## WAN telemetry unavailable\n\n"
+                "Review Collector Health and run Doctor."),
+        }.get(readiness_state, (
+            "## WAN not classified\n\nNo time series exists for an "
+            "authoritatively classified WAN uplink."))
+        panel["options"] = {"mode": "markdown", "content": message}
 
     _table(panels["Printer Action Required"], summary["printer_exceptions"],
            ("scope", "asset", "location", "condition", "last_seen"))
@@ -322,7 +352,13 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                 "Healthy": {"color": "green", "index": 0, "text": "Healthy"},
                 "Warning": {"color": "orange", "index": 1, "text": "Warning"},
                 "Failed": {"color": "red", "index": 2, "text": "Failed"},
-                "Stale": {"color": "orange", "index": 3, "text": "Stale"}}}]},
+                "Stale": {"color": "orange", "index": 3, "text": "Stale"},
+                "Monitoring not started": {"color": "gray", "index": 4,
+                    "text": "Monitoring not started"},
+                "Awaiting first collection": {"color": "gray", "index": 5,
+                    "text": "Awaiting first collection"},
+                "Collectors unavailable": {"color": "red", "index": 6,
+                    "text": "Collectors unavailable"}}}]},
             {"id": "custom.cellOptions", "value": {"type": "color-background"}},
         ]})
     action_rows = [{**value,

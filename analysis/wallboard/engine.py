@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from analysis.infrastructure.models import asset_kind, health_of, state_of
+from analysis.readiness import READINESS_PRECEDENCE, evaluate_readiness
 from analysis.services.models import SERVICE_NAMES
 from collectors.writer import atomic_write
 from .renderer import write_wallboard
@@ -69,7 +70,8 @@ def _age_label(seconds):
     return f"{seconds // 86400}d ago"
 
 
-def _action_rows(operations, scopes, enabled_collectors, capabilities=None):
+def _action_rows(operations, scopes, enabled_collectors, capabilities=None,
+                 readiness=None):
     """Return immediate technician work, excluding governance recommendations."""
     candidates = []
     capabilities = capabilities or set()
@@ -125,8 +127,14 @@ def _action_rows(operations, scopes, enabled_collectors, capabilities=None):
             "provider": value.get("provider", ""),
             "object_kind": value.get("object_kind", ""),
             "id": value.get("id", "")} for value in selected[:8]]
+        empty = {
+            "not_configured": "Monitoring not configured",
+            "waiting_first_collection": "Waiting for first collection",
+            "unavailable": "Collection unavailable — run Doctor",
+        }.get((readiness or {}).get("overall", {}).get("state"),
+              "No action required")
         rows.extend(scoped_rows or [{"scope": scope["scope"], "severity": "Info",
-            "service": "Operations", "asset": "", "issue": "No action required",
+            "service": "Operations", "asset": "", "issue": empty,
             "age": "", "priority": 0, "domain": "", "provider": "",
             "object_kind": "", "id": ""}])
     return rows
@@ -227,6 +235,7 @@ class WallboardEngine:
                  dashboard_output="/app/runtime/dashboard/operations/operations-wallboard.json",
                  capability_registry="/app/runtime/dashboard/managed/registry.json",
                  service_health="/app/runtime/services/service-health.json",
+                 readiness_state="/app/runtime/dashboard/readiness.json",
                  freshness_seconds=900):
         self.infrastructure_state = Path(infrastructure_state)
         self.operations_state = Path(operations_state)
@@ -236,6 +245,7 @@ class WallboardEngine:
         self.dashboard_output = Path(dashboard_output)
         self.capability_registry = Path(capability_registry)
         self.service_health = Path(service_health)
+        self.readiness_state = Path(readiness_state)
         self.freshness_seconds = max(1, int(freshness_seconds))
 
     def evaluate(self, now=None):
@@ -244,12 +254,24 @@ class WallboardEngine:
             "collectors": [], "signals": {}})
         operations = _read(self.operations_state, {"issues": [], "risks": [], "recommendations": []})
         site_state = _read(self.sites_state, {"sites": [], "generated_at": None})
-        capability_state = _read(self.capability_registry, {"capabilities": [
-            "firewall", "internet", "wireless", "switching", "printing", "compute"]})
+        capability_state = _read(
+            self.capability_registry,
+            {"capabilities": [], "enabled_collectors": []})
         service_state = _read(self.service_health, {"generated_at": None, "services": [
             ]})
         capabilities = set(capability_state.get("capabilities", []))
         enabled_collectors = set(capability_state.get("enabled_collectors", []))
+        readiness = _read(self.readiness_state, {}) or \
+            state.get("readiness") or evaluate_readiness(
+            enabled_collectors=enabled_collectors,
+            collector_records=state.get("collectors", []),
+            capabilities=capabilities,
+            assets=state.get("assets", []),
+            operations_generated=bool(operations.get("generated_at")),
+            deployment_configured=bool(state.get("deployment_id")),
+            platform_running=True, now=now,
+            credentials_configured=bool(enabled_collectors),
+            stale_seconds=self.freshness_seconds)
         dashboard_uids = sorted(value.get("uid") for value in
             capability_state.get("dashboards", []) if value.get("uid"))
         site_options = [{"site_id": value["site_id"], "display_name": value["display_name"]}
@@ -297,7 +319,9 @@ class WallboardEngine:
             printers = _counts(assets, lambda asset: "print" in asset_kind(asset))
             critical = [asset for asset in assets if health_of(asset) == "critical"]
             warning = [asset for asset in assets if health_of(asset) in {"warning", "offline"}]
-            infra = "Critical" if critical else "Warning" if warning else "Healthy" if assets else "Unknown"
+            infra = "Critical" if critical else "Warning" if warning else \
+                "Healthy" if assets else \
+                readiness["infrastructure"]["display_label"]
             summary = state.get("summary", {})
             if scope["scope"] == "all": infra = summary.get("infrastructure_health", infra)
             scope_values.append({"scope": scope["scope"], "display_name": scope["display_name"],
@@ -309,7 +333,9 @@ class WallboardEngine:
                 "collectors_healthy": summary.get("collectors_healthy", 0),
                 "collectors_total": summary.get("collectors_healthy", 0) + summary.get("collectors_failed", 0),
                 "infrastructure_health": infra,
-                "observability_health": summary.get("observability_health", "Unknown"),
+                "observability_health": summary.get(
+                    "observability_health",
+                    readiness["observability"]["display_label"]),
                 "domains": {"network": {**switch, "available": enabled("Switching")},
                     "wireless": {**wireless, "available": enabled("Wireless"),
                     "clients_connected": state.get("wireless", {}).get("clients_connected"),
@@ -353,7 +379,8 @@ class WallboardEngine:
             topology_edges.extend({"scope": scope["scope"], "id": f"logical-{index}-{index + 1}",
                 "source": node_ids[index - 1], "target": node_ids[index]}
                 for index in range(1, len(node_ids)))
-        actions = _action_rows(operations, scopes, enabled_collectors, capabilities)
+        actions = _action_rows(
+            operations, scopes, enabled_collectors, capabilities, readiness)
         printer_exceptions = _printer_exceptions(state.get("assets", []), operations, scopes)
         printing_by_scope = {scope["scope"]: next(value for value in
             service_scopes[scope["scope"]]["services"] if value["service"] == "Printing")
@@ -372,6 +399,15 @@ class WallboardEngine:
         scope_health = {scope["scope"]:
                         service_scopes[scope["scope"]].get("overall_status", "Unknown")
                         for scope in scopes}
+        readiness_rank = READINESS_PRECEDENCE[
+            readiness["overall"]["state"]]
+        operational_rank = {"Healthy": 0, "Warning": 3, "Critical": 5}
+        scope_health = {
+            scope: (
+                readiness["overall"]["display_label"]
+                if readiness_rank > operational_rank.get(status, 0)
+                else status)
+            for scope, status in scope_health.items()}
         collector_rows = []
         generated = now.astimezone(timezone.utc)
         site_names = {value["site_id"]: value["display_name"] for value in site_options}
@@ -399,6 +435,15 @@ class WallboardEngine:
                        "last_run": last}
                 collector_rows.append({"scope": "all", **row})
                 collector_rows.append({"scope": site_id, **row})
+        if not collector_rows:
+            collector_rows = [{
+                "scope": scope["scope"],
+                "collector": readiness["observability"]["display_label"],
+                "site": "",
+                "status": readiness["observability"]["display_label"],
+                "freshness": readiness["observability"]["operator_action"],
+                "last_run": None,
+            } for scope in scopes]
         site_matrix = []
         matrix_services = ("Internet", "Wireless", "Switching", "Security", "Monitoring")
         for site in site_options:
@@ -413,6 +458,7 @@ class WallboardEngine:
             "selected_scope": "all", "site_options": site_options, "scopes": scope_values,
             "capabilities": sorted(capabilities),
             "enabled_collectors": sorted(enabled_collectors),
+            "readiness": readiness,
             "dashboard_uids": dashboard_uids,
             "overall_health": scope_health,
             "service_scopes": service_scopes,

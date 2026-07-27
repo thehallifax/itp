@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import replace
@@ -11,6 +12,7 @@ from collectors.connector_registry import (
     ConnectorMetadataRegistry,
     DOMAINS,
 )
+from analysis.dashboards import DashboardRegistry
 from itp_profiles.setup import BootstrapWizard, SetupOptions
 
 
@@ -76,6 +78,56 @@ def test_invalid_domain_and_documentation_rejection(registry):
             ROOT, [replace(values[0], documentation="docs/missing.md"), *values[1:]])
 
 
+def test_runtime_mode_skips_only_repository_artifact_references(registry):
+    values = list(registry.all())
+    missing_template = replace(
+        values[0],
+        secret_handling={
+            **values[0].secret_handling,
+            "templates": ["secrets/not-in-runtime.env.example"],
+        })
+    changed = [missing_template, *values[1:]]
+    with pytest.raises(ValueError, match="secret template does not exist"):
+        ConnectorMetadataRegistry(ROOT, changed)
+    runtime_metadata = replace(
+        missing_template,
+        documentation="docs/not-in-runtime.md",
+        dashboard_manifest="collectors/not-in-runtime.yml")
+    runtime = ConnectorMetadataRegistry(
+        ROOT, [runtime_metadata, *values[1:]], validation_mode="runtime")
+    assert runtime.get(runtime_metadata.id) == runtime_metadata
+
+
+def test_runtime_mode_retains_schema_and_implementation_validation(registry):
+    values = list(registry.all())
+    with pytest.raises(ValueError, match="invalid domains"):
+        ConnectorMetadataRegistry(
+            ROOT, [replace(values[0], domains=("invalid",)), *values[1:]],
+            validation_mode="runtime")
+    with pytest.raises(ValueError, match="implementation does not exist"):
+        ConnectorMetadataRegistry(
+            ROOT, [
+                replace(values[0],
+                        implementation="collectors/missing.py:Collector"),
+                *values[1:],
+            ], validation_mode="runtime")
+
+
+def test_runtime_dashboard_generation_does_not_require_secret_templates(
+        tmp_path):
+    root = tmp_path / "image"
+    shutil.copytree(ROOT / "collectors", root / "collectors")
+    shutil.copytree(ROOT / "dashboards", root / "dashboards")
+    output = root / "runtime/dashboard/managed"
+    result = DashboardRegistry(
+        root, {"deployment_id": "runtime-test", "collectors": {}},
+        output, root / "runtime/dashboard/provisioning/dashboards.yml",
+        registry_validation_mode="runtime").generate()
+    assert result["enabled_collectors"] == []
+    assert not (root / "secrets").exists()
+    assert (output / "operations/itp-collector-health.json").is_file()
+
+
 def test_registry_load_has_no_config_secret_or_runtime_dependency(
         tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -114,6 +166,24 @@ def test_json_and_human_cli_listing_are_deterministic():
     assert human.returncode == 0
     assert "fortigate\tFortiGate" in human.stdout
     assert "domains=firewall,internet,switching" in human.stdout
+
+
+def test_collector_cli_uses_runtime_registry_validation(
+        monkeypatch, capsys, registry):
+    import collectors.__main__ as cli
+
+    calls = []
+
+    def load(root, path=None, *, validation_mode="strict"):
+        calls.append(validation_mode)
+        return registry
+
+    monkeypatch.setattr(cli.ConnectorMetadataRegistry, "load", load)
+    monkeypatch.setattr(
+        sys, "argv", ["collectors", "connectors", "list", "--json"])
+    cli.main()
+    assert calls == ["runtime"]
+    assert json.loads(capsys.readouterr().out)["schema_version"] == 1
 
 
 def test_connector_inspection_and_unknown_id():

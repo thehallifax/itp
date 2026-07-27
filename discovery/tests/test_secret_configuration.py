@@ -25,6 +25,9 @@ def test_mist_secret_is_optional_and_collector_only():
     assert "MIST_ORG_ID" not in environment and "MIST_API_TOKEN" not in environment
     assert all(name in environment for name in ("INFLUXDB_HOST", "INFLUXDB_BUCKET"))
     assert "INFLUXDB_TOKEN" not in environment
+    assert (
+        "COLLECTOR_HEALTH_PATH=/app/runtime/"
+        "${ITP_PROFILE:-legacy}/collector-health" in environment)
 
 
 def test_secret_files_are_excluded_from_git_and_docker_context():

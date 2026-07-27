@@ -19,7 +19,8 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+      "mappings": [],
+      "noValue": "No run in selected range",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -82,7 +83,8 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+      "mappings": [],
+      "noValue": "No run in selected range",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -145,7 +147,8 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+      "mappings": [],
+      "noValue": "No run in selected range",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -208,7 +211,8 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+      "mappings": [],
+      "noValue": "No run in selected range",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -268,13 +272,14 @@
       },
       "fieldConfig": {
         "defaults": {
-          "custom": {
+      "custom": {
             "align": "auto",
             "cellOptions": {
               "type": "auto"
             },
-            "filterable": true
-          }
+        "filterable": true
+      },
+      "noValue": "No run in selected range"
         },
         "overrides": []
       },

@@ -50,6 +50,11 @@ The engine never converts missing data into a healthy state. Every service row
 also records its summary, severity, affected assets, inferable affected-user
 count, last evidence change, and evidence list.
 
+`Unknown` remains the Service Health result for an enabled capability without
+trustworthy service evidence. The dashboard readiness contract adds the
+operator-facing distinction between first-run waiting and failed/stale
+collection; service evaluators must not duplicate collector readiness policy.
+
 ## Site and estate scopes
 
 Schema version 2 contains:

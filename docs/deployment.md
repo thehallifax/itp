@@ -19,6 +19,12 @@ and start the stack. If declined, it prints `./itp start` as the next command.
 The `./itp` launcher creates and synchronises a repository-local `.venv`
 automatically; users do not activate it or install packages globally.
 
+On a clean deployment, Infrastructure Overview opens with a generated Setup
+Status checklist. **Monitoring not started** means the platform is operating
+normally but no external collector is enabled. Enablement, first collection,
+inventory and operational-analysis progress update after managed dashboard
+regeneration. See [Readiness and dashboard empty states](readiness.md).
+
 On Windows PowerShell, use the equivalent launcher:
 
 ```powershell

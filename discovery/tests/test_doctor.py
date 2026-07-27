@@ -152,6 +152,20 @@ def test_invalid_registry_prevents_report(tmp_path):
         ConnectorMetadataRegistry(repository(tmp_path))
 
 
+def test_doctor_loads_registry_with_strict_validation(monkeypatch):
+    registry = ConnectorMetadataRegistry.load(ROOT)
+    calls = []
+
+    def load(root, path=None, *, validation_mode="strict"):
+        calls.append(validation_mode)
+        return registry
+
+    monkeypatch.setattr(
+        "analysis.doctor.engine.ConnectorMetadataRegistry.load", load)
+    DoctorEngine(ROOT, offline=True)
+    assert calls == ["strict"]
+
+
 def test_docker_and_compose_unavailable_are_isolated(tmp_path):
     report = engine(repository(tmp_path), which_fn=lambda _: None).run()
     assert check(report, "services.docker").status == "fail"
