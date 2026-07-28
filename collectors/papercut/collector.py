@@ -10,6 +10,7 @@ from collectors.base import BaseCollector
 from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
+from collectors.configuration import resolve_environment_value
 from .client import PaperCutClient
 from .models import PaperCutConfig, PaperCutError
 from .normalizer import normalize
@@ -42,7 +43,10 @@ def validate_settings(config):
     key_env = str(
         raw.get("authorization_key_env") or
         "PAPERCUT_AUTHORIZATION_KEY").strip()
-    key = os.getenv(key_env, "") if key_env else ""
+    key, _, _ = resolve_environment_value(
+        os.environ, key_env,
+        ("PAPERCUT_AUTHORIZATION",)
+        if key_env == "PAPERCUT_AUTHORIZATION_KEY" else ())
     if not base_url:
         raise ValueError("collectors.papercut.base_url is required")
     if not site:

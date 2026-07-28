@@ -214,7 +214,10 @@ class ConnectorMetadataRegistry:
                 if (not isinstance(field, dict) or not field.get("id")
                         or not field.get("env")
                         or not isinstance(field.get("required"), bool)
-                        or not isinstance(field.get("secret"), bool)):
+                        or not isinstance(field.get("secret"), bool)
+                        or not isinstance(field.get("env_aliases", []), list)
+                        or any(not isinstance(alias, str) or not alias
+                               for alias in field.get("env_aliases", []))):
                     raise ValueError(
                         f"connector {connector.id} has invalid credential metadata")
                 credential_ids.append(field["id"])

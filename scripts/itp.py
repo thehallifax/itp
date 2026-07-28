@@ -32,6 +32,7 @@ from collectors.hyperv.runner import LocalPowerShellRunner
 from collectors.writer import InfluxWriter
 from collectors.file_permissions import restrict_owner_access
 from collectors.config import load_config
+from collectors.configuration import ConfigurationResolver
 from collectors.connector_registry import ConnectorMetadataRegistry
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
 from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
@@ -60,13 +61,15 @@ def load_root_env():
         value = value.strip()
         if " #" in value and not value.startswith(("'", '"')):
             value = value.split(" #", 1)[0].rstrip()
-        os.environ[key.strip()] = value.strip("'\"")
+        os.environ.setdefault(key.strip(), value.strip("'\""))
 
 
 def profile(value, *, secrets=True):
+    explicit = set(os.environ)
     load_root_env()
     result = DeploymentProfile.load(value, ROOT)
-    result.activate(load_secrets=secrets)
+    result.activate(
+        load_secrets=secrets, protected_environment=explicit)
     return result
 
 
@@ -112,7 +115,7 @@ def required_secrets(config):
     return sorted(required)
 
 
-def validate(value):
+def validate(value, *, process_environment=None):
     describe(value)
     checks = []
 
@@ -144,6 +147,11 @@ def validate(value):
     enabled = sorted(name for name, settings in config.get("collectors", {}).items()
                      if isinstance(settings, dict) and settings.get("enabled"))
     check("Collectors", bool(enabled), ", ".join(enabled) or "none enabled")
+    resolution = ConfigurationResolver.profile(
+        value, ConnectorMetadataRegistry.load(ROOT),
+        process_environment=process_environment or {}).evaluate()
+    check("Connector configuration", resolution["ready"],
+          "ready" if resolution["ready"] else "required settings missing")
     missing, placeholders = [], []
     for name in required_secrets(config):
         raw = os.getenv(name, "").strip()
@@ -551,6 +559,12 @@ def main():
     demo_parser.add_argument("--seed", type=int, default=1001)
     demo_parser.add_argument("--days", type=int, default=30)
     demo_parser.add_argument("--json", action="store_true")
+    config_parser = commands.add_parser(
+        "config", help="validate deterministic connector configuration")
+    config_actions = config_parser.add_subparsers(
+        dest="config_action", required=True)
+    config_validate = config_actions.add_parser("validate")
+    config_validate.add_argument("--json", action="store_true")
     profile_parser = commands.add_parser("profile")
     actions = profile_parser.add_subparsers(dest="action", required=True)
     actions.add_parser("list")
@@ -618,6 +632,38 @@ def main():
             print(f"Notifications: {result['notifications']}")
             print("Grafana: http://localhost:3300")
             print("Runtime: runtime/demo")
+        return
+    if args.group == "config":
+        explicit = dict(os.environ)
+        registry = ConnectorMetadataRegistry.load(ROOT)
+        result = ConfigurationResolver.root(
+            ROOT, registry, process_environment=explicit).evaluate()
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print("Configuration: " + (
+                "ready" if result["ready"] else "not ready"))
+            for connector in result["connectors"]:
+                if not connector["enabled"]:
+                    continue
+                print(
+                    f"[{'PASS' if connector['ready'] else 'FAIL'}] "
+                    f"{connector['display_name']}: enabled")
+                for setting in connector["settings"]:
+                    alias = (
+                        f" deprecated={setting['deprecated_alias']}"
+                        if setting["deprecated_alias"] else "")
+                    print(
+                        f"  {setting['name']}: {setting['status']} "
+                        f"source={setting['source']} "
+                        f"secret={'yes' if setting['secret'] else 'no'}"
+                        f"{alias}")
+                print(
+                    f"  TLS verification: "
+                    f"{connector['tls_verification']}")
+                print(f"  Site: {connector['site'] or 'not configured'}")
+        if not result["ready"]:
+            raise SystemExit(1)
         return
     if args.group == "doctor":
         report = DoctorEngine(
@@ -806,8 +852,10 @@ def main():
     if args.action == "create":
         create(args.profile)
         return
+    explicit_environment = dict(os.environ)
     value = profile(args.profile)
-    if args.action == "validate": validate(value)
+    if args.action == "validate":
+        validate(value, process_environment=explicit_environment)
     elif args.action == "status": status(value)
     elif args.action == "sites": sites_status(value)
     elif args.action == "virtualisation":

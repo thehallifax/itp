@@ -5,6 +5,7 @@ import warnings
 from pathlib import Path
 
 import yaml
+from .configuration import apply_connector_overlay
 
 ENVIRONMENT = re.compile(r"^\$\{([A-Z][A-Z0-9_]*)\}$")
 EXECUTIONS = {"central", "edge", "either"}
@@ -27,6 +28,8 @@ def load_config(path):
     try: value = yaml.safe_load(Path(path).read_text())
     except (OSError, yaml.YAMLError) as exc: raise ValueError(f"invalid configuration {path}: {exc}") from exc
     if not isinstance(value, dict): raise ValueError("configuration must be a YAML mapping")
+    value, _ = apply_connector_overlay(
+        value, candidate, root=Path(__file__).resolve().parents[1])
     value = _expand(value)
     if os.getenv("ITP_DEPLOYMENT_ID"):
         value["deployment_id"] = os.environ["ITP_DEPLOYMENT_ID"]

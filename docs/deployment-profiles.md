@@ -19,6 +19,10 @@ when present; otherwise it uses the tracked anonymised registry. Canonical
 `site:<id>` values must remain unchanged. See the
 [Canonical Site Registry](site-registry.md) for regeneration commands.
 
+Connector settings and credentials follow the same deterministic local-file
+model. See [Configuration and credential resolution](configuration.md) for
+precedence, validation, rotation, and backup requirements.
+
 ## Quick start
 
 ```sh

@@ -59,6 +59,12 @@ class ProfilePaths:
     def managed_dashboards(self): return self.dashboard_runtime / "managed"
 
     @property
+    def connectors_local(self):
+        candidate = self.profile_root / "connectors.local.yml"
+        return candidate if candidate.is_file() else \
+            self.root / "config/connectors.local.example.yml"
+
+    @property
     def logs(self): return self.runtime / "logs"
 
     def create_runtime(self):
@@ -172,6 +178,8 @@ class DeploymentProfile:
             "ITP_RUNTIME_MODE": self.runtime_mode,
             "COMPOSE_PROJECT_NAME": self.compose_project,
             "ITP_DISCOVERY_CONFIG": str(self.paths.discovery),
+            "ITP_CONNECTORS_CONFIG": str(
+                self.paths.connectors_local),
             "ITP_SITES_CONFIG": str(self.paths.sites),
             "ITP_DASHBOARDS_CONFIG": str(self.paths.dashboards),
             "ITP_SECRETS_DIR": str(self.paths.secrets),
@@ -188,8 +196,9 @@ class DeploymentProfile:
             "INFLUXDB_PORT": str(self.influxdb_port),
         }
 
-    def load_secrets(self):
+    def load_secrets(self, *, protected_keys=()):
         loaded = []
+        protected = set(protected_keys)
         if not self.paths.secrets.exists():
             return loaded
         for path in sorted(self.paths.secrets.glob("*.env")):
@@ -199,17 +208,17 @@ class DeploymentProfile:
                     continue
                 key, value = line.split("=", 1)
                 key, value = key.strip(), value.strip().strip("'\"")
-                if key:
+                if key and key not in protected:
                     os.environ[key] = value
             loaded.append(path)
         return loaded
 
-    def activate(self, *, load_secrets=True):
+    def activate(self, *, load_secrets=True, protected_environment=()):
         self.paths.create_runtime()
         for key, value in self.env().items():
             os.environ[key] = value
         if load_secrets:
-            self.load_secrets()
+            self.load_secrets(protected_keys=protected_environment)
         return self
 
 

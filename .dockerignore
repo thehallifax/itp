@@ -3,6 +3,9 @@
 .env.*
 secrets/
 discovery/config.yml
+config/*.local.yml
+profiles/*/*.local.yml
+profiles/*/.env
 runtime
 telegraf/telegraf.d/generated
 **/__pycache__

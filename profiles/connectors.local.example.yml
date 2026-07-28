@@ -1,0 +1,7 @@
+# Copy to profiles/<profile>/connectors.local.yml.
+# This file contains non-secret deployment overrides only.
+collectors:
+  example:
+    enabled: false
+    base_url: https://service.example.invalid
+    verify_tls: true

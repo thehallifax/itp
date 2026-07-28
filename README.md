@@ -196,6 +196,7 @@ with ITP and are enabled through configuration—no code changes are required.
 - [Provisioning](docs/provisioning.md)
 - [Operator Guide](docs/operator-guide.md)
 - [Connector Registry](docs/connector-registry.md)
+- [Configuration and Credentials](docs/configuration.md)
 - [Dashboard Platform](docs/dashboard-platform.md)
 - [Notifications](docs/notifications.md)
 - [ITP Doctor](docs/doctor.md)

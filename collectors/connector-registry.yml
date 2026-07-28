@@ -93,7 +93,7 @@ connectors:
     guided_setup: false
     configuration_mode: manual
     credential_fields:
-      - {id: authorization_key, env: PAPERCUT_AUTHORIZATION_KEY, required: false, secret: true}
+      - {id: authorization_key, env: PAPERCUT_AUTHORIZATION_KEY, env_aliases: [PAPERCUT_AUTHORIZATION], required: false, secret: true}
     configuration_fields: [collectors.papercut.base_url, collectors.papercut.site]
     secret_handling:
       templates: [secrets/papercut.env.example]

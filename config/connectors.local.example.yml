@@ -1,0 +1,8 @@
+# Copy to connectors.local.yml for deployment-local non-secret overrides.
+# Keep credentials in ignored environment files under secrets/.
+collectors:
+  example:
+    enabled: false
+    base_url: https://service.example.invalid
+    verify_tls: true
+    collection_interval_seconds: 60
