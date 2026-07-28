@@ -267,6 +267,48 @@ def test_json_and_human_rendering_contract(tmp_path):
     human = render_human(report)
     assert "Infrastructure Telemetry Platform Doctor" in human
     assert "State History" in human and "[SKIP]" in human
+    assert "Scheduler" in human
+
+
+def test_doctor_interprets_scheduler_state_and_failure_streaks(
+        tmp_path, monkeypatch):
+    root = repository(tmp_path)
+    runtime = tmp_path / "runtime"
+    state = runtime / "scheduler/state.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({
+        "schema_version": 1,
+        "lifecycle_state": "degraded",
+        "updated_at": NOW,
+        "initial_discovery": {"outcome": "success", "duration_ms": 4},
+        "initial_collection": {"outcome": "failed", "duration_ms": 5},
+        "last_successful_discovery": NOW,
+        "last_successful_collection": None,
+        "consecutive_discovery_failures": 0,
+        "consecutive_collection_failures": 2,
+        "last_skip_reason": "active_collection",
+    }))
+    monkeypatch.setenv("ITP_RUNTIME_DIR", str(runtime))
+    report = engine(root, offline=True).run()
+    scheduler = check(report, "scheduler.state")
+    assert scheduler.status == "warn"
+    assert scheduler.metadata["lifecycle_state"] == "degraded"
+    assert "collection_failures=2" in scheduler.detail
+    assert "active_collection" in scheduler.detail
+
+
+def test_doctor_reports_missing_and_malformed_scheduler_state(
+        tmp_path, monkeypatch):
+    root = repository(tmp_path)
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("ITP_RUNTIME_DIR", str(runtime))
+    assert check(
+        engine(root, offline=True).run(), "scheduler.state").status == "skip"
+    state = runtime / "scheduler/state.json"
+    state.parent.mkdir(parents=True)
+    state.write_text("{broken")
+    assert check(
+        engine(root, offline=True).run(), "scheduler.state").status == "fail"
 
 
 def test_cli_exit_codes_json_alias_and_no_runtime_dependency(

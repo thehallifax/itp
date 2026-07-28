@@ -107,6 +107,23 @@ def test_daemon_once_records_pipeline_and_stops_cleanly(tmp_path):
     assert not (tmp_path / "runtime/daemon/daemon.pid").exists()
 
 
+def test_daemon_construction_failure_exits_before_scheduler(tmp_path):
+    def invalid_factory(*_):
+        raise ValueError("api_token=must-not-leak")
+
+    daemon = OperatorDaemon(
+        tmp_path, config(), registry=Registry(),
+        collector_factory=invalid_factory,
+        scheduler_factory=OnceScheduler,
+        runtime_dir=tmp_path / "runtime", now_fn=lambda: NOW)
+    with pytest.raises(RuntimeError, match="initialization is invalid") as error:
+        daemon.run()
+    assert "must-not-leak" not in str(error.value)
+    state = DaemonStateStore(tmp_path / "runtime").read()
+    assert state["status"] == "Stopped"
+    assert not (tmp_path / "runtime/daemon/daemon.pid").exists()
+
+
 def test_foreground_daemon_updates_heartbeat_and_handles_shutdown(tmp_path):
     daemon = OperatorDaemon(
         tmp_path, config(), registry=Registry(), collector_factory=factory,

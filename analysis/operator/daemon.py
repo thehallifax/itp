@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import inspect
 import signal
 import subprocess
 import sys
@@ -244,8 +245,19 @@ class OperatorDaemon:
             status="Starting", pid=os.getpid(), started_at=started,
             last_heartbeat=started, current_collection=[])
         self._configured, initialization = self.collect_engine._configured()
+        if any(value["status"] == "failed" for value in initialization):
+            raise RuntimeError(
+                "daemon startup failed: connector initialization is invalid")
+        scheduler_options = {}
+        if "state_path" in inspect.signature(
+                self.scheduler_factory).parameters:
+            scheduler_options["state_path"] = (
+                self.runtime_dir / "scheduler/state.json")
+        if "now_fn" in inspect.signature(
+                self.scheduler_factory).parameters:
+            scheduler_options["now_fn"] = self.now
         scheduler = self.scheduler_factory(
-            [value[1] for value in self._configured])
+            [value[1] for value in self._configured], **scheduler_options)
         self.state.write(status="Running", pid=os.getpid())
         if once:
             outcomes = await scheduler.execute_once("collect") \

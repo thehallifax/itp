@@ -226,7 +226,10 @@ Each connector uses its existing `discovery_interval_seconds` and
 `collection_interval_seconds` configuration. The daemon uses an exclusive PID
 lock under `runtime/daemon/`, maintains a durable heartbeat, and records
 scheduled collection outcomes as canonical pipeline runs. A failed connector
-does not stop other connectors.
+does not stop other connectors. Startup completes initial discovery before
+initial collection, then anchors recurring deadlines to completion. See
+[Scheduler lifecycle](scheduler.md) for state, recovery, overlap, and diagnostic
+details.
 
 Use foreground mode with a service manager or container:
 

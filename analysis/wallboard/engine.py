@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +56,34 @@ def _action_age(value):
         return f"{seconds // 86400}d" if seconds >= 86400 else \
                f"{seconds // 3600}h" if seconds >= 3600 else f"{seconds // 60}m"
     return "Just now"
+
+
+def _action_text(value):
+    """Turn a deterministic finding into a concise operator action."""
+    summary = str(value.get("summary") or value.get("title") or "").strip()
+    title = str(value.get("title") or "").strip()
+    device = str(value.get("device") or "").strip()
+    evidence = value.get("evidence") or {}
+    combined = f"{title} {summary}".casefold()
+    if "certificate" in combined or "days remaining" in combined:
+        name = device or re.sub(
+            r"(?i)certificate (expiry|expires?)[: ]*", "", title).strip()
+        when = "today" if re.search(
+            r"\b0 days? remaining\b|\bexpires? today\b", combined) else "now"
+        return f"Renew {name or 'the affected'} certificate {when}"
+    if "embedded device" in combined or (
+            value.get("category") == "Printing" and "error" in combined):
+        count = evidence.get("error_count") or evidence.get("device_count") \
+            or len(value.get("affected_assets") or [])
+        return (
+            f"{count} printers require attention" if count
+            else "Printers require attention")
+    if value.get("category") == "Collector":
+        return f"Restore monitoring for {device or 'the affected service'}"
+    if str(value.get("rule_id") or "").startswith("wan."):
+        return f"Restore {device or 'the affected WAN'}"
+    recommended = str(value.get("recommended_action") or "").strip()
+    return recommended or summary or title or "Review the affected service"
 
 
 def _age_label(seconds):
@@ -121,7 +150,7 @@ def _action_rows(operations, scopes, enabled_collectors, capabilities=None,
                         else "Switching" if value.get("category") == "Network"
                         else services.get(value.get("category"), value.get("category", "Infrastructure"))),
             "asset": value.get("device") or "Platform",
-            "issue": value.get("summary") or value.get("title"),
+            "issue": _action_text(value),
             "age": _action_age(value), "priority": int(value.get("priority", 0)),
             "domain": value.get("domain") or value.get("category", "Infrastructure"),
             "provider": value.get("provider", ""),
@@ -203,14 +232,18 @@ def _wan_rows(signals, scopes, service_scopes):
                     if scope["scope"] == "all" or value.get("site_id") == scope["scope"]]
         if not selected:
             rows.append({"scope": scope["scope"],
-                "uplink": internet_service.get("summary") or "WAN classification unavailable",
-                "role": "N/A", "state": internet_service.get("status", "Unknown"),
+                "interface": "", "label": "",
+                "uplink": internet_service.get("summary") or "No WAN Telemetry",
+                "role": "N/A", "state": "No WAN Telemetry",
                 "latency_ms": "N/A", "packet_loss_percent": "N/A"})
             continue
         for value in sorted(selected, key=lambda item: (
                 str(item.get("role", "")), str(item.get("name") or item.get("interface_name", "")))):
+            interface = value.get("name") or value.get("interface_name") or "WAN"
+            label = value.get("display_name") or value.get("friendly_label") or \
+                str(value.get("role") or "WAN").title()
             rows.append({"scope": scope["scope"],
-                "uplink": value.get("name") or value.get("interface_name") or "WAN",
+                "interface": interface, "label": label, "uplink": interface,
                 "role": str(value.get("role") or "Unspecified").title(),
                 "state": "Up" if value.get("available") is True else
                          "Down" if value.get("available") is False else "Unknown",
@@ -220,10 +253,132 @@ def _wan_rows(signals, scopes, service_scopes):
                 if sample.get("time") and (sample.get("rx_bps") is not None
                                            or sample.get("tx_bps") is not None):
                     samples.append({"scope": scope["scope"], "time": sample["time"],
-                        "uplink": value.get("name") or value.get("interface_name") or "WAN",
+                        "interface": interface, "label": label,
+                        "uplink": interface,
                         "rx_bps": sample.get("rx_bps"), "tx_bps": sample.get("tx_bps")})
     return rows, sorted(samples, key=lambda value: (
         value["scope"], value["time"], value["uplink"]))
+
+
+def _internet_rows(wan_rows, scopes, capability_enabled):
+    rows = []
+    for scope in scopes:
+        selected = [value for value in wan_rows
+                    if value["scope"] == scope["scope"]
+                    and value.get("interface")]
+        if not capability_enabled:
+            label, color = "Not Enabled", "gray"
+        elif not selected:
+            label, color = "No WAN Telemetry", "gray"
+        else:
+            down = [value for value in selected if value["state"] == "Down"]
+            unknown = [value for value in selected if value["state"] == "Unknown"]
+            if down:
+                names = ", ".join(value["label"] for value in down)
+                label, color = f"{names} Down", "red" if len(
+                    down) == len(selected) else "orange"
+            elif unknown:
+                label, color = "WAN State Unknown", "gray"
+            else:
+                label, color = "All WANs Up", "green"
+        rows.append({"scope": scope["scope"], "value": label, "color": color})
+    return rows
+
+
+def _monitoring_rows(collector_rows, scopes):
+    rows = []
+    for scope in scopes:
+        selected = [value for value in collector_rows
+                    if value["scope"] == scope["scope"]]
+        real = [value for value in selected
+                if value.get("collector") and value.get("last_run")]
+        issues = [value for value in real
+                  if value.get("status") != "Healthy"]
+        stale_services = sorted({
+            service for value in issues
+            for service in (value.get("services") or ["Monitoring"])})
+        successes = sorted(
+            (value.get("last_successful_run") or value.get("last_run")
+             for value in real if value.get("status") == "Healthy"),
+            reverse=True)
+        if not real:
+            label, color = "Monitoring not started", "gray"
+        elif issues:
+            label = (
+                f"{len(issues)} collector needs attention"
+                if len(issues) == 1
+                else f"{len(issues)} collectors need attention")
+            color = "orange"
+        else:
+            label, color = "Monitoring Healthy", "green"
+        rows.append({
+            "scope": scope["scope"], "value": label, "color": color,
+            "collectors_with_issues": len(issues),
+            "last_successful_collection": successes[0] if successes else None,
+            "stale_services": stale_services,
+        })
+    return rows
+
+
+def _recent_changes(path, service_scopes, scopes, now):
+    cutoff = now.timestamp() - 86400
+    values = []
+    for candidate in sorted(Path(path).glob("*.json")):
+        payload = _read(candidate, {})
+        observed = _time(payload.get("observed_at")
+                         or payload.get("generated_at"))
+        if not observed or observed.timestamp() < cutoff:
+            continue
+        for change in payload.get("changes", []):
+            site_id = change.get("site_id") or "all"
+            current = str(change.get("current_value") or "").casefold()
+            previous = str(change.get("previous_value") or "").casefold()
+            asset = change.get("entity_id") or "Infrastructure"
+            field = str(change.get("field_path") or "")
+            if current in {"up", "online", "healthy", "true"} and \
+                    previous in {"down", "offline", "failed", "false"}:
+                label = (
+                    f"{asset} WAN restored" if "wan" in field
+                    else f"{asset} recovered")
+            elif current in {"stale", "failed", "offline", "down", "false"}:
+                label = f"{asset} changed to {current}"
+            else:
+                continue
+            values.append({
+                "site_id": site_id, "time": observed, "change": label,
+                "service": str(change.get("domain") or "Infrastructure").title(),
+            })
+    for scope in scopes:
+        services = service_scopes[scope["scope"]]["services"]
+        for service in services:
+            changed = _time(service.get("last_change"))
+            if not changed or changed.timestamp() < cutoff:
+                continue
+            values.append({
+                "site_id": scope["scope"], "time": changed,
+                "service": service["service"],
+                "change": service.get("summary")
+                or f"{service['service']} changed to {service['status']}",
+            })
+    rows = []
+    ordered = sorted(values, key=lambda value: (
+        -value["time"].timestamp(), value["service"], value["change"]))
+    for scope in scopes:
+        selected = [value for value in ordered
+                    if scope["scope"] == "all"
+                    or value["site_id"] in {"all", scope["scope"]}]
+        rows.extend({
+            "scope": scope["scope"],
+            "time": value["time"].isoformat().replace("+00:00", "Z"),
+            "service": value["service"], "change": value["change"],
+        } for value in selected[:8])
+        if not selected:
+            rows.append({
+                "scope": scope["scope"], "time": "",
+                "service": "Operations",
+                "change": "No operational changes in the last 24 hours",
+            })
+    return rows
 
 
 class WallboardEngine:

@@ -768,6 +768,66 @@ class DoctorEngine:
             else "Existing latest pointers are consistent",
             detail=", ".join(invalid))
 
+    def _scheduler_checks(self):
+        runtime = Path(os.getenv("ITP_RUNTIME_DIR", self.root / "runtime"))
+        path = runtime / "scheduler/state.json"
+        if not path.is_file():
+            self._result(
+                "scheduler.state", "Scheduler", "Runtime state", "skip",
+                "Scheduler has not written runtime state")
+            return
+        try:
+            state = json.loads(path.read_text())
+            if not isinstance(state, dict):
+                raise ValueError("state is not a mapping")
+            updated = datetime.fromisoformat(
+                str(state.get("updated_at") or "").replace("Z", "+00:00")) \
+                if state.get("updated_at") else None
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            self._result(
+                "scheduler.state", "Scheduler", "Runtime state", "fail",
+                "Scheduler runtime state is invalid",
+                exception_type=type(exc).__name__)
+            return
+        lifecycle = state.get("lifecycle_state", "unknown")
+        generated = datetime.fromisoformat(
+            str(self.now()).replace("Z", "+00:00"))
+        age = (
+            generated.astimezone(timezone.utc)
+            - updated.astimezone(timezone.utc)
+        ).total_seconds() if updated else None
+        stale = lifecycle in {
+            "ready", "degraded", "starting",
+            "initial_discovery", "initial_collection",
+        } and (age is None or age > 900)
+        status = (
+            "warn" if stale or lifecycle == "degraded"
+            else "pass" if lifecycle == "ready"
+            else "skip" if lifecycle == "stopped"
+            else "warn")
+        self._result(
+            "scheduler.state", "Scheduler", "Runtime state", status,
+            "Scheduler runtime state is stale" if stale
+            else f"Scheduler lifecycle is {lifecycle}",
+            detail=(
+                "initial_discovery="
+                f"{(state.get('initial_discovery') or {}).get('outcome', 'unknown')} "
+                "initial_collection="
+                f"{(state.get('initial_collection') or {}).get('outcome', 'unknown')} "
+                "discovery_failures="
+                f"{state.get('consecutive_discovery_failures', 0)} "
+                "collection_failures="
+                f"{state.get('consecutive_collection_failures', 0)} "
+                f"last_skip_reason={state.get('last_skip_reason') or 'none'}"),
+            metadata={
+                "lifecycle_state": lifecycle,
+                "last_successful_discovery":
+                    state.get("last_successful_discovery"),
+                "last_successful_collection":
+                    state.get("last_successful_collection"),
+                "last_skip_reason": state.get("last_skip_reason"),
+            })
+
     def _operations_checks(self):
         module = importlib.util.find_spec("analysis.operations.engine") is not None
         definitions = importlib.util.find_spec(
@@ -808,6 +868,7 @@ class DoctorEngine:
                 self._connector_checks()
                 if not self.connectors_only:
                     self._state_history_checks()
+                    self._scheduler_checks()
                     self._operations_checks()
             checks = tuple(sorted(self.checks, key=lambda value: value.check_id))
             identity = str(

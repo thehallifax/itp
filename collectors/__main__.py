@@ -572,7 +572,10 @@ async def _run(args):
                     wallboard_engine=wallboard,
                     dashboard_registry=dashboard_registry,
                     state_history_capture=state_history,
-                    operations_interval=operations_settings.get("interval_seconds", 300)).run()
+                    operations_interval=operations_settings.get("interval_seconds", 300),
+                    state_path=Path(os.getenv(
+                        "ITP_RUNTIME_DIR", "/app/runtime"))
+                    / "scheduler/state.json").run()
 
 
 def build_parser():
