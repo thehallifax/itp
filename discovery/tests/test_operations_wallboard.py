@@ -136,7 +136,8 @@ def test_health_cards_use_healthy_offline_unknown_semantics(tmp_path):
     fixture(tmp_path).run(NOW)
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
     panels = {panel["title"]: panel for panel in dashboard["panels"]}
-    assert {"Wireless Access Points", "Switches", "Servers", "Firewalls"} <= panels.keys()
+    assert {"Wireless Access Points", "Switches", "Servers", "Firewall"} <= panels.keys()
+    assert "Firewalls" not in panels
     wireless = next(value for value in rows(panels["Wireless Access Points"])
                     if value["scope"] == "all")
     assert wireless == {"scope": "all", "Healthy": "0", "Offline": "1", "Unknown": "0"}
@@ -198,8 +199,41 @@ def test_multiple_authoritative_wan_uplinks_and_samples(tmp_path):
         ("Primary", "Up"), ("Secondary", "Down")]
     assert len(result["wan"]["samples"]) == 4  # estate and site-scoped frames
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
-    traffic = next(value for value in dashboard["panels"] if value["title"] == "WAN Traffic")
-    assert traffic["type"] == "timeseries" and traffic["targets"][0]["scenarioId"] == "csv_content"
+    traffic = [value for value in dashboard["panels"]
+               if value["title"].startswith("WAN ·")]
+    assert [value["title"] for value in traffic] == [
+        "WAN · Primary · ethernet1/1",
+        "WAN · Secondary · ethernet1/2"]
+    assert all(value["type"] == "timeseries" for value in traffic)
+    assert all(value["targets"][0]["scenarioId"] == "csv_content"
+               for value in traffic)
+    assert all("Download" in value["transformations"][-1]["options"][
+        "renameByName"].values() for value in traffic)
+    internet = next(value for value in dashboard["panels"]
+                    if value["title"] == "Internet")
+    assert next(value for value in rows(internet)
+                if value["scope"] == "all")["value"] == "Secondary Down"
+
+
+def test_one_wan_renders_one_identified_graph(tmp_path):
+    fixture(tmp_path, signals={"wan": [{
+        "name": "ethernet1/1", "display_name": "Primary",
+        "role": "primary", "available": True, "site_id": "site:hq",
+        "samples": [{"time": "2026-07-23T00:58:00Z",
+                     "rx_bps": 2000, "tx_bps": 700}],
+    }]}).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    wan = [value for value in dashboard["panels"]
+           if value["title"].startswith("WAN ·")]
+    assert [value["title"] for value in wan] == [
+        "WAN · Primary · ethernet1/1"]
+    assert "Current download: 2000 bps" in wan[0]["description"]
+    assert "current upload: 700 bps" in wan[0]["description"]
+    internet = next(value for value in dashboard["panels"]
+                    if value["title"] == "Internet")
+    assert next(value for value in rows(internet)
+                if value["scope"] == "all")["value"] == "All WANs Up"
 
 
 def test_unclassified_interfaces_do_not_become_wan(tmp_path):
@@ -209,11 +243,13 @@ def test_unclassified_interfaces_do_not_become_wan(tmp_path):
                           "Compute": "Unknown"}).run(NOW)
     assert all(value["uplink"] == "Internet canonical summary."
                for value in result["wan"]["uplinks"])
-    assert all(value["state"] == "Unknown" for value in result["wan"]["uplinks"])
+    assert all(value["state"] == "No WAN Telemetry"
+               for value in result["wan"]["uplinks"])
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
-    traffic = next(value for value in dashboard["panels"] if value["title"] == "WAN Traffic")
+    traffic = next(value for value in dashboard["panels"]
+                   if value["title"] == "WAN Telemetry")
     assert traffic["type"] == "text"
-    assert "authoritatively classified" in traffic["options"]["content"]
+    assert "No WAN Telemetry" in traffic["options"]["content"]
 
 
 def test_action_required_is_consolidated_filtered_and_ordered(tmp_path):
@@ -243,13 +279,82 @@ def test_collector_summary_is_compact_and_enabled_only(tmp_path):
          "status": "Healthy", "last_run": "2026-07-23T00:59:00Z"},
         {"scope": "site:hq", "collector": "snmp", "site": "HQ",
          "status": "Healthy", "last_run": "2026-07-23T00:59:00Z"}]
-    assert [{key: value for key, value in item.items() if key != "freshness"}
+    assert [{key: value for key, value in item.items()
+             if key not in {"freshness", "last_successful_run", "services"}}
             for item in result["collectors"]] == expected
     assert {item["freshness"] for item in result["collectors"]} == {"1m ago"}
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
-    collector = next(value for value in dashboard["panels"] if value["title"] == "Collector State")
-    assert set(rows(collector)[0]) == {
-        "scope", "collector", "site", "status", "freshness"}
+    assert "Collector State" not in {
+        value["title"] for value in dashboard["panels"]}
+    monitoring = next(value for value in dashboard["panels"]
+                      if value["title"] == "Monitoring")
+    assert rows(monitoring)[0]["value"] == "Monitoring Healthy"
+
+
+def test_monitoring_card_is_actionable_and_links_to_diagnostics(tmp_path):
+    engine = fixture(tmp_path)
+    infrastructure = json.loads((tmp_path / "infrastructure.json").read_text())
+    infrastructure["collectors"] = [
+        {"collector": "mist", "status": "healthy",
+         "site_ids": ["site:hq"], "capabilities": ["wireless"],
+         "last_run": "2026-07-23T00:59:00Z",
+         "last_successful_run": "2026-07-23T00:59:00Z"},
+        {"collector": "snmp", "status": "healthy",
+         "site_ids": ["site:branch", "site:hq"],
+         "capabilities": ["switching"],
+         "last_run": "2026-07-23T00:30:00Z",
+         "last_successful_run": "2026-07-23T00:30:00Z"},
+    ]
+    write(tmp_path / "infrastructure.json", infrastructure)
+    result = engine.run(NOW)
+    estate = next(value for value in result["monitoring"]
+                  if value["scope"] == "all")
+    assert estate["value"] == "1 collector needs attention"
+    assert estate["last_successful_collection"] == \
+        "2026-07-23T00:59:00Z"
+    assert estate["stale_services"] == ["Switching"]
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    panel = next(value for value in dashboard["panels"]
+                 if value["title"] == "Monitoring")
+    assert "stale services=Switching" in panel["description"]
+    assert panel["links"][0]["url"].startswith("/d/itp-collector-health")
+    assert "Collector State" not in {
+        value["title"] for value in dashboard["panels"]}
+
+
+def test_action_language_certificates_printers_and_recent_changes(tmp_path):
+    operations = {"issues": [
+        {"id": "certificate", "priority": 95, "severity": "High",
+         "category": "Security", "title": "Certificate expiry: DNS Security",
+         "summary": "DNS Security has 0 days remaining",
+         "device": "DNS Security", "site_id": "site:hq",
+         "rule_id": "certificate.expiry", "kind": "issue"},
+        {"id": "printers", "priority": 70, "severity": "Medium",
+         "category": "Printing", "title": "Embedded device errors",
+         "summary": "Embedded devices report errors",
+         "device": "PaperCut", "site_id": "site:hq",
+         "rule_id": "printer.devices", "kind": "issue",
+         "evidence": {"error_count": 7}},
+    ], "risks": [], "recommendations": []}
+    engine = fixture(tmp_path, operations=operations)
+    history = tmp_path / "state-history/changes/change.json"
+    write(history, {"observed_at": "2026-07-23T00:45:00Z", "changes": [{
+        "site_id": "site:hq", "domain": "internet",
+        "entity_id": "Primary", "field_path": "wan.available",
+        "previous_value": "down", "current_value": "up"}]})
+    result = engine.run(NOW)
+    actions = {value["issue"] for value in result["actions"]
+               if value["scope"] == "all"}
+    assert "Renew DNS Security certificate today" in actions
+    assert "7 printers require attention" in actions
+    changes = {value["change"] for value in result["changes"]
+               if value["scope"] == "all"}
+    assert "Primary WAN restored" in changes
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    assert "Changes Since Yesterday" in {
+        value["title"] for value in dashboard["panels"]}
 
 
 def test_site_summary_freshness_links_and_supported_csv_contract(tmp_path):
@@ -259,11 +364,12 @@ def test_site_summary_freshness_links_and_supported_csv_contract(tmp_path):
     assert [(value["text"], value["value"]) for value in variable["options"]] == [
         ("All Sites", "all"), ("Branch", "site:branch"), ("HQ", "site:hq")]
     panels = {value["title"]: value for value in dashboard["panels"]}
-    assert "${site:text}" in panels["Site Operational Status"]["description"]
-    assert rows(panels["Site Operational Status"])[0]["value"].endswith(
+    assert "${site:text}" in panels["Issues"]["description"]
+    assert rows(panels["Issues"])[0]["value"].endswith(
         "active issues")
-    assert "Last Service Health" in panels
-    assert panels["Collector State"]["links"][0]["url"].startswith("/d/itp-collector-health")
+    assert "Freshness" in panels
+    assert panels["Monitoring"]["links"][0]["url"].startswith(
+        "/d/itp-collector-health")
     assert panels["Wireless Access Points"]["links"][0]["url"].startswith(
         "/d/mist-infrastructure-overview")
     for panel in dashboard["panels"]:
@@ -320,7 +426,7 @@ def test_not_enabled_services_do_not_degrade_overall(tmp_path):
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
     titles = {panel["title"] for panel in dashboard["panels"]}
     assert "Wireless Service" not in titles and "Compute Service" not in titles
-    assert "Internet Service" in titles and "Monitoring Service" in titles
+    assert "Internet" in titles and "Monitoring" in titles
 
 
 def test_secondary_enabled_services_get_compact_cards(tmp_path):
@@ -340,10 +446,13 @@ def test_polished_grid_has_no_overlap_and_dominant_action_queue(tmp_path):
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
     panels = dashboard["panels"]
     summaries = {panel["title"]: panel for panel in panels
-                 if panel["title"] in {"Site Operational Status", "Overall State",
-                    "Last Service Health", "Data Freshness", "Monitoring Service"}}
+                 if panel["title"] in {"Issues", "Overall Health", "Monitoring",
+                    "Freshness", "Internet", "Firewall", "Printing",
+                    "Certificates"}}
     assert {panel["gridPos"]["h"] for panel in summaries.values()} == {3}
-    assert summaries["Site Operational Status"]["gridPos"]["w"] == 8
+    assert set(summaries) == {"Issues", "Overall Health", "Monitoring",
+        "Freshness", "Internet", "Firewall", "Printing", "Certificates"}
+    assert {panel["gridPos"]["w"] for panel in summaries.values()} == {3}
     action = next(panel for panel in panels if panel["title"] == "Action Required")
     assert action["gridPos"]["w"] == 24 and action["gridPos"]["h"] == 7
     for index, left in enumerate(panels):
@@ -360,18 +469,14 @@ def test_action_columns_widths_and_readable_freshness(tmp_path):
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
     panels = {panel["title"]: panel for panel in dashboard["panels"]}
     action = panels["Action Required"]
-    assert set(rows(action)[0]) == {"scope", "severity", "service", "domain",
-        "provider", "object_kind", "asset", "issue", "age"}
+    assert set(rows(action)[0]) == {
+        "scope", "severity", "service", "asset", "issue", "age"}
     widths = {item["matcher"]["options"]: item["properties"][0]["value"]
               for item in action["fieldConfig"]["overrides"]}
-    assert widths["issue"] > widths["asset"] > widths["provider"]
+    assert widths["issue"] > widths["asset"] > widths["severity"]
     assert widths["age"] <= 90
-    latest = rows(panels["Last Service Health"])[0]["value"]
-    assert latest == "1m ago" and "T00:59:00Z" not in latest
-    collector_widths = {item["matcher"]["options"]: item["properties"][0]["value"]
-        for item in panels["Collector State"]["fieldConfig"]["overrides"]
-        if item["matcher"]["options"] != "status"}
-    assert collector_widths["site"] >= 250
+    assert rows(panels["Freshness"])[0]["value"] == "Fresh"
+    assert "Collector State" not in panels
 
 
 def test_virtualisation_tiles_are_conditional_and_reflowed(tmp_path):
@@ -462,11 +567,11 @@ def test_release_evidence_semantics_and_presentation(tmp_path):
     action = rendered["proxmox"]["Action Required"]
     action_rows = rows(action)
     assert action_rows and action_rows[0]["asset"] != "No action required"
-    assert {value["provider"] for value in action_rows} == {"Proxmox"}
-    assert {"Snapshot", "Storage"} <= {value["object_kind"] for value in action_rows}
+    assert set(action_rows[0]) == {
+        "scope", "severity", "service", "asset", "issue", "age"}
     assert {value["age"] for value in action_rows} == {"Just now"}
-    assert action["transformations"][-1]["options"]["renameByName"]["object_kind"] == \
-        "Object Type"
+    assert action["transformations"][-1]["options"]["renameByName"]["issue"] == \
+        "Action"
     services = json.loads(
         (roots["proxmox"] / "services/service-health.json").read_text())
     assert services["estate"]["overall_status"] == "Warning"
@@ -479,7 +584,7 @@ def test_release_evidence_semantics_and_presentation(tmp_path):
                 for service_id in value.get("affected_service_ids", [])}
     assert {"shared_storage", "virtual_machine_hosting"} <= affected
 
-    site_rows = rows(rendered["sbc"]["Site Operational Status"])
+    site_rows = rows(rendered["sbc"]["Issues"])
     assert {value["value"] for value in site_rows} == {"5 active issues"}
 
 
@@ -540,7 +645,7 @@ def test_selected_site_uses_site_service_actions_and_collectors_without_leakage(
             if value["scope"] == "site:hq"} == {"mist", "snmp"}
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
     security = next(value for value in dashboard["panels"]
-                    if value["title"] == "Security Service")
+                    if value["title"] == "Firewall")
     status_rows = rows(security)
     assert next(value for value in status_rows
                 if value["scope"] == "site:branch")["value"] == "Not Enabled"

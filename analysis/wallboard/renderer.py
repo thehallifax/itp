@@ -46,12 +46,14 @@ def _target(csv_content):
             "datasource": DATASOURCE}
 
 
-def _mapping():
-    return [{"type": "value", "options": {name: {"color": color, "index": index, "text": name}
-        for index, (name, color) in enumerate(HEALTH_COLORS.items())}}]
+def _mapping(value_colors=None):
+    colors = {**HEALTH_COLORS, **(value_colors or {})}
+    return [{"type": "value", "options": {
+        name: {"color": color, "index": index, "text": name}
+        for index, (name, color) in enumerate(colors.items())}}]
 
 
-def _stat(panel, rows, field, health=False):
+def _stat(panel, rows, field, health=False, value_colors=None):
     values = []
     for row in rows:
         value = row.get(field)
@@ -66,7 +68,7 @@ def _stat(panel, rows, field, health=False):
     panel["transformations"] = _scope_filter() + [{"id": "organize", "options": {
         "excludeByName": {"scope": True}, "renameByName": {"value": display_field}}}]
     panel["fieldConfig"] = {"defaults": {"color": {"mode": "thresholds"},
-        "mappings": _mapping() if health else [],
+        "mappings": _mapping(value_colors) if health or value_colors else [],
         "noValue": "State unavailable",
         "thresholds": {"mode": "absolute", "steps": [{"color": "green" if health else "blue", "value": None}]}},
         "overrides": []}
@@ -97,23 +99,22 @@ def _column_widths(panel, widths):
 def _layout(dashboard):
     """Pack capability-gated panels into a deliberate, overlap-free grid."""
     panels = {value["title"]: value for value in dashboard["panels"]}
-    summary = ["Site Operational Status", "Overall State", "Last Service Health",
-               "Data Freshness", "Monitoring Service"]
-    widths = [8, 4, 4, 4, 4]
-    x = 0
-    for title, width in zip(summary, widths):
+    summary = [
+        "Issues", "Overall Health", "Monitoring", "Freshness",
+        "Internet", "Firewall", "Printing", "Certificates"]
+    for index, title in enumerate(summary):
         if title not in panels:
             continue
-        panels[title]["gridPos"] = {"x": x, "y": 0, "w": width, "h": 3}
-        x += width
+        panels[title]["gridPos"] = {
+            "x": index * 3, "y": 0, "w": 3, "h": 3}
 
     y = 3
     service_titles = [title for title in (
-        "Internet Service", "Wireless Service", "Switching Service",
+        "Wireless Service", "Switching Service",
         "Management Plane", "Hypervisor Cluster", "Compute Capacity",
         "VM Hosting", "Shared Storage", "Workload Availability",
-        "Security Service", "Compute Service", "Identity Service",
-        "Printing Service", "Storage Service", "Voice Service", "Email Service")
+        "Compute Service", "Identity Service",
+        "Storage Service", "Voice Service", "Email Service")
         if title in panels]
     for index, title in enumerate(service_titles):
         row, column = divmod(index, 6)
@@ -122,7 +123,7 @@ def _layout(dashboard):
     y += max(1, (len(service_titles) + 5) // 6) * 3
 
     infrastructure = [title for title in (
-        "Wireless Access Points", "Switches", "Servers", "Firewalls")
+        "Wireless Access Points", "Switches", "Servers")
         if title in panels]
     compact_width = 4 if len(infrastructure) == 4 else \
                     5 if len(infrastructure) == 3 else \
@@ -130,18 +131,25 @@ def _layout(dashboard):
     for index, title in enumerate(infrastructure):
         panels[title]["gridPos"] = {"x": index * compact_width, "y": y,
                                     "w": compact_width, "h": 4}
-    collector_x = len(infrastructure) * compact_width
-    panels["Collector State"]["gridPos"] = {
-        "x": collector_x, "y": y, "w": 24 - collector_x, "h": 4}
-    y += 4
-
-    if "Printer Action Required" in panels:
-        panels["Printer Action Required"]["gridPos"] = {"x": 0, "y": y, "w": 24, "h": 4}
+    if infrastructure:
         y += 4
-    if "Internet / WAN" in panels:
-        panels["Internet / WAN"]["gridPos"] = {"x": 0, "y": y, "w": 12, "h": 5}
-        panels["WAN Traffic"]["gridPos"] = {"x": 12, "y": y, "w": 12, "h": 5}
-        y += 5
+
+    wan_panels = sorted(
+        (title for title in panels if title.startswith("WAN ·")),
+        key=str.casefold)
+    for index, title in enumerate(wan_panels):
+        row, column = divmod(index, 2)
+        panels[title]["gridPos"] = {
+            "x": column * 12, "y": y + row * 5, "w": 12, "h": 5}
+    if wan_panels:
+        y += ((len(wan_panels) + 1) // 2) * 5
+    if "WAN Telemetry" in panels:
+        panels["WAN Telemetry"]["gridPos"] = {
+            "x": 0, "y": y, "w": 24, "h": 4}
+        y += 4
+    panels["Changes Since Yesterday"]["gridPos"] = {
+        "x": 0, "y": y, "w": 24, "h": 5}
+    y += 5
     panels["Action Required"]["gridPos"] = {"x": 0, "y": y, "w": 24, "h": 7}
 
 
@@ -201,6 +209,19 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     variable["query"] = ",".join(
         str(value["display_name"]).replace(",", "\\,") + " : " + value["site_id"]
         for value in summary["site_options"])
+    title_changes = {
+        "Site Operational Status": "Issues",
+        "Overall State": "Overall Health",
+        "Last Service Health": "Certificates",
+        "Data Freshness": "Freshness",
+        "Internet Service": "Internet",
+        "Security Service": "Firewall",
+        "Printing Service": "Printing",
+        "Monitoring Service": "Monitoring",
+        "Collector State": "Changes Since Yesterday",
+    }
+    for panel in dashboard["panels"]:
+        panel["title"] = title_changes.get(panel["title"], panel["title"])
     panels = {value["title"]: value for value in dashboard["panels"]}
     freshness = summary["freshness"]
     readiness = summary.get("readiness") or {}
@@ -213,27 +234,45 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                       "unavailable": "Collection unavailable",
                   }.get(readiness_state, "No active issues"))}
         for scope in summary["scopes"]]
-    panels["Site Operational Status"]["type"] = "stat"
-    panels["Site Operational Status"]["options"] = copy.deepcopy(
-        panels["Overall State"]["options"])
-    _stat(panels["Site Operational Status"], issue_rows, "value", False)
-    panels["Site Operational Status"]["description"] = (
+    panels["Issues"]["type"] = "stat"
+    panels["Issues"]["options"] = copy.deepcopy(
+        panels["Overall Health"]["options"])
+    _stat(panels["Issues"], issue_rows, "value", False)
+    panels["Issues"]["description"] = (
         "Active operational issues for the selected canonical site (${site:text}).")
     health_rows = [{"scope": scope, "value": value}
                    for scope, value in sorted(summary["overall_health"].items())]
-    _stat(panels["Overall State"], health_rows, "value", True)
+    _stat(panels["Overall Health"], health_rows, "value", True)
     refresh_rows = [{"scope": scope["scope"],
         "value": freshness.get("age_display") or "Unavailable"}
         for scope in summary["scopes"]]
-    _stat(panels["Last Service Health"], refresh_rows, "value", False)
-    panels["Last Service Health"]["description"] = (
-        "Last canonical Service Health evaluation: "
-        f"{freshness.get('last_successful_refresh') or 'Unavailable'}.")
     freshness_rows = [{"scope": scope["scope"], "value": freshness["status"]}
                       for scope in summary["scopes"]]
-    _stat(panels["Data Freshness"], freshness_rows, "value", True)
-    panels["Data Freshness"]["description"] = (
+    _stat(panels["Freshness"], freshness_rows, "value", True)
+    panels["Freshness"]["description"] = (
         f"Stale when canonical platform inputs exceed {freshness['threshold_seconds']} seconds.")
+    certificate_colors = {
+        value["value"]: value["color"]
+        for value in summary["certificates"]}
+    _stat(
+        panels["Certificates"], summary["certificates"], "value",
+        value_colors=certificate_colors)
+    panels["Certificates"]["description"] = (
+        "Certificate conditions promoted by canonical Operations findings.")
+    monitoring_colors = {
+        value["value"]: value["color"] for value in summary["monitoring"]}
+    _stat(
+        panels["Monitoring"], summary["monitoring"], "value",
+        value_colors=monitoring_colors)
+    monitoring_details = []
+    for value in summary["monitoring"]:
+        services = ", ".join(value["stale_services"]) or "none"
+        monitoring_details.append(
+            f"{value['scope']}: collectors with issues="
+            f"{value['collectors_with_issues']}; last successful collection="
+            f"{value['last_successful_collection'] or 'never'}; "
+            f"stale services={services}")
+    panels["Monitoring"]["description"] = "\n".join(monitoring_details)
 
     enabled_service_names = {value["service"] for scope in summary["service_scopes"].values()
                              for value in scope["services"]
@@ -242,8 +281,7 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         "Virtualisation Management Plane", "Hypervisor Cluster", "Compute Capacity",
         "Virtual Machine Hosting", "Shared Storage", "Workload Availability")
     service_titles = {f"{name} Service": name for name in (
-        "Internet", "Wireless", "Switching", "Printing",
-        "Identity", "Compute", "Security", "Monitoring",
+        "Wireless", "Switching", "Identity", "Compute",
         "Storage", "Voice", "Email")}
     service_titles.update({
         "Management Plane": "Virtualisation Management Plane",
@@ -285,6 +323,29 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         panels[title]["description"] = (
             f"Canonical service: {name}.\n" + "\n".join(summaries))
 
+    def canonical_card(title, service):
+        rows = []
+        summaries = []
+        for scope in summary["scopes"]:
+            value = next(item for item in
+                summary["service_scopes"][scope["scope"]]["services"]
+                if item["service"] == service)
+            rows.append({"scope": scope["scope"], "value": value["status"]})
+            summaries.append(
+                f"{scope['display_name']}: {value.get('summary', '')}")
+        _stat(panels[title], rows, "value", True)
+        panels[title]["description"] = "\n".join(summaries)
+
+    canonical_card("Firewall", "Security")
+    canonical_card("Printing", "Printing")
+    internet_colors = {
+        value["value"]: value["color"] for value in summary["internet"]}
+    _stat(
+        panels["Internet"], summary["internet"], "value",
+        value_colors=internet_colors)
+    panels["Internet"]["description"] = (
+        "Derived only from authoritative WAN interface telemetry.")
+
     def health_card(title, domain):
         rows = []
         for scope in summary["scopes"]:
@@ -311,56 +372,73 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                           ("Servers", "compute"), ("Firewalls", "security")):
         health_card(title, domain)
 
-    _table(panels["Internet / WAN"], summary["wan"]["uplinks"],
-           ("scope", "uplink", "role", "state", "latency_ms", "packet_loss_percent"))
-    samples = summary["wan"].get("samples", [])
-    if samples:
-        panel = panels["WAN Traffic"]; panel["type"] = "timeseries"
+    prototype = panels["WAN Traffic"]
+    interfaces = sorted({
+        (value["interface"], value["label"])
+        for value in summary["wan"]["uplinks"] if value.get("interface")
+    }, key=lambda value: (value[1].casefold(), value[0].casefold()))
+    wan_panels = []
+    for offset, (interface, label) in enumerate(interfaces, 40):
+        panel = copy.deepcopy(prototype)
+        panel.update({"id": offset, "title": f"WAN · {label} · {interface}",
+                      "type": "timeseries"})
+        samples = [value for value in summary["wan"].get("samples", [])
+                   if value.get("interface") == interface]
+        if not samples:
+            panel["type"] = "text"
+            panel.pop("datasource", None)
+            panel["targets"] = []
+            panel["transformations"] = []
+            panel["options"] = {"mode": "markdown", "content":
+                f"## {label} · {interface}\n\n"
+                "Awaiting throughput telemetry for this WAN interface."}
+            panel["description"] = (
+                f"{label} ({interface}); no download or upload samples.")
+            wan_panels.append(panel)
+            continue
         panel["targets"] = [_target(_csv(samples,
-            ("scope", "time", "uplink", "rx_bps", "tx_bps")))]
-        panel["transformations"] = _scope_filter()
-        panel["fieldConfig"] = {"defaults": {"unit": "bps",
-            "color": {"mode": "palette-classic"}}, "overrides": []}
-    else:
-        panel = panels["WAN Traffic"]; panel["type"] = "text"; panel.pop("datasource", None)
-        panel["targets"] = []; panel["transformations"] = []
-        message = {
-            "not_configured": (
-                "## Internet capability not enabled\n\n"
-                "Enable a collector that provides authoritative Internet telemetry."),
-            "waiting_first_collection": (
-                "## Waiting for WAN telemetry\n\n"
-                "Complete the first successful collection."),
-            "unavailable": (
-                "## WAN telemetry unavailable\n\n"
-                "Review Collector Health and run Doctor."),
-        }.get(readiness_state, (
-            "## WAN not classified\n\nNo time series exists for an "
-            "authoritatively classified WAN uplink."))
-        panel["options"] = {"mode": "markdown", "content": message}
+            ("scope", "time", "interface", "rx_bps", "tx_bps")))]
+        panel["transformations"] = _scope_filter() + [{
+            "id": "organize", "options": {
+                "excludeByName": {"scope": True, "interface": True},
+                "renameByName": {
+                    "rx_bps": "Download", "tx_bps": "Upload"}}}]
+        panel["fieldConfig"] = {"defaults": {
+            "unit": "bps", "color": {"mode": "palette-classic"},
+            "custom": {"drawStyle": "line", "lineWidth": 2,
+                       "fillOpacity": 12, "showPoints": "never"}},
+            "overrides": []}
+        latest = sorted(samples, key=lambda value: value.get("time", ""))[-1] \
+            if samples else {}
+        panel["description"] = (
+            f"{label} ({interface}). Current download: "
+            f"{latest.get('rx_bps', 'unavailable')} bps; current upload: "
+            f"{latest.get('tx_bps', 'unavailable')} bps.")
+        wan_panels.append(panel)
+    dashboard["panels"] = [
+        panel for panel in dashboard["panels"]
+        if panel["title"] not in {"Internet / WAN", "WAN Traffic"}]
+    dashboard["panels"].extend(wan_panels)
+    panels = {value["title"]: value for value in dashboard["panels"]}
+    if not interfaces and "internet" in summary.get("capabilities", []):
+        panel = copy.deepcopy(prototype)
+        panel.update({"id": 40, "title": "WAN Telemetry", "type": "text"})
+        panel.pop("datasource", None)
+        panel["targets"] = []
+        panel["transformations"] = []
+        panel["options"] = {"mode": "markdown", "content":
+            "## No WAN Telemetry\n\nNo authoritative WAN interface "
+            "traffic is available for the selected site."}
+        dashboard["panels"].append(panel)
+        panels[panel["title"]] = panel
 
     _table(panels["Printer Action Required"], summary["printer_exceptions"],
            ("scope", "asset", "location", "condition", "last_seen"))
-    _table(panels["Collector State"], summary["collectors"],
-           ("scope", "collector", "site", "status", "freshness"))
-    panels["Collector State"]["fieldConfig"]["defaults"]["custom"]["inspect"] = True
-    _column_widths(panels["Collector State"], {
-        "collector": 140, "site": 320, "status": 110, "freshness": 120})
-    panels["Collector State"]["fieldConfig"]["overrides"].append({
-        "matcher": {"id": "byName", "options": "status"}, "properties": [
-            {"id": "mappings", "value": [{"type": "value", "options": {
-                "Healthy": {"color": "green", "index": 0, "text": "Healthy"},
-                "Warning": {"color": "orange", "index": 1, "text": "Warning"},
-                "Failed": {"color": "red", "index": 2, "text": "Failed"},
-                "Stale": {"color": "orange", "index": 3, "text": "Stale"},
-                "Monitoring not started": {"color": "gray", "index": 4,
-                    "text": "Monitoring not started"},
-                "Awaiting first collection": {"color": "gray", "index": 5,
-                    "text": "Awaiting first collection"},
-                "Collectors unavailable": {"color": "red", "index": 6,
-                    "text": "Collectors unavailable"}}}]},
-            {"id": "custom.cellOptions", "value": {"type": "color-background"}},
-        ]})
+    _table(
+        panels["Changes Since Yesterday"], summary["changes"],
+        ("scope", "time", "service", "change"))
+    _column_widths(panels["Changes Since Yesterday"], {
+        "time": 190, "service": 150, "change": 620})
     action_rows = [{**value,
         "domain": str(value.get("domain") or "").replace("_", " ").title(),
         "provider": PROVIDER_LABELS.get(
@@ -370,19 +448,17 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
             str(value.get("object_kind") or "").replace("_", " ").title())}
         for value in summary["actions"]]
     _table(panels["Action Required"], action_rows,
-           ("scope", "severity", "service", "domain", "provider", "object_kind",
-            "asset", "issue", "age"))
+           ("scope", "severity", "service", "asset", "issue", "age"))
     organize = panels["Action Required"]["transformations"][-1]["options"]
     organize["renameByName"] = {
-        "severity": "Severity", "service": "Service", "domain": "Domain",
-        "provider": "Provider", "object_kind": "Object Type", "asset": "Asset",
-        "issue": "Issue", "age": "Age"}
+        "severity": "Severity", "service": "Service", "asset": "Asset",
+        "issue": "Action", "age": "Age"}
     _column_widths(panels["Action Required"], {
-        "severity": 90, "domain": 120, "provider": 100, "object_kind": 120,
-        "service": 165, "asset": 190, "issue": 520, "age": 80})
+        "severity": 90, "service": 165, "asset": 210,
+        "issue": 700, "age": 80})
     panels["Action Required"]["description"] = (
-        "Provider-neutral active operations, including virtualisation management, "
-        "cluster, host, workload, capacity, storage, collection and snapshot evidence.")
+        "Priority-ordered operator actions. Open the relevant service "
+        "dashboard for diagnostic evidence.")
 
     available = set(summary.get("dashboard_uids", []))
     def links(*uids):
@@ -393,22 +469,21 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     panels["Switches"]["links"] = links("itp-infrastructure-overview")
     firewall_uids = ("paloalto-operational-overview", "fortigate-infrastructure-overview",
                      "itp-infrastructure-overview")
-    panels["Firewalls"]["links"] = links(*firewall_uids)
-    panels["Internet / WAN"]["links"] = links(*firewall_uids)
+    panels["Firewall"]["links"] = links(*firewall_uids)
+    panels["Internet"]["links"] = links(*firewall_uids)
+    for title in (value for value in panels if value.startswith("WAN ·")):
+        panels[title]["links"] = links(*firewall_uids)
     printing = [uid for uid in available if "print" in uid.lower()]
-    panels["Printer Action Required"]["links"] = links(*printing)
-    panels["Collector State"]["links"] = links("itp-collector-health")
+    panels["Printing"]["links"] = links(*printing)
+    panels["Monitoring"]["links"] = links("itp-collector-health")
     disabled_panels = {title for title, name in service_titles.items()
                        if name not in enabled_service_names}
     service_for_domain = {"Wireless Access Points": "Wireless",
-                          "Switches": "Switching", "Servers": "Compute",
-                          "Firewalls": "Security"}
+                          "Switches": "Switching", "Servers": "Compute"}
     disabled_panels.update(title for title, service in service_for_domain.items()
                            if service not in enabled_service_names)
-    if "Printing" not in enabled_service_names:
-        disabled_panels.add("Printer Action Required")
-    if "internet" not in summary.get("capabilities", []):
-        disabled_panels.update(("Internet / WAN", "WAN Traffic"))
+    disabled_panels.update({
+        "Firewalls", "Printer Action Required"})
     dashboard["panels"] = [panel for panel in dashboard["panels"]
                            if panel["title"] not in disabled_panels]
     _layout(dashboard)

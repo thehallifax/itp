@@ -31,7 +31,7 @@
         "mode": "markdown"
       },
       "targets": [],
-      "title": "Site Operational Status",
+      "title": "Issues",
       "type": "text"
     },
     {
@@ -68,7 +68,7 @@
         "wideLayout": true
       },
       "targets": [],
-      "title": "Overall State",
+      "title": "Overall Health",
       "type": "stat"
     },
     {
@@ -105,7 +105,7 @@
         "wideLayout": true
       },
       "targets": [],
-      "title": "Last Service Health",
+      "title": "Certificates",
       "type": "stat"
     },
     {
@@ -142,7 +142,7 @@
         "wideLayout": true
       },
       "targets": [],
-      "title": "Data Freshness",
+      "title": "Freshness",
       "type": "stat"
     },
     {
@@ -179,7 +179,7 @@
         "wideLayout": true
       },
       "targets": [],
-      "title": "Internet Service",
+      "title": "Internet",
       "type": "stat"
     },
     {
@@ -290,7 +290,7 @@
         "wideLayout": true
       },
       "targets": [],
-      "title": "Printing Service",
+      "title": "Printing",
       "type": "stat"
     },
     {
@@ -401,7 +401,7 @@
         "wideLayout": true
       },
       "targets": [],
-      "title": "Security Service",
+      "title": "Firewall",
       "type": "stat"
     },
     {
@@ -438,7 +438,7 @@
         "wideLayout": true
       },
       "targets": [],
-      "title": "Monitoring Service",
+      "title": "Monitoring",
       "type": "stat"
     },
     {
@@ -770,7 +770,7 @@
         "showHeader": true
       },
       "targets": [],
-      "title": "Collector State",
+      "title": "Changes Since Yesterday",
       "type": "table"
     },
     {

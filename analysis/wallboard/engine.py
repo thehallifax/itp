@@ -290,8 +290,16 @@ def _monitoring_rows(collector_rows, scopes):
     for scope in scopes:
         selected = [value for value in collector_rows
                     if value["scope"] == scope["scope"]]
-        real = [value for value in selected
-                if value.get("collector") and value.get("last_run")]
+        by_collector = {}
+        rank = {"Failed": 3, "Stale": 2, "Warning": 1, "Healthy": 0}
+        for value in selected:
+            if not value.get("collector") or not value.get("last_run"):
+                continue
+            current = by_collector.get(value["collector"])
+            if current is None or rank.get(value.get("status"), 0) > \
+                    rank.get(current.get("status"), 0):
+                by_collector[value["collector"]] = value
+        real = list(by_collector.values())
         issues = [value for value in real
                   if value.get("status") != "Healthy"]
         stale_services = sorted({
@@ -317,6 +325,32 @@ def _monitoring_rows(collector_rows, scopes):
             "last_successful_collection": successes[0] if successes else None,
             "stale_services": stale_services,
         })
+    return rows
+
+
+def _certificate_rows(operations, scopes, enabled):
+    candidates = [
+        value for value in (
+            list(operations.get("issues", []))
+            + list(operations.get("risks", [])))
+        if "certificate" in (
+            f"{value.get('rule_id', '')} {value.get('title', '')} "
+            f"{value.get('summary', '')}").casefold()]
+    rows = []
+    for scope in scopes:
+        selected = [value for value in candidates
+                    if _scope_matches(value, scope["scope"])]
+        if not enabled:
+            label, color = "Not Enabled", "gray"
+        elif selected:
+            label = (
+                "1 certificate needs attention" if len(selected) == 1
+                else f"{len(selected)} certificates need attention")
+            color = "orange"
+        else:
+            label, color = "Certificates Healthy", "green"
+        rows.append({
+            "scope": scope["scope"], "value": label, "color": color})
     return rows
 
 
@@ -566,6 +600,8 @@ class WallboardEngine:
         collector_rows = []
         generated = now.astimezone(timezone.utc)
         site_names = {value["site_id"]: value["display_name"] for value in site_options}
+        collector_capabilities = capability_state.get(
+            "collector_capabilities") or {}
         for value in state.get("collectors", []):
             name = value.get("collector")
             if enabled_collectors and name not in enabled_collectors: continue
@@ -576,6 +612,20 @@ class WallboardEngine:
                      "Stale" if collector_age is None or collector_age > self.freshness_seconds else \
                      "Healthy" if (value.get("status") == "healthy"
                          or value.get("last_successful_run") == last) else "Warning"
+            service_labels = {
+                "internet": "Internet", "firewall": "Firewall",
+                "printing": "Printing", "wireless": "Wireless",
+                "switching": "Switching", "compute": "Compute",
+                "identity": "Identity", "telemetry": "Monitoring",
+            }
+            services = sorted({
+                service_labels.get(str(item).casefold(),
+                                   str(item).replace("_", " ").title())
+                for item in (
+                    value.get("services") or value.get("capabilities")
+                    or value.get("domains")
+                    or collector_capabilities.get(name, []) or [])
+                if item})
             attributed = [site_id for site_id in value.get("site_ids", [])
                           if site_id in site_names]
             if value.get("shared") is True:
@@ -583,11 +633,17 @@ class WallboardEngine:
             if not attributed:
                 collector_rows.append({"scope": "all", "collector": name,
                     "site": "Unattributed", "status": status,
-                    "freshness": _age_label(collector_age), "last_run": last})
+                    "freshness": _age_label(collector_age), "last_run": last,
+                    "last_successful_run": value.get(
+                        "last_successful_run"),
+                    "services": services})
             for site_id in attributed:
                 row = {"collector": name, "site": site_names[site_id],
                        "status": status, "freshness": _age_label(collector_age),
-                       "last_run": last}
+                       "last_run": last,
+                       "last_successful_run": value.get(
+                           "last_successful_run"),
+                       "services": services}
                 collector_rows.append({"scope": "all", **row})
                 collector_rows.append({"scope": site_id, **row})
         if not collector_rows:
@@ -597,8 +653,20 @@ class WallboardEngine:
                 "site": "",
                 "status": readiness["observability"]["display_label"],
                 "freshness": readiness["observability"]["operator_action"],
-                "last_run": None,
+                "last_run": None, "last_successful_run": None,
+                "services": [],
             } for scope in scopes]
+        monitoring = _monitoring_rows(collector_rows, scopes)
+        internet = _internet_rows(
+            wan_uplinks, scopes, "internet" in capabilities)
+        certificate_rows = _certificate_rows(
+            operations, scopes, "firewall" in capabilities)
+        runtime_root = self.operations_state.parent.parent \
+            if self.operations_state.parent.name == "operations" \
+            else self.operations_state.parent
+        changes = _recent_changes(
+            runtime_root / "state-history/changes",
+            service_scopes, scopes, now)
         site_matrix = []
         matrix_services = ("Internet", "Wireless", "Switching", "Security", "Monitoring")
         for site in site_options:
@@ -620,6 +688,10 @@ class WallboardEngine:
             "service_health": service_scopes["all"]["services"],
             "topology": {"type": "logical_aggregate", "nodes": topology, "edges": topology_edges},
             "actions": actions, "printer_exceptions": printer_exceptions,
+            "monitoring": monitoring,
+            "internet": internet,
+            "certificates": certificate_rows,
+            "changes": changes,
             "collectors": sorted(collector_rows, key=lambda value: (
                 value["scope"], value["collector"], value["site"])),
             "freshness": {"source": "runtime/services/service-health.json",
