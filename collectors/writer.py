@@ -40,15 +40,28 @@ class InfluxWriter:
     """Batched InfluxDB 3 line-protocol writer for native collectors."""
 
     def __init__(self, delegate=None, *, url=None, token=None, database=None,
-                 batch_size=500, timeout=20, retries=2, client=None):
+                 deployment_id="", batch_size=500, timeout=20, retries=2,
+                 client=None):
         self.delegate = delegate
-        self.url = self._normalize_url(url or os.getenv("INFLUXDB_HOST", ""))
-        self.token = token or os.getenv("INFLUXDB_TOKEN")
-        self.database = database or os.getenv("INFLUXDB_BUCKET")
+        self.url = self._normalize_url(url or "")
+        self.token = token
+        self.database = database
+        self.deployment_id = str(deployment_id or "").strip()
         self.batch_size = batch_size
         self.timeout = timeout
         self.retries = retries
         self.client = client
+
+    @classmethod
+    def from_config(cls, config, **kwargs):
+        settings = config.get("writer") or {}
+        return cls(
+            url=settings.get("url"),
+            token=settings.get("token"),
+            database=settings.get("database"),
+            deployment_id=settings.get(
+                "deployment_id", config.get("deployment_id", "")),
+            **kwargs)
 
     @staticmethod
     def _normalize_url(value):
@@ -86,10 +99,10 @@ class InfluxWriter:
         return f"{measurement}{tags} {','.join(fields)}{timestamp}"
 
     def write(self, points):
-        deployment_id = os.getenv("ITP_DEPLOYMENT_ID", "").strip()
-        if deployment_id:
+        if self.deployment_id:
             points = [{**point, "tags": {
-                **point.get("tags", {}), "deployment_id": deployment_id}}
+                **point.get("tags", {}),
+                "deployment_id": self.deployment_id}}
                 for point in points]
         if self.delegate:
             return self.delegate(points)

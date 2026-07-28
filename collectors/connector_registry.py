@@ -46,6 +46,18 @@ class ConnectorMetadata:
     dashboard_manifest: str = ""
 
     @property
+    def configuration_namespace(self):
+        if self.id in {"vmware", "hyperv", "proxmox"}:
+            return "virtualisation.endpoints"
+        return f"collectors.{self.id}"
+
+    @property
+    def validation_requirements(self):
+        return tuple(
+            field["id"] for field in self.credential_fields
+            if field["required"])
+
+    @property
     def manual_only(self):
         return not self.guided_setup and self.configuration_mode in {
             "manual", "profile-manual"}
@@ -58,6 +70,9 @@ class ConnectorMetadata:
         value["configuration_fields"] = list(self.configuration_fields)
         value["aliases"] = list(self.aliases)
         value["manual_only"] = self.manual_only
+        value["configuration_namespace"] = self.configuration_namespace
+        value["validation_requirements"] = list(
+            self.validation_requirements)
         return value
 
 

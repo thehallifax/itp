@@ -102,3 +102,20 @@ git diff --check
 
 Review logs and JSON diagnostics for setting status and provenance only; secret
 values must never appear.
+
+## Direct process-environment access
+
+Process environment access is permitted only at bootstrap and runtime
+boundaries: `collectors/config.py`, `collectors/configuration.py`,
+`collectors/__main__.py`, profile activation, CLI/bootstrap entrypoints, and
+analysis components that select runtime paths or deployment identity.
+
+Connector business modules must not read the process environment. Credentials,
+TLS policy, endpoints, enablement, and intervals are resolved at the
+configuration boundary from registry metadata, then passed to collectors as
+configuration objects. The same boundary supplies the Influx writer settings.
+This keeps precedence, compatibility aliases, provenance, typed parsing, and
+redaction consistent and prevents individual connectors from inventing lookup
+orders. New connectors must declare credential and non-secret configuration
+metadata in `collectors/connector-registry.yml` and consume only the resolved
+configuration object.

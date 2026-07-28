@@ -42,7 +42,7 @@ def read_yaml(path):
 
 def connector_overlay_path(config_path, root=None, environment=None):
     """Resolve one explicit local overlay; never search arbitrary directories."""
-    environment = environment or os.environ
+    environment = os.environ if environment is None else environment
     explicit = str(environment.get("ITP_CONNECTORS_CONFIG") or "").strip()
     if explicit:
         return Path(explicit)
@@ -71,6 +71,13 @@ def parse_bool(value):
     raise ConfigurationError("value must be a boolean")
 
 
+def parse_bool_default(value, default=True):
+    """Parse an optional boolean while preserving an explicit default."""
+    if value in (None, ""):
+        return default
+    return parse_bool(value)
+
+
 def parse_int(value, *, minimum=None, maximum=None):
     try:
         result = int(value)
@@ -94,6 +101,52 @@ def resolve_environment_value(environment, canonical, aliases=()):
                 DeprecationWarning, stacklevel=2)
             return environment[alias], alias, True
     return "", "", False
+
+
+def materialize_runtime_configuration(config, registry, environment):
+    """Inject resolved runtime values at the process/configuration boundary.
+
+    The returned mapping is an in-memory copy. Secret values are never written
+    back to tracked or local configuration files.
+    """
+    result = deep_merge({}, config)
+    connectors = result.setdefault("collectors", {})
+    for connector in registry.all():
+        settings = connectors.get(connector.id)
+        if settings is None:
+            continue
+        if not isinstance(settings, dict):
+            continue
+        for field in connector.credential_fields:
+            if _present(settings.get(field["id"])):
+                continue
+            pointer = str(settings.get(f"{field['id']}_env") or "").strip()
+            canonical = pointer or field["env"]
+            aliases = field.get("env_aliases", []) if not pointer else []
+            value, _, _ = resolve_environment_value(
+                environment, canonical, aliases)
+            if _present(value):
+                settings[field["id"]] = value
+
+    endpoints = (result.get("virtualisation") or {}).get("endpoints") or []
+    metadata = {item.id: item for item in registry.all()}
+    for endpoint in endpoints:
+        if not isinstance(endpoint, dict):
+            continue
+        connector = metadata.get(str(endpoint.get("provider") or "").casefold())
+        if not connector:
+            continue
+        for field in connector.credential_fields:
+            if _present(endpoint.get(field["id"])):
+                continue
+            pointer = str(endpoint.get(f"{field['id']}_env") or "").strip()
+            canonical = pointer or field["env"]
+            aliases = field.get("env_aliases", []) if not pointer else []
+            value, _, _ = resolve_environment_value(
+                environment, canonical, aliases)
+            if _present(value):
+                endpoint[field["id"]] = value
+    return result
 
 
 def _path(value, dotted):

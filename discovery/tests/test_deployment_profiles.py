@@ -115,7 +115,9 @@ def test_runtime_activation_is_profile_scoped(tmp_path, monkeypatch):
 def test_writer_adds_deployment_tag_without_replacing_site(monkeypatch):
     captured = []
     monkeypatch.setenv("ITP_DEPLOYMENT_ID", "mlc")
-    writer = InfluxWriter(delegate=lambda points: captured.extend(points) or len(points))
+    writer = InfluxWriter(
+        delegate=lambda points: captured.extend(points) or len(points),
+        deployment_id="mlc")
     writer.write([{"measurement": "device", "tags": {"site_id": "site:MLC"},
                    "fields": {"online": True}}])
     assert captured[0]["tags"] == {"site_id": "site:MLC", "deployment_id": "mlc"}

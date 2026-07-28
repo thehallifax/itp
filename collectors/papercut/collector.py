@@ -1,7 +1,6 @@
 """Read-only PaperCut MF System Health collector."""
 import asyncio
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
@@ -10,7 +9,7 @@ from collectors.base import BaseCollector
 from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
-from collectors.configuration import resolve_environment_value
+from collectors.configuration import parse_bool_default, parse_int
 from .client import PaperCutClient
 from .models import PaperCutConfig, PaperCutError
 from .normalizer import normalize
@@ -23,19 +22,6 @@ def _utcnow():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _bool(value, default=True):
-    if isinstance(value, bool):
-        return value
-    if value in (None, ""):
-        return default
-    lowered = str(value).strip().casefold()
-    if lowered in {"true", "1", "yes", "on"}:
-        return True
-    if lowered in {"false", "0", "no", "off"}:
-        return False
-    raise ValueError("PaperCut boolean configuration must be true or false")
-
-
 def validate_settings(config):
     raw = config.get("collectors", {}).get("papercut", config)
     base_url = str(raw.get("base_url") or "").strip()
@@ -43,10 +29,7 @@ def validate_settings(config):
     key_env = str(
         raw.get("authorization_key_env") or
         "PAPERCUT_AUTHORIZATION_KEY").strip()
-    key, _, _ = resolve_environment_value(
-        os.environ, key_env,
-        ("PAPERCUT_AUTHORIZATION",)
-        if key_env == "PAPERCUT_AUTHORIZATION_KEY" else ())
+    key = str(raw.get("authorization_key") or "")
     if not base_url:
         raise ValueError("collectors.papercut.base_url is required")
     if not site:
@@ -57,11 +40,11 @@ def validate_settings(config):
     if timeout <= 0 or timeout > 120:
         raise ValueError(
             "PaperCut timeout_seconds must be between 1 and 120")
-    discovery_interval = int(
-        raw.get("discovery_interval_seconds", 21600))
-    collection_interval = int(
-        raw.get("collection_interval_seconds", 60))
-    retries = int(raw.get("max_retries", 2))
+    discovery_interval = parse_int(
+        raw.get("discovery_interval_seconds", 21600), minimum=1)
+    collection_interval = parse_int(
+        raw.get("collection_interval_seconds", 60), minimum=1)
+    retries = parse_int(raw.get("max_retries", 2), minimum=0, maximum=10)
     disk_threshold = float(raw.get("disk_warning_percent", 85))
     jvm_threshold = float(raw.get("jvm_warning_percent", 85))
     held_threshold = int(raw.get("held_jobs_warning", 25))
@@ -82,7 +65,7 @@ def validate_settings(config):
         base_url=base_url, authorization_key=key,
         customer=str(raw.get("customer") or
                      config.get("customer") or "unknown"),
-        site=site, verify_tls=_bool(raw.get("verify_tls", True)),
+        site=site, verify_tls=parse_bool_default(raw.get("verify_tls"), True),
         timeout_seconds=timeout,
         discovery_interval_seconds=discovery_interval,
         collection_interval_seconds=collection_interval,
@@ -111,7 +94,7 @@ class PaperCutCollector(BaseCollector):
             self.settings.timeout_seconds,
             verify_tls=self.settings.verify_tls,
             max_retries=self.settings.max_retries)
-        self.writer = writer or InfluxWriter()
+        self.writer = writer or InfluxWriter.from_config(config)
 
     async def _normalized(self):
         snapshot = await self.client.snapshot()

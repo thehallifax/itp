@@ -1,5 +1,6 @@
 import json
 import os
+import ast
 import subprocess
 from pathlib import Path
 
@@ -9,9 +10,11 @@ import yaml
 from collectors.config import load_config
 from collectors.configuration import (
     ConfigurationError, ConfigurationResolver, parse_bool, parse_int,
-    resolve_environment_value)
+    materialize_runtime_configuration, resolve_environment_value)
 from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.papercut.collector import validate_settings
+from collectors.paloalto.collector import validate_settings as validate_paloalto
+from collectors.writer import InfluxWriter
 from itp_profiles import DeploymentProfile
 
 
@@ -92,6 +95,90 @@ def test_typed_parsing_is_strict_and_bounded():
         parse_int("3601", maximum=3600)
 
 
+def test_runtime_materialization_uses_registry_aliases_and_custom_pointers():
+    value = materialize_runtime_configuration({
+        "collectors": {
+            "paloalto": {"api_key_env": "SITE_PAN_KEY"},
+            "papercut": {},
+        },
+        "virtualisation": {"endpoints": [
+            {"provider": "vmware"},
+            {"provider": "proxmox", "token_secret_env": "SITE_PVE_SECRET"},
+        ]},
+    }, registry(), {
+        "SITE_PAN_KEY": "pan-secret",
+        "PAPERCUT_AUTHORIZATION_KEY": "paper-secret",
+        "VMWARE_USERNAME": "reader",
+        "VMWARE_PASSWORD": "vm-secret",
+        "PROXMOX_TOKEN_ID": "itp@pve!reader",
+        "SITE_PVE_SECRET": "pve-secret",
+    })
+    assert value["collectors"]["paloalto"]["api_key"] == "pan-secret"
+    assert value["collectors"]["papercut"]["authorization_key"] == \
+        "paper-secret"
+    vmware, proxmox = value["virtualisation"]["endpoints"]
+    assert (vmware["username"], vmware["password"]) == \
+        ("reader", "vm-secret")
+    assert (proxmox["token_id"], proxmox["token_secret"]) == \
+        ("itp@pve!reader", "pve-secret")
+
+
+def test_collectors_accept_injected_credentials_and_writer_configuration():
+    paloalto = {
+        "collectors": {"paloalto": {
+            "base_url": "https://192.0.2.10",
+            "site": "site:example",
+            "api_key": "injected-secret",
+        }}}
+    assert validate_paloalto(paloalto).api_key == "injected-secret"
+    writer = InfluxWriter.from_config({
+        "deployment_id": "deployment:test",
+        "writer": {
+            "url": "influxdb3-core",
+            "token": "writer-secret",
+            "database": "test",
+        }})
+    assert writer.url == "http://influxdb3-core:8181"
+    assert writer.token == "writer-secret"
+    assert writer.database == "test"
+    assert writer.deployment_id == "deployment:test"
+
+
+def test_connector_metadata_describes_complete_configuration_contract():
+    for item in registry().all():
+        assert item.configuration_namespace
+        assert isinstance(item.validation_requirements, tuple)
+        assert set(item.validation_requirements) <= {
+            field["id"] for field in item.credential_fields}
+        for field in item.credential_fields:
+            assert set(field) >= {"id", "env", "required", "secret"}
+            assert isinstance(field.get("env_aliases", []), list)
+
+
+def test_connector_business_modules_do_not_read_process_environment_directly():
+    approved = {
+        ROOT / "collectors/__main__.py",
+        ROOT / "collectors/config.py",
+        ROOT / "collectors/configuration.py",
+    }
+    violations = []
+    for path in sorted((ROOT / "collectors").rglob("*.py")):
+        if path in approved:
+            continue
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                owner = node.func.value
+                if (isinstance(owner, ast.Name) and owner.id == "os"
+                        and node.func.attr == "getenv"):
+                    violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+            if isinstance(node, ast.Attribute) and isinstance(
+                    node.value, ast.Name) and node.value.id == "os" \
+                    and node.attr == "environ":
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+    assert violations == []
+
+
 def test_papercut_canonical_and_legacy_environment_names(monkeypatch):
     with pytest.warns(DeprecationWarning, match="PAPERCUT_AUTHORIZATION"):
         value, source, deprecated = resolve_environment_value(
@@ -100,12 +187,13 @@ def test_papercut_canonical_and_legacy_environment_names(monkeypatch):
     assert value == "legacy-value"
     assert source == "PAPERCUT_AUTHORIZATION"
     assert deprecated is True
-    monkeypatch.delenv("PAPERCUT_AUTHORIZATION_KEY", raising=False)
-    monkeypatch.setenv("PAPERCUT_AUTHORIZATION", "legacy-value")
     with pytest.warns(DeprecationWarning):
-        settings = validate_settings({"collectors": {"papercut": {
-            "base_url": "https://print.example.invalid",
-            "site": "site:example"}}})
+        resolved = materialize_runtime_configuration(
+            {"collectors": {"papercut": {
+                "base_url": "https://print.example.invalid",
+                "site": "site:example"}}},
+            registry(), {"PAPERCUT_AUTHORIZATION": "legacy-value"})
+    settings = validate_settings(resolved)
     assert settings.authorization_key == "legacy-value"
 
 

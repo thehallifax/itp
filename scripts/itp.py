@@ -271,17 +271,16 @@ def virtualisation(value, *, fixture=None, provider_name=None):
         contracts = []
         for endpoint in endpoints:
             if selected == "vmware":
-                username = os.getenv(endpoint.get("username_env", "VMWARE_USERNAME"), "")
-                password = os.getenv(endpoint.get("password_env", "VMWARE_PASSWORD"), "")
+                username = str(endpoint.get("username") or "")
+                password = str(endpoint.get("password") or "")
                 if not username or not password:
                     raise ProfileError("VMware read-only credentials are unavailable")
                 verify = endpoint.get("ca_bundle") or endpoint.get("verify_tls", True)
                 contract = VMwareClient(endpoint["endpoint"], username, password,
                     verify=verify, timeout=float(endpoint.get("timeout_seconds", 20))).collect()
             elif selected == "proxmox":
-                token_id = os.getenv(endpoint.get("token_id_env", "PROXMOX_TOKEN_ID"), "")
-                token_secret = os.getenv(
-                    endpoint.get("token_secret_env", "PROXMOX_TOKEN_SECRET"), "")
+                token_id = str(endpoint.get("token_id") or "")
+                token_secret = str(endpoint.get("token_secret") or "")
                 if not token_id or not token_secret:
                     raise ProfileError("Proxmox read-only API token is unavailable")
                 verify = endpoint.get("ca_bundle") or endpoint.get("verify_tls", True)
@@ -307,7 +306,8 @@ def virtualisation(value, *, fixture=None, provider_name=None):
         result = engine.run_fixture(selected)
     else:
         result = render_virtualisation(output, engine.evaluate(contracts))
-        written = InfluxWriter().write(virtualisation_points(result))
+        written = InfluxWriter.from_config(config).write(
+            virtualisation_points(result))
         print(f"Telemetry points written: {written}")
     print(f"Profile: {value.id}")
     print(f"Provider: {selected}")

@@ -64,7 +64,8 @@ def result(xml):
 def config(**updates):
     settings = {"enabled": True, "site": "customer-site-slug",
         "customer": "Example Customer", "base_url": "https://192.0.2.1",
-        "api_key_env": "PALOALTO_API_KEY", "verify_tls": True,
+        "api_key_env": "PALOALTO_API_KEY", "api_key": "fake-test-key",
+        "verify_tls": True,
         "expected_interfaces": ["ethernet1/2"]}
     settings.update(updates)
     return {"collectors": {"paloalto": settings}, "inventory": {}}
@@ -140,10 +141,11 @@ def test_fuses_with_snmp_by_serial(monkeypatch):
 
 
 def test_configuration_tls_defaults_custom_ca_and_disabled_secret(tmp_path, monkeypatch):
-    monkeypatch.delenv("PALOALTO_API_KEY", raising=False)
+    missing = config()
+    missing["collectors"]["paloalto"].pop("api_key")
     with pytest.raises(ValueError, match="PALOALTO_API_KEY"):
-        validate_settings(config())
-    settings = validate_settings(config(), require_key=False)
+        validate_settings(missing)
+    settings = validate_settings(missing, require_key=False)
     assert settings.verify_tls is True
     assert PaloAltoClient.normalize_url("192.0.2.1") == "https://192.0.2.1"
     with pytest.raises(ValueError, match="HTTPS"):

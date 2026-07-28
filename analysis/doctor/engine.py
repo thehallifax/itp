@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 
 from collectors.connector_registry import ConnectorMetadataRegistry
+from collectors.configuration import ConfigurationResolver
 from itp_profiles.settings import SettingsError, resolve_settings
 from .models import DiagnosticCheck, DoctorReport
 
@@ -45,9 +46,11 @@ class DoctorFatalError(RuntimeError):
 class Redactor:
     def __init__(self, registry):
         names = {
-            field["env"] for connector in registry.all()
+            name for connector in registry.all()
             for field in connector.credential_fields
-            if field.get("secret") and field.get("env")}
+            if field.get("secret")
+            for name in (field.get("env"), *field.get("env_aliases", []))
+            if name}
         names.update(name for name in os.environ if any(
             word in name.upper() for word in
             ("TOKEN", "PASSWORD", "SECRET", "COMMUNITY", "PRIVATE_KEY")))
@@ -573,22 +576,32 @@ class DoctorEngine:
             current = current[part]
         return current
 
-    def _secret_present(self, connector, field):
-        if os.getenv(field["env"], "").strip():
-            return True
-        roots = [self.root / "secrets"]
+    def _connector_resolution(self):
+        profile_values = {}
         profile = os.getenv("ITP_PROFILE", "").strip()
         if profile:
-            roots.insert(0, self.root / "secrets" / profile)
-        for root in roots:
-            for path in sorted(root.glob("*.env")) if root.exists() else ():
-                values = self._read_env(path)
-                if values.get(field["env"], "").strip():
-                    return True
-        return False
+            profile_env = self.root / "profiles" / profile / ".env"
+            profile_values.update(self._read_env(profile_env))
+            secret_root = self.root / "secrets" / profile
+            for path in sorted(secret_root.glob("*.env")) \
+                    if secret_root.exists() else ():
+                profile_values.update(self._read_env(path))
+        root_values = dict(self.env_values)
+        secret_root = self.root / "secrets"
+        for path in sorted(secret_root.glob("*.env")) \
+                if secret_root.exists() else ():
+            root_values.update(self._read_env(path))
+        return ConfigurationResolver(
+            self.registry, self.raw_config or {},
+            process_environment=os.environ,
+            profile_environment=profile_values,
+            root_environment=root_values).evaluate()
 
     def _connector_checks(self):
         configured = (self.raw_config or {}).get("collectors", {})
+        resolved = {
+            item["connector"]: item
+            for item in self._connector_resolution()["connectors"]}
         if self.selected_connector:
             connectors = (self.selected_connector,)
         else:
@@ -628,9 +641,13 @@ class DoctorEngine:
                 detail=", ".join(missing_config),
                 remediation="Complete the documented connector configuration.",
                 command=connector.remediation_command)
+            resolved_settings = {
+                item["name"].rsplit(".", 1)[-1]: item
+                for item in resolved[connector.id]["settings"]}
             missing_credentials = [
                 field["env"] for field in connector.credential_fields
-                if field.get("required") and not self._secret_present(connector, field)]
+                if field.get("required") and resolved_settings[
+                    field["id"]]["status"] == "missing"]
             self._result(
                 f"connector.{connector.id}.credentials", "Connectors",
                 connector.display_name,
