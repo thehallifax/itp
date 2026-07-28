@@ -40,6 +40,33 @@ def test_always_dashboards_and_disabled_collectors_are_omitted(tmp_path):
     assert not list((tmp_path / "managed/vendor").glob("*.json"))
 
 
+def test_collector_health_uses_operator_friendly_stats(tmp_path):
+    source = json.loads(
+        (ROOT / "dashboards/Collectors/collector-health.json").read_text())
+    panels = {value["title"]: value for value in source["panels"]}
+    assert {"Collectors Healthy", "Collectors Requiring Attention",
+            "Latest Duration", "Latest Points Written"} <= panels.keys()
+    for title in ("Collectors Healthy", "Collectors Requiring Attention",
+                  "Latest Duration", "Latest Points Written"):
+        assert panels[title]["options"]["textMode"] == "value"
+    sql = "\n".join(panel["targets"][0]["rawSql"]
+                    for panel in source["panels"])
+    assert "PARTITION BY collector ORDER BY" in sql
+    assert "PARTITION BY collector, site" not in sql
+    assert 'AS "Healthy Collectors"' in sql
+    assert 'AS "Collectors Requiring Attention"' in sql
+    assert 'AS "Collection Duration"' in sql
+    assert 'AS "Points Written"' in sql
+    assert " AS healthy" not in sql and " AS failed" not in sql
+
+    registry(tmp_path, {}).generate()
+    managed = json.loads((
+        tmp_path / "managed/operations/itp-collector-health.json"
+    ).read_text())
+    managed_panels = {value["title"]: value for value in managed["panels"]}
+    assert set(panels) == set(managed_panels)
+
+
 def test_enabled_vendor_dashboards_and_capabilities_are_selected(tmp_path):
     resolved = registry(tmp_path, {
         "mist": True, "fortigate": True, "paloalto": True, "snmp": True}).generate()

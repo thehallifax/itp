@@ -223,8 +223,8 @@ def test_evaluator_registry_is_complete_and_deterministic():
 
 SITES = """sites:
   - id: mlc
-    display_name: Greenwood College
-    aliases: [MLC, Greenwood]
+    display_name: MLC Reference Site
+    aliases: [MLC, MLC Reference Site]
   - id: st-brigids
     display_name: Northwind College
     aliases: [Northwind, SBC]
@@ -252,7 +252,7 @@ def test_per_site_partitioning_aliases_collectors_and_estate_aggregate(tmp_path)
     ]
     pa_risk = {"id": "pa-license", "rule_id": "PA-LICENCE-EXPIRED",
         "title": "Palo Alto licence", "category": "Security", "severity": "High",
-        "priority": 80, "device": "MLC-PA", "site": "Greenwood",
+        "priority": 80, "device": "MLC-PA", "site": "MLC Reference Site",
         "summary": "MLC Palo Alto licence expired.", "evidence": {}}
     issues = [
         {"id": "ap-down", "rule_id": "wireless.ap_offline",
@@ -278,7 +278,7 @@ def test_per_site_partitioning_aliases_collectors_and_estate_aggregate(tmp_path)
         "site:mlc", "site:st-brigids"]
     mlc = next(value for value in result["sites"] if value["site_id"] == "site:mlc")
     st = next(value for value in result["sites"] if value["site_id"] == "site:st-brigids")
-    assert mlc["site_name"] == "Greenwood College"
+    assert mlc["site_name"] == "MLC Reference Site"
     assert mlc["enabled_collectors"] == ["paloalto"]
     assert st["enabled_collectors"] == ["fortigate", "mist", "snmp"]
     mlc_security = service(result, "Security", "site:mlc")

@@ -89,6 +89,15 @@ def compose(value, *arguments, capture=False):
                           errors="replace", capture_output=capture)
 
 
+def generate_profile_dashboards(value):
+    """Materialize managed folders before Grafana starts watching them."""
+    config = load_config(value.paths.discovery)
+    return DashboardRegistry(
+        ROOT, config, value.paths.managed_dashboards,
+        value.paths.dashboard_runtime / "provisioning/dashboards.yml",
+        registry_validation_mode="runtime").generate()
+
+
 def port_available(port):
     with socket.socket() as connection:
         connection.settimeout(0.25)
@@ -866,11 +875,15 @@ def main():
         describe(value)
         if args.action == "up":
             bootstrap_influx(value)
-            validate(value); compose(value, "up", "-d", "--build")
+            validate(value)
+            generate_profile_dashboards(value)
+            compose(value, "up", "-d", "--build")
         elif args.action == "down": compose(value, "down")
         else:
             bootstrap_influx(value)
-            validate(value); compose(value, "up", "-d", "--build", "--remove-orphans")
+            validate(value)
+            generate_profile_dashboards(value)
+            compose(value, "up", "-d", "--build", "--remove-orphans")
     elif args.action == "logs":
         compose(value, "logs", "--tail=200", "-f")
     elif args.action == "shell":

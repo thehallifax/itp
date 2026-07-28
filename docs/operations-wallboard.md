@@ -20,21 +20,29 @@ vertical scrolling at standard 1920 × 1080 browser zoom.
 
 The wallboard displays:
 
-- eight operator-facing cards: Issues, Overall Health, Monitoring, Freshness,
+- eight operator-facing cards: Issues, Overall Health, Monitoring, Security,
   Internet, Firewall, Printing, and Certificates;
 - optional cards for enabled future and virtualisation services;
-- one Download/Upload graph per authoritative WAN interface;
+- one readable Download/Upload graph per authoritative WAN interface;
 - operational changes observed during the last 24 hours;
+- one fleet-specific **Printers Requiring Attention** table;
 - one priority-ordered, action-oriented **Action Required** table.
 
 Longer-term governance risks and recommendations remain in detailed operational
 dashboards. Collection duration, points, retries, and errors remain in Collector
 Health. The landing page does not expose a collector-state table.
 
-The Monitoring card reports how many enabled collectors need attention, the
+The Monitoring card reports how many enabled collectors require attention, the
 latest successful collection, and the operator services with stale collection
 coverage. It links to Monitoring diagnostics; connector internals remain in
 Collector Health and `./itp doctor`.
+
+Overall Health includes the explanation supplied by the highest canonical
+service state. Security uses the canonical Security service and covers
+certificates, subscriptions, threat services, and security findings.
+Certificates is a focused projection of the same Operations evidence, including
+certificate and subscription expiry findings; it cannot report Healthy while a
+matching action remains active.
 
 ## Service-health dependency
 
@@ -87,10 +95,11 @@ WANs Up**, **Backup Down**, and **No WAN Telemetry**. It does not create a
 second Internet calculation.
 
 Each classified interface receives its own responsive graph named with both its
-friendly role and interface name. Download and Upload use bits per second and
-Grafana auto-scaling. The description includes current throughput. An interface
-without traffic samples displays an explicit waiting state instead of generic
-No data.
+friendly role and interface name. Download and Upload use bits per second,
+Grafana auto-scaling, and a table legend with the latest value. One WAN uses the
+full row; two WANs use equal columns; an odd final WAN uses the full following
+row. An interface without traffic samples displays an explicit waiting state
+instead of generic No data.
 
 ## Data binding and filtering
 
@@ -110,9 +119,6 @@ Every service card contains an explicit row for `all` and every canonical
 data. Monitoring collector coverage is deduplicated per canonical scope. A site
 with no current technician actions displays **No action required** rather than
 No data.
-
-Freshness uses only the canonical service-health generation timestamp. The
-default stale threshold is 900 seconds.
 
 ## Regeneration
 
@@ -147,11 +153,10 @@ SQL-free because generated frames use exact `site_id` scopes.
 The renderer packs the grid after capability filtering:
 
 1. Eight equal operator-facing status cards.
-2. Capability-gated future and virtualisation service cards.
-3. Compact supporting infrastructure state where useful.
-4. Responsive per-interface WAN traffic graphs.
-5. A full-width Changes Since Yesterday table.
-6. A full-width, seven-row-high Action Required queue.
+2. Responsive, eight-row-high per-interface WAN traffic graphs.
+3. A lower row containing Action Required and Changes Since Yesterday.
+4. A full-width Printers Requiring Attention table.
+5. Capability-gated service and compact infrastructure detail.
 
 Action Required sorts by severity, evidence age and priority. Compact columns
 show Severity, Service, Asset, Action, and Age. Findings are rendered as

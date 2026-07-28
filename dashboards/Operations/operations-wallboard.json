@@ -142,7 +142,7 @@
         "wideLayout": true
       },
       "targets": [],
-      "title": "Freshness",
+      "title": "Security",
       "type": "stat"
     },
     {
@@ -742,7 +742,7 @@
         "showHeader": true
       },
       "targets": [],
-      "title": "Printer Action Required",
+      "title": "Printers Requiring Attention",
       "type": "table"
     },
     {

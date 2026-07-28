@@ -61,6 +61,27 @@ def test_startup_is_sequential_ready_and_secret_safe(tmp_path, caplog):
     assert "must-not-appear" not in caplog.text
 
 
+def test_discovery_only_run_remains_scheduled_after_initial_discovery(tmp_path):
+    events = []
+    collector = Collector(events)
+    collector.discovery_interval = 3600
+    value = scheduler(tmp_path, collector)
+
+    async def exercise():
+        task = asyncio.create_task(value.run(discovery_only=True))
+        for _ in range(20):
+            if events == ["discover.begin", "discover.complete"]:
+                break
+            await asyncio.sleep(0)
+        assert not task.done()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(exercise())
+    assert events == ["discover.begin", "discover.complete"]
+
+
 def test_initial_discovery_failure_skips_dependent_collection(tmp_path):
     events = []
     value = scheduler(

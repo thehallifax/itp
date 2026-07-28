@@ -25,4 +25,5 @@ and `malformed`.
 
 ## Supported collectors
 
-Palo Alto.
+Palo Alto and PaperCut MF. PaperCut uses `license_type` for installed packs and
+adds licence validity, user utilisation, and Upgrade Assurance fields.

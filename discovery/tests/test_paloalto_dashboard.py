@@ -52,8 +52,16 @@ def test_every_live_target_uses_confirmed_flightsql_contract():
 
 def test_variables_are_sql_safe_and_paloalto_scoped():
     variables = module().build()["templating"]["list"]
-    assert [value["name"] for value in variables] == ["customer", "site", "device"]
-    assert all(value["allValue"] == "'%'" for value in variables)
+    assert [value["name"] for value in variables] == [
+        "customer", "site", "device", "wan_interface"]
+    assert all(value["allValue"] == "'%'" for value in variables[:3])
+    assert variables[3]["includeAll"] is True
+    assert variables[3]["multi"] is True
+    assert variables[3]["allValue"] is None
+    assert variables[3]["hide"] == 2
+    assert "__text" in variables[3]["query"]
+    assert "__value" in variables[3]["query"]
+    assert "wan_classified = true" in variables[3]["query"]
     assert all("collector = 'paloalto'" in value["query"] for value in variables)
     assert "${customer:sqlstring}" in variables[1]["query"]
     assert "${site:sqlstring}" in variables[2]["query"]
@@ -74,7 +82,7 @@ def test_operational_telemetry_panels_use_live_canonical_measurements():
         "Memory Used": "FROM performance",
         "Active Sessions": "FROM performance",
         "Session Utilisation": "FROM performance",
-        "WAN RX / TX": "FROM interface",
+        "${wan_interface:text}": "FROM interface",
         "Interface Fault Counters": "FROM interface",
         "Subscriptions and Expiry": "FROM license",
         "Installed Content Packages": "FROM content_package",
@@ -83,6 +91,40 @@ def test_operational_telemetry_panels_use_live_canonical_measurements():
     for title, table in expected.items():
         assert table in panels[title]["targets"][0]["rawSql"]
     assert not [panel for panel in dashboard["panels"] if panel["type"] == "text"]
+
+
+def test_wan_panel_repeats_per_interface_without_aggregation():
+    dashboard = module().build()
+    panel = next(value for value in dashboard["panels"]
+                 if value["title"] == "${wan_interface:text}")
+    sql = panel["targets"][0]["rawSql"]
+    assert panel["repeat"] == "wan_interface"
+    assert panel["repeatDirection"] == "h"
+    assert panel["maxPerRow"] == 2
+    assert panel["gridPos"]["w"] == 12
+    assert panel["gridPos"]["h"] >= 9
+    assert "interface_name = ${wan_interface:sqlstring}" in sql
+    assert 'AS "Download"' in sql and 'AS "Upload"' in sql
+    assert "PARTITION BY hostname, interface_name" not in sql
+    assert panel["fieldConfig"]["defaults"]["unit"] == "bps"
+    assert panel["options"]["legend"]["calcs"] == ["lastNotNull"]
+
+
+def test_collector_diagnostics_render_values_without_internal_names():
+    dashboard = module().build()
+    panels = {value["title"]: value for value in dashboard["panels"]}
+    for title in (
+            "Collector Result", "Last Collection", "Collection Duration",
+            "Points Written", "API Requests", "Max API Duration",
+            "Partial", "Errors"):
+        assert panels[title]["options"]["textMode"] == "value"
+    last_collection = panels["Last Collection"]["targets"][0]["rawSql"]
+    assert 'CAST(time AS VARCHAR) AS "Last Collection"' in last_collection
+    assert "ORDER BY time DESC LIMIT 1" in last_collection
+    assert "$__timeFrom" not in last_collection
+    assert "$__timeTo" not in last_collection
+    assert panels["Last Collection"]["options"]["reduceOptions"] == {
+        "calcs": [], "fields": "/^Last Collection$/", "values": True}
 
 
 def test_required_operational_sections_and_panels_exist():

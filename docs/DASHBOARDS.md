@@ -15,6 +15,12 @@ only for vendor-neutral counts, not service-state calculation. Links lead only
 to applicable provisioned detail dashboards. See
 [Operations Wallboard](operations-wallboard.md).
 
+Its top row is service-first: Overall Health includes canonical explanatory
+context, Monitoring counts distinct unhealthy enabled collectors, and Security
+summarises subscriptions, certificates, threat services, and security findings.
+Collector execution fields remain on the Collector Health drill-down, whose
+stat panels use operator-facing labels and values.
+
 Canonical summary panels use the supported generated-dashboard projection
 described in [Dashboard Data Binding](dashboard-data-binding.md). Runtime JSON is
 never treated as a Grafana-readable datasource.
@@ -92,7 +98,12 @@ can remain in an upgraded Grafana database; they contain no managed dashboards
 and may be removed after confirming they contain no user dashboards.
 The Palo Alto operational dashboard uses canonical resource, session,
 interface-counter, subscription, content-package, certificate, and collector
-diagnostic telemetry. Run `python -m collectors dashboards generate` after
+diagnostic telemetry. Classified WAN interfaces are discovered by a hidden
+FlightSQL variable and rendered as independently scaled repeated panels; the
+friendly WAN label is display text and the interface name remains the query
+value. Collector diagnostic Stat panels display values without internal field
+aliases, and Last Collection uses the latest recorded collector-health row.
+Run `python -m collectors dashboards generate` after
 collector or dashboard upgrades; managed files remain replaceable and preserve
 the stable `paloalto-operational-overview` UID.
 

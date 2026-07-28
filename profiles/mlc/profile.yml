@@ -1,6 +1,6 @@
 profile:
   id: mlc
-  name: Greenwood College
+  name: MLC Reference Deployment
   environment: production
   timezone: Australia/Perth
   runtime_mode: edge

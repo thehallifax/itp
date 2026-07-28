@@ -951,7 +951,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
         "y": 17
       },
@@ -989,7 +989,7 @@
         "type": "influxdb",
         "uid": "ffsu5ap2kr5dse"
       },
-      "description": "Rates derived from cumulative counters; negative deltas after reset are omitted.",
+      "description": "Per-interface rates derived from cumulative counters. Download and Upload current values are shown in the legend; negative deltas after reset are omitted.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1008,12 +1008,13 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 12,
-        "y": 17
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 25
       },
       "id": 19,
+      "maxPerRow": 2,
       "options": {
         "legend": {
           "calcs": [
@@ -1027,6 +1028,8 @@
           "sort": "desc"
         }
       },
+      "repeat": "wan_interface",
+      "repeatDirection": "h",
       "targets": [
         {
           "datasource": {
@@ -1034,13 +1037,13 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH samples AS (SELECT time, interface_name, rx_bytes_total, tx_bytes_total, LAG(time) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, interface_name, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS rx_bps, CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS tx_bps FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
+          "query": "WITH samples AS (SELECT time, rx_bytes_total, tx_bytes_total, LAG(time) OVER (ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
           "rawQuery": true,
-          "rawSql": "WITH samples AS (SELECT time, interface_name, rx_bytes_total, tx_bytes_total, LAG(time) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (PARTITION BY hostname, interface_name ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, interface_name, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS rx_bps, CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS tx_bps FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
+          "rawSql": "WITH samples AS (SELECT time, rx_bytes_total, tx_bytes_total, LAG(time) OVER (ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
           "refId": "A"
         }
       ],
-      "title": "WAN RX / TX",
+      "title": "${wan_interface:text}",
       "type": "timeseries"
     },
     {
@@ -1068,9 +1071,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 17
+        "w": 24,
+        "x": 0,
+        "y": 34
       },
       "id": 20,
       "options": {
@@ -1108,7 +1111,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 42
       },
       "id": 21,
       "panels": [],
@@ -1148,7 +1151,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 43
       },
       "id": 22,
       "options": {
@@ -1185,7 +1188,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 49
       },
       "id": 23,
       "panels": [],
@@ -1225,7 +1228,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 50
       },
       "id": 24,
       "options": {
@@ -1262,7 +1265,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 57
       },
       "id": 25,
       "panels": [],
@@ -1302,7 +1305,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 58
       },
       "id": 26,
       "options": {
@@ -1339,467 +1342,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 64
       },
       "id": 27,
       "panels": [],
       "title": "Collector Diagnostics",
       "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "ffsu5ap2kr5dse"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "dateTimeAsIso"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 48
-      },
-      "id": 28,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "ffsu5ap2kr5dse"
-          },
-          "format": "table",
-          "query": "SELECT time AS last_collection FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "rawQuery": true,
-          "rawSql": "SELECT time AS last_collection FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Last Collection",
-      "transformations": [],
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "ffsu5ap2kr5dse"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "ms"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 48
-      },
-      "id": 29,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "ffsu5ap2kr5dse"
-          },
-          "format": "table",
-          "query": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "rawQuery": true,
-          "rawSql": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Collection Duration",
-      "transformations": [],
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "ffsu5ap2kr5dse"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 48
-      },
-      "id": 30,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "ffsu5ap2kr5dse"
-          },
-          "format": "table",
-          "query": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "rawQuery": true,
-          "rawSql": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Points Written",
-      "transformations": [],
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "ffsu5ap2kr5dse"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 12,
-        "y": 48
-      },
-      "id": 31,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "ffsu5ap2kr5dse"
-          },
-          "format": "table",
-          "query": "SELECT api_requests FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "rawQuery": true,
-          "rawSql": "SELECT api_requests FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "API Requests",
-      "transformations": [],
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "ffsu5ap2kr5dse"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "ms"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 15,
-        "y": 48
-      },
-      "id": 32,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "ffsu5ap2kr5dse"
-          },
-          "format": "table",
-          "query": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "rawQuery": true,
-          "rawSql": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Max API Duration",
-      "transformations": [],
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "ffsu5ap2kr5dse"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 18,
-        "y": 48
-      },
-      "id": 33,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "ffsu5ap2kr5dse"
-          },
-          "format": "table",
-          "query": "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "rawQuery": true,
-          "rawSql": "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Partial",
-      "transformations": [],
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "ffsu5ap2kr5dse"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 21,
-        "y": 48
-      },
-      "id": 34,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "ffsu5ap2kr5dse"
-          },
-          "format": "table",
-          "query": "SELECT error_count FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "rawQuery": true,
-          "rawSql": "SELECT error_count FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Errors",
-      "transformations": [],
-      "type": "stat"
     },
     {
       "datasource": {
@@ -1848,11 +1396,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 5,
-        "x": 19,
-        "y": 52
+        "w": 3,
+        "x": 0,
+        "y": 65
       },
-      "id": 35,
+      "id": 28,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -1866,7 +1414,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -1883,6 +1431,460 @@
         }
       ],
       "title": "Collector Result",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 3,
+        "y": 65
+      },
+      "id": 29,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "/^Last Collection$/",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT CAST(time AS VARCHAR) AS \"Last Collection\" FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT CAST(time AS VARCHAR) AS \"Last Collection\" FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Last Collection",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 6,
+        "y": 65
+      },
+      "id": 30,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Collection Duration",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 9,
+        "y": 65
+      },
+      "id": 31,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Points Written",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 65
+      },
+      "id": 32,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT api_requests FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT api_requests FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "API Requests",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 65
+      },
+      "id": 33,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Max API Duration",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 65
+      },
+      "id": 34,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Partial",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ffsu5ap2kr5dse"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 65
+      },
+      "id": 35,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ffsu5ap2kr5dse"
+          },
+          "format": "table",
+          "query": "SELECT error_count FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawQuery": true,
+          "rawSql": "SELECT error_count FROM collector_health WHERE collector = 'paloalto' AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors",
       "transformations": [],
       "type": "stat"
     }
@@ -1955,6 +1957,30 @@
         "name": "device",
         "options": [],
         "query": "SELECT DISTINCT hostname FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": null,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ffsu5ap2kr5dse"
+        },
+        "definition": "SELECT DISTINCT COALESCE(NULLIF(wan_display_name, ''), INITCAP(wan_role), interface_name) || ' \u2014 ' || interface_name AS __text, interface_name AS __value FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND wan_classified = true ORDER BY __text",
+        "hide": 2,
+        "includeAll": true,
+        "label": "WAN Interface",
+        "multi": true,
+        "name": "wan_interface",
+        "options": [],
+        "query": "SELECT DISTINCT COALESCE(NULLIF(wan_display_name, ''), INITCAP(wan_role), interface_name) || ' \u2014 ' || interface_name AS __text, interface_name AS __value FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND wan_classified = true ORDER BY __text",
         "refresh": 1,
         "regex": "",
         "sort": 1,

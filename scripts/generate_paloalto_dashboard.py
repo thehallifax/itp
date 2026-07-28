@@ -15,7 +15,7 @@ def target(sql, ref="A"):
 
 
 def stat(panel_id, title, x, y, w, sql, *, unit="short", mappings=None,
-         thresholds=None, description="", string_field=None):
+         thresholds=None, description="", string_field=None, show_name=True):
     return {"id": panel_id, "type": "stat", "title": title, "description": description,
         "gridPos": {"x": x, "y": y, "w": w, "h": 4}, "datasource": DATASOURCE,
         "targets": [target(sql)], "transformations": [],
@@ -33,7 +33,8 @@ def stat(panel_id, title, x, y, w, sql, *, unit="short", mappings=None,
                 "values": bool(string_field),
             },
             "showPercentChange": False,
-            "textMode": "value" if string_field else "value_and_name",
+            "textMode": "value" if string_field or not show_name
+            else "value_and_name",
             "wideLayout": True}}
 
 
@@ -154,34 +155,43 @@ def build():
         "rx_errors_total AS \"RX Errors\", rx_discards_total AS \"RX Discards\", "
         "time AS \"Observed\" FROM latest WHERE rn = 1 "
         "ORDER BY interface_name")
-    add(table(0, "Interface Status", 0, 17, 12, 8, interface_sql,
+    add(table(0, "Interface Status", 0, 17, 24, 8, interface_sql,
         "Latest state per selected firewall and interface. Blank logical-interface state is unavailable."))
-    traffic_sql = ("WITH samples AS (SELECT time, interface_name, rx_bytes_total, "
-        "tx_bytes_total, LAG(time) OVER (PARTITION BY hostname, interface_name ORDER BY time) "
-        "AS previous_time, LAG(rx_bytes_total) OVER (PARTITION BY hostname, interface_name "
-        "ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER "
-        "(PARTITION BY hostname, interface_name ORDER BY time) AS previous_tx "
-        f"{where('interface')} AND wan_classified = true AND time >= $__timeFrom "
-        "AND time <= $__timeTo) SELECT time, interface_name, "
+    traffic_sql = ("WITH samples AS (SELECT time, rx_bytes_total, "
+        "tx_bytes_total, LAG(time) OVER (ORDER BY time) "
+        "AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) "
+        "AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx "
+        f"{where('interface')} AND interface_name = ${{wan_interface:sqlstring}} "
+        "AND wan_classified = true AND time >= $__timeFrom "
+        "AND time <= $__timeTo) SELECT time, "
         "CASE WHEN rx_bytes_total >= previous_rx AND "
         "EXTRACT(EPOCH FROM (time - previous_time)) > 0 "
         "THEN (rx_bytes_total - previous_rx) * 8 / "
         "EXTRACT(EPOCH FROM (time - previous_time)) END "
-        "AS rx_bps, CASE WHEN tx_bytes_total >= previous_tx AND "
+        "AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND "
         "EXTRACT(EPOCH FROM (time - previous_time)) > 0 "
         "THEN (tx_bytes_total - previous_tx) * 8 / "
-        "EXTRACT(EPOCH FROM (time - previous_time)) END AS tx_bps FROM samples "
+        "EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples "
         "WHERE previous_time IS NOT NULL ORDER BY time")
-    add(timeseries(0, "WAN RX / TX", 12, 17, 6, 8, traffic_sql, unit="bps",
-        description="Rates derived from cumulative counters; negative deltas after reset are omitted."))
+    wan_panel = timeseries(
+        0, "${wan_interface:text}", 0, 25, 12, 9, traffic_sql, unit="bps",
+        description="Per-interface rates derived from cumulative counters. "
+        "Download and Upload current values are shown in the legend; negative "
+        "deltas after reset are omitted.")
+    wan_panel.update({
+        "repeat": "wan_interface",
+        "repeatDirection": "h",
+        "maxPerRow": 2,
+    })
+    add(wan_panel)
     fault_sql = ("SELECT time, interface_name, rx_errors_total, tx_errors_total, "
         "rx_discards_total "
         f"{where('interface')} AND time >= $__timeFrom AND time <= $__timeTo "
         "ORDER BY time")
-    add(timeseries(0, "Interface Fault Counters", 18, 17, 6, 8, fault_sql,
+    add(timeseries(0, "Interface Fault Counters", 0, 34, 24, 8, fault_sql,
         description="Cumulative counters. Missing PAN-OS counters remain null."))
 
-    add(row(0, "Licensing", 25))
+    add(row(0, "Licensing", 42))
     license_sql = ("WITH latest AS (SELECT subscription_name, status, expiry_date, "
         "remaining_days, expired_days, expired, perpetual, expiry_state, time, "
         "ROW_NUMBER() OVER (PARTITION BY hostname, subscription_name ORDER BY time DESC) AS rn "
@@ -190,9 +200,9 @@ def build():
         "status AS \"Status\", expiry_date AS \"Expiry\", remaining_days AS \"Days Remaining\", "
         "expired_days AS \"Days Expired\", perpetual AS \"Perpetual\", time AS \"Observed\" "
         "FROM latest WHERE rn = 1 ORDER BY subscription_name")
-    add(table(0, "Subscriptions and Expiry", 0, 26, 24, 6, license_sql))
+    add(table(0, "Subscriptions and Expiry", 0, 43, 24, 6, license_sql))
 
-    add(row(0, "Content Updates", 32))
+    add(row(0, "Content Updates", 49))
     content_sql = ("WITH latest AS (SELECT package_name, version, release_time, "
         "release_time_raw, age_days, time, ROW_NUMBER() OVER "
         "(PARTITION BY hostname, package_name ORDER BY time DESC) AS rn "
@@ -201,9 +211,9 @@ def build():
         "release_time AS \"Release Time\", age_days AS \"Age (days)\", "
         "release_time_raw AS \"Raw Release Time\", time AS \"Observed\" "
         "FROM latest WHERE rn = 1 ORDER BY package_name")
-    add(table(0, "Installed Content Packages", 0, 33, 24, 7, content_sql))
+    add(table(0, "Installed Content Packages", 0, 50, 24, 7, content_sql))
 
-    add(row(0, "Inventory", 40))
+    add(row(0, "Inventory", 57))
     inventory_sql = ("WITH latest AS (SELECT hostname, serial, model, management_ip, "
         "firmware, platform, platform_family, time, "
         "ROW_NUMBER() OVER (PARTITION BY hostname ORDER BY time DESC) AS rn "
@@ -212,33 +222,42 @@ def build():
         "management_ip AS \"Management IP\", firmware AS \"Software Version\", "
         "platform AS \"Platform\", platform_family AS \"Platform Family\", "
         "time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY hostname")
-    add(table(0, "Firewall Inventory", 0, 41, 24, 6, inventory_sql,
+    add(table(0, "Firewall Inventory", 0, 58, 24, 6, inventory_sql,
         "Management IP is explicit unavailable text because it is not present in the device measurement."))
 
-    add(row(0, "Collector Diagnostics", 47))
+    add(row(0, "Collector Diagnostics", 64))
     health_filter = ("FROM collector_health WHERE collector = 'paloalto' "
         "AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo "
         "ORDER BY time DESC LIMIT 1")
-    add(stat(0, "Last Collection", 0, 48, 4,
-             "SELECT time AS last_collection " + health_filter, unit="dateTimeAsIso"))
-    add(stat(0, "Collection Duration", 4, 48, 4,
-             "SELECT duration_ms AS collection_duration " + health_filter, unit="ms"))
-    add(stat(0, "Points Written", 8, 48, 4,
-             "SELECT points_written AS points_written " + health_filter))
-    add(stat(0, "API Requests", 12, 48, 3,
-        "SELECT api_requests " + health_filter))
-    add(stat(0, "Max API Duration", 15, 48, 3,
-        "SELECT api_duration_ms_max " + health_filter, unit="ms"))
-    add(stat(0, "Partial", 18, 48, 3,
-        "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial " + health_filter))
-    add(stat(0, "Errors", 21, 48, 3,
-        "SELECT error_count " + health_filter))
-    add(stat(0, "Collector Result", 19, 52, 5, collector_status,
+    latest_health_filter = ("FROM collector_health WHERE collector = 'paloalto' "
+        "AND site LIKE ${site:sqlstring} ORDER BY time DESC LIMIT 1")
+    add(stat(0, "Collector Result", 0, 65, 3, collector_status,
         mappings=[{"type": "value", "options": {
             "0": {"color": "red", "index": 0, "text": "Failed"},
             "1": {"color": "green", "index": 1, "text": "Successful"}}}],
         thresholds={"mode": "absolute", "steps": [{"color": "red", "value": None},
-            {"color": "green", "value": 1}]}))
+            {"color": "green", "value": 1}]}, show_name=False))
+    add(stat(0, "Last Collection", 3, 65, 3,
+             'SELECT CAST(time AS VARCHAR) AS "Last Collection" '
+             + latest_health_filter,
+             unit="string", string_field="Last Collection",
+             show_name=False))
+    add(stat(0, "Collection Duration", 6, 65, 3,
+             "SELECT duration_ms AS collection_duration " + health_filter,
+             unit="ms", show_name=False))
+    add(stat(0, "Points Written", 9, 65, 3,
+             "SELECT points_written AS points_written " + health_filter,
+             show_name=False))
+    add(stat(0, "API Requests", 12, 65, 3,
+        "SELECT api_requests " + health_filter, show_name=False))
+    add(stat(0, "Max API Duration", 15, 65, 3,
+        "SELECT api_duration_ms_max " + health_filter,
+        unit="ms", show_name=False))
+    add(stat(0, "Partial", 18, 65, 3,
+        "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial " + health_filter,
+        show_name=False))
+    add(stat(0, "Errors", 21, 65, 3,
+        "SELECT error_count " + health_filter, show_name=False))
 
     variable = lambda name, label, query, depends=False: {
         "name": name, "label": label, "type": "query", "datasource": DATASOURCE,
@@ -250,13 +269,27 @@ def build():
               "AND customer LIKE ${customer:sqlstring} ORDER BY site")
     device_q = ("SELECT DISTINCT hostname FROM device WHERE collector = 'paloalto' "
                 "AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} ORDER BY hostname")
+    wan_q = ("SELECT DISTINCT COALESCE(NULLIF(wan_display_name, ''), "
+        "INITCAP(wan_role), interface_name) || ' — ' || interface_name AS __text, "
+        "interface_name AS __value FROM interface WHERE collector = 'paloalto' "
+        "AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} "
+        "AND hostname LIKE ${device:sqlstring} AND wan_classified = true ORDER BY __text")
+    wan_variable = variable("wan_interface", "WAN Interface", wan_q, True)
+    wan_variable.update({
+        "includeAll": True,
+        "allValue": None,
+        "multi": True,
+        "hide": 2,
+        "current": {"selected": True, "text": "All", "value": "$__all"},
+    })
     return {"annotations": {"list": []}, "description":
         "Read-only operational view of canonical Palo Alto Networks PAN-OS telemetry.",
         "editable": True, "fiscalYearStartMonth": 0, "graphTooltip": 1,
         "id": None, "links": [], "panels": panels, "refresh": "2m",
         "schemaVersion": 41, "tags": ["itp", "paloalto", "firewall", "operations"],
         "templating": {"list": [variable("customer", "Customer", customer_q),
-            variable("site", "Site", site_q, True), variable("device", "Device", device_q, True)]},
+            variable("site", "Site", site_q, True),
+            variable("device", "Device", device_q, True), wan_variable]},
         "time": {"from": "now-24h", "to": "now"}, "timepicker": {},
         "timezone": "browser", "title": "Palo Alto Operational Overview",
         "uid": "paloalto-operational-overview", "version": 1, "weekStart": ""}

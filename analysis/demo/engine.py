@@ -49,7 +49,7 @@ class DemoTelemetry:
         self.start_at = self.end_at - timedelta(days=self.days)
         self.random = random.Random(self.seed)
 
-    def _common(self, collector, hostname, site="Greenwood College"):
+    def _common(self, collector, hostname, site="MLC Reference Site"):
         return {
             "collector": collector, "customer": "ITP Demo",
             "site": site, "hostname": hostname,
@@ -77,7 +77,7 @@ class DemoTelemetry:
 
             # Standard Telegraf-style host metrics.
             host_tags = {"host": "itp-demo-host", "customer": "ITP Demo",
-                         "site": "Greenwood College"}
+                         "site": "MLC Reference Site"}
             cpu = max(2.0, min(98.0, 32 + jitter + (45 if warning else 0)))
             memory = max(10.0, min(98.0, 55 + jitter + (30 if warning else 0)))
             points.extend((
@@ -175,7 +175,7 @@ class DemoTelemetry:
                     "collector_health", at,
                     {"collector": collector, "customer": "ITP Demo",
                      "site": ("Northwind College" if collector == "mist"
-                              else "Greenwood College"),
+                              else "MLC Reference Site"),
                      "diagnostic_category": "success" if success else "api_failure"},
                     {"success": success, "partial": warning,
                      "duration_ms": 450 + int(self.random.random() * 500),
@@ -252,7 +252,7 @@ class DemoEngine:
     def _config(self):
         return {
             "schema_version": 1, "deployment_id": DEMO_DEPLOYMENT,
-            "customer": "ITP Demo", "site": "Greenwood College",
+            "customer": "ITP Demo", "site": "MLC Reference Site",
             "deployment": {"name": "ITP Demonstration", "type": "Home Lab"},
             "discovery": {"interval_seconds": 3600, "concurrency": 5,
                           "timeout_seconds": 1, "retries": 0},

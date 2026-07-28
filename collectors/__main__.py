@@ -356,6 +356,8 @@ async def _run(args):
             dashboard_template=settings.get("dashboard_template", "/app/dashboards/Operations/operations-wallboard.json"),
             summary_output=settings.get("summary_output", "/app/runtime/dashboard/wallboard-summary.json"),
             dashboard_output=settings.get("dashboard_output", "/app/runtime/dashboard/operations/operations-wallboard.json"),
+            capability_registry=settings.get(
+                "capability_registry", "/app/runtime/dashboard/managed/registry.json"),
             service_health=settings.get(
                 "service_health", "/app/runtime/services/service-health.json"),
             freshness_seconds=settings.get("freshness_seconds", 900)).run()
@@ -662,14 +664,16 @@ def main():
         # Canonical fixture/history processing is deliberately independent of
         # deployment configuration and any inherited ITP_PROFILE value.
         logging_context = ""
-    elif args.profile:
+    elif args.profile and not (args.config or os.getenv("COLLECTOR_CONFIG")):
         from itp_profiles import DeploymentProfile
         profile = DeploymentProfile.load(args.profile, ROOT).activate()
         args.config = args.config or str(profile.paths.discovery)
         logging_context = f" deployment_id={profile.deployment_id}"
     else:
         args.config = args.config or os.getenv("COLLECTOR_CONFIG", "/app/config.yml")
-        logging_context = ""
+        deployment_id = os.getenv("ITP_DEPLOYMENT_ID", "")
+        logging_context = (
+            f" deployment_id={deployment_id}" if deployment_id else "")
     if args.command == "inventory" and args.action in ("show", "retire", "restore") and not args.asset_id:
         parser.error(f"inventory {args.action} requires asset_id")
     if args.command == "inventory" and args.action in ("retire", "restore") and not args.reason:

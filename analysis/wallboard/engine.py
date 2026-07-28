@@ -214,7 +214,7 @@ def _printer_exceptions(assets, operations, scopes):
                         for value in sorted(selected, key=lambda item: (
                             item["asset"], item["condition"])))
         else:
-            rows.append({"scope": scope["scope"], "asset": "No printer action required",
+            rows.append({"scope": scope["scope"], "asset": "No printers require attention",
                 "location": "", "condition": "", "last_seen": ""})
     return rows
 
@@ -313,14 +313,19 @@ def _monitoring_rows(collector_rows, scopes):
             label, color = "Monitoring not started", "gray"
         elif issues:
             label = (
-                f"{len(issues)} collector needs attention"
+                f"{len(issues)} collector requires attention"
                 if len(issues) == 1
-                else f"{len(issues)} collectors need attention")
+                else f"{len(issues)} collectors require attention")
             color = "orange"
         else:
             label, color = "Monitoring Healthy", "green"
+        detail = "; ".join(
+            f"{value['collector']} {str(value.get('status', '')).casefold()} "
+            f"({value.get('freshness') or 'never'})"
+            for value in sorted(issues, key=lambda item: item["collector"]))
         rows.append({
             "scope": scope["scope"], "value": label, "color": color,
+            "display": f"{label}\n{detail}" if detail else label,
             "collectors_with_issues": len(issues),
             "last_successful_collection": successes[0] if successes else None,
             "stale_services": stale_services,
@@ -333,9 +338,14 @@ def _certificate_rows(operations, scopes, enabled):
         value for value in (
             list(operations.get("issues", []))
             + list(operations.get("risks", [])))
-        if "certificate" in (
+        if (
+            "certificate" in (
             f"{value.get('rule_id', '')} {value.get('title', '')} "
-            f"{value.get('summary', '')}").casefold()]
+            f"{value.get('summary', '')}").casefold()
+            or "licen" in (
+                f"{value.get('rule_id', '')} {value.get('title', '')}").casefold()
+            or any(key in (value.get("evidence") or {})
+                   for key in ("days_remaining", "expired")))]
     rows = []
     for scope in scopes:
         selected = [value for value in candidates
@@ -344,13 +354,50 @@ def _certificate_rows(operations, scopes, enabled):
             label, color = "Not Enabled", "gray"
         elif selected:
             label = (
-                "1 certificate needs attention" if len(selected) == 1
-                else f"{len(selected)} certificates need attention")
+                "1 certificate requires attention" if len(selected) == 1
+                else f"{len(selected)} certificates require attention")
             color = "orange"
         else:
             label, color = "Certificates Healthy", "green"
         rows.append({
             "scope": scope["scope"], "value": label, "color": color})
+    return rows
+
+
+def _service_card_rows(service_scopes, scopes, service):
+    rows = []
+    for scope in scopes:
+        value = next(item for item in
+                     service_scopes[scope["scope"]]["services"]
+                     if item["service"] == service)
+        summary = str(value.get("summary") or "").strip()
+        status = value["status"]
+        rows.append({
+            "scope": scope["scope"], "value": status,
+            "display": f"{status}\n{summary}" if summary else status,
+            "summary": summary,
+        })
+    return rows
+
+
+def _overall_rows(scope_health, service_scopes, scopes):
+    rank = {"Critical": 4, "Warning": 3, "Unknown": 2,
+            "Healthy": 1, "Not Enabled": 0}
+    rows = []
+    for scope in scopes:
+        status = scope_health[scope["scope"]]
+        services = service_scopes[scope["scope"]]["services"]
+        matching = sorted(
+            (value for value in services if value.get("status") == status),
+            key=lambda value: (
+                -rank.get(value.get("status"), 0),
+                str(value.get("service", ""))))
+        context = str(matching[0].get("summary") or "").strip() if matching else ""
+        rows.append({
+            "scope": scope["scope"], "value": status,
+            "display": f"{status}\n{context}" if context else status,
+            "context": context,
+        })
     return rows
 
 
@@ -608,10 +655,13 @@ class WallboardEngine:
             last = value.get("last_run") or value.get("last_successful_run")
             observed = _time(last)
             collector_age = int((generated - observed).total_seconds()) if observed else None
-            status = "Failed" if value.get("status") == "failed" else \
-                     "Stale" if collector_age is None or collector_age > self.freshness_seconds else \
-                     "Healthy" if (value.get("status") == "healthy"
-                         or value.get("last_successful_run") == last) else "Warning"
+            # Infrastructure state owns collector health. Reapplying one
+            # wallboard-wide age threshold here incorrectly turns healthy
+            # collectors with longer schedules into additional incidents.
+            status = {
+                "failed": "Failed", "stale": "Stale", "warning": "Warning",
+                "healthy": "Healthy",
+            }.get(str(value.get("status") or "").casefold(), "Warning")
             service_labels = {
                 "internet": "Internet", "firewall": "Firewall",
                 "printing": "Printing", "wireless": "Wireless",
@@ -661,6 +711,10 @@ class WallboardEngine:
             wan_uplinks, scopes, "internet" in capabilities)
         certificate_rows = _certificate_rows(
             operations, scopes, "firewall" in capabilities)
+        security_rows = _service_card_rows(
+            service_scopes, scopes, "Security")
+        overall_rows = _overall_rows(
+            scope_health, service_scopes, scopes)
         runtime_root = self.operations_state.parent.parent \
             if self.operations_state.parent.name == "operations" \
             else self.operations_state.parent
@@ -684,6 +738,7 @@ class WallboardEngine:
             "readiness": readiness,
             "dashboard_uids": dashboard_uids,
             "overall_health": scope_health,
+            "overall": overall_rows,
             "service_scopes": service_scopes,
             "service_health": service_scopes["all"]["services"],
             "topology": {"type": "logical_aggregate", "nodes": topology, "edges": topology_edges},
@@ -691,6 +746,7 @@ class WallboardEngine:
             "monitoring": monitoring,
             "internet": internet,
             "certificates": certificate_rows,
+            "security": security_rows,
             "changes": changes,
             "collectors": sorted(collector_rows, key=lambda value: (
                 value["scope"], value["collector"], value["site"])),

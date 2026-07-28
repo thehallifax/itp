@@ -156,15 +156,20 @@ def test_capability_disabled_domains_are_not_broken(tmp_path):
     panels = {panel["title"]: panel for panel in dashboard["panels"]}
     for title in ("Wireless Access Points", "Servers", "Firewalls"):
         assert title not in panels
-    assert "Printer Action Required" not in panels
+    assert "Printers Requiring Attention" not in panels
     assert "Printing Service" not in panels
 
 
 def test_no_actionable_printer_conditions(tmp_path):
     engine = fixture(tmp_path, operations={"issues": [], "risks": [], "recommendations": []})
-    result = engine.evaluate(NOW)
+    result = engine.run(NOW)
     estate = next(value for value in result["printer_exceptions"] if value["scope"] == "all")
-    assert estate["asset"] == "No printer action required"
+    assert estate["asset"] == "No printers require attention"
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    panel = next(value for value in dashboard["panels"]
+                 if value["title"] == "Printers Requiring Attention")
+    assert rows(panel)[0]["asset"] == "No printers require attention"
 
 
 def test_printer_filter_includes_only_service_blocking_conditions(tmp_path):
@@ -178,12 +183,21 @@ def test_printer_filter_includes_only_service_blocking_conditions(tmp_path):
                 {"condition": "Low paper", "actionable": True},
                 {"condition": "Staples empty", "actionable": True}]}}
     result = fixture(tmp_path, assets=[printer], operations={
-        "issues": [], "risks": [], "recommendations": []}).evaluate(NOW)
+        "issues": [], "risks": [], "recommendations": []}).run(NOW)
     conditions = [value["condition"] for value in result["printer_exceptions"]
                   if value["scope"] == "all"]
     assert conditions == ["Black toner (4% remaining)", "Paper jam", "Staples empty"]
     assert all("paper tray" not in value.lower() and "low paper" not in value.lower()
                for value in conditions)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    panel = next(value for value in dashboard["panels"]
+                 if value["title"] == "Printers Requiring Attention")
+    rendered = rows(panel)
+    assert {value["asset"] for value in rendered
+            if value["scope"] == "all"} == {"PRN-1"}
+    assert set(rendered[0]) == {
+        "scope", "asset", "location", "condition", "last_seen"}
 
 
 def test_multiple_authoritative_wan_uplinks_and_samples(tmp_path):
@@ -230,10 +244,40 @@ def test_one_wan_renders_one_identified_graph(tmp_path):
         "WAN · Primary · ethernet1/1"]
     assert "Current download: 2000 bps" in wan[0]["description"]
     assert "current upload: 700 bps" in wan[0]["description"]
+    assert wan[0]["gridPos"]["w"] == 24
+    assert wan[0]["gridPos"]["h"] >= 8
+    assert wan[0]["options"]["legend"]["calcs"] == ["lastNotNull"]
     internet = next(value for value in dashboard["panels"]
                     if value["title"] == "Internet")
     assert next(value for value in rows(internet)
                 if value["scope"] == "all")["value"] == "All WANs Up"
+
+
+def test_three_wans_wrap_as_two_columns_then_full_width(tmp_path):
+    signals = {"wan": [{
+        "name": f"ethernet1/{index}",
+        "display_name": label,
+        "role": role,
+        "classification_authoritative": True,
+        "available": True,
+        "site_id": "site:hq",
+        "samples": [{"time": "2026-07-23T00:58:00Z",
+                     "rx_bps": index * 1000, "tx_bps": index * 500}],
+    } for index, label, role in (
+        (1, "Primary", "primary"),
+        (2, "Backup", "secondary"),
+        (3, "LTE", "cellular"))]}
+    fixture(tmp_path, signals=signals).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    wan = sorted(
+        (value for value in dashboard["panels"]
+         if value["title"].startswith("WAN ·")),
+        key=lambda value: value["gridPos"]["y"] * 24 + value["gridPos"]["x"])
+    assert len(wan) == 3
+    assert [(value["gridPos"]["x"], value["gridPos"]["w"])
+            for value in wan] == [(0, 12), (12, 12), (0, 24)]
+    assert all(value["gridPos"]["h"] >= 8 for value in wan)
 
 
 def test_unclassified_interfaces_do_not_become_wan(tmp_path):
@@ -305,11 +349,14 @@ def test_monitoring_card_is_actionable_and_links_to_diagnostics(tmp_path):
          "last_run": "2026-07-23T00:30:00Z",
          "last_successful_run": "2026-07-23T00:30:00Z"},
     ]
+    infrastructure["collectors"][1]["status"] = "failed"
     write(tmp_path / "infrastructure.json", infrastructure)
     result = engine.run(NOW)
     estate = next(value for value in result["monitoring"]
                   if value["scope"] == "all")
-    assert estate["value"] == "1 collector needs attention"
+    assert estate["value"] == "1 collector requires attention"
+    assert estate["display"].startswith(
+        "1 collector requires attention\nsnmp failed")
     assert estate["last_successful_collection"] == \
         "2026-07-23T00:59:00Z"
     assert estate["stale_services"] == ["Switching"]
@@ -346,7 +393,8 @@ def test_action_language_certificates_printers_and_recent_changes(tmp_path):
     result = engine.run(NOW)
     actions = {value["issue"] for value in result["actions"]
                if value["scope"] == "all"}
-    assert "Renew DNS Security certificate today" in actions
+    assert any(value.startswith("Renew DNS Security")
+               and value.endswith("certificate today") for value in actions)
     assert "7 printers require attention" in actions
     changes = {value["change"] for value in result["changes"]
                if value["scope"] == "all"}
@@ -357,7 +405,37 @@ def test_action_language_certificates_printers_and_recent_changes(tmp_path):
         value["title"] for value in dashboard["panels"]}
 
 
-def test_site_summary_freshness_links_and_supported_csv_contract(tmp_path):
+def test_certificate_finding_is_consistent_across_service_cards_and_actions(
+        tmp_path):
+    operations = {"issues": [], "risks": [{
+        "id": "dns-expired", "priority": 90, "severity": "High",
+        "category": "Security", "title": "DNS Security expired",
+        "summary": "DNS Security has 0 days remaining.",
+        "site_id": "site:hq", "kind": "risk",
+        "rule_id": "PA-LICENCE-EXPIRED",
+        "evidence": {"days_remaining": 0, "expired": True,
+                     "licence": "DNS Security"},
+    }], "recommendations": []}
+    result = fixture(
+        tmp_path, operations=operations,
+        service_statuses={"Security": "Critical"}).run(NOW)
+    security = next(value for value in result["security"]
+                    if value["scope"] == "site:hq")
+    certificates = next(value for value in result["certificates"]
+                        if value["scope"] == "site:hq")
+    overall = next(value for value in result["overall"]
+                   if value["scope"] == "site:hq")
+    actions = {value["issue"] for value in result["actions"]
+               if value["scope"] == "site:hq"}
+    assert security["value"] == "Critical"
+    assert certificates["value"] == "1 certificate requires attention"
+    assert overall["value"] == "Critical"
+    assert "Security canonical summary." in overall["context"]
+    assert any(value.startswith("Renew DNS Security")
+               and value.endswith("certificate today") for value in actions)
+
+
+def test_site_summary_security_links_and_supported_csv_contract(tmp_path):
     fixture(tmp_path).run(NOW)
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
     variable = dashboard["templating"]["list"][0]
@@ -367,7 +445,8 @@ def test_site_summary_freshness_links_and_supported_csv_contract(tmp_path):
     assert "${site:text}" in panels["Issues"]["description"]
     assert rows(panels["Issues"])[0]["value"].endswith(
         "active issues")
-    assert "Freshness" in panels
+    assert "Security" in panels
+    assert "Canonical security service" in panels["Security"]["description"]
     assert panels["Monitoring"]["links"][0]["url"].startswith(
         "/d/itp-collector-health")
     assert panels["Wireless Access Points"]["links"][0]["url"].startswith(
@@ -447,14 +526,18 @@ def test_polished_grid_has_no_overlap_and_dominant_action_queue(tmp_path):
     panels = dashboard["panels"]
     summaries = {panel["title"]: panel for panel in panels
                  if panel["title"] in {"Issues", "Overall Health", "Monitoring",
-                    "Freshness", "Internet", "Firewall", "Printing",
+                    "Security", "Internet", "Firewall", "Printing",
                     "Certificates"}}
     assert {panel["gridPos"]["h"] for panel in summaries.values()} == {3}
     assert set(summaries) == {"Issues", "Overall Health", "Monitoring",
-        "Freshness", "Internet", "Firewall", "Printing", "Certificates"}
+        "Security", "Internet", "Firewall", "Printing", "Certificates"}
     assert {panel["gridPos"]["w"] for panel in summaries.values()} == {3}
     action = next(panel for panel in panels if panel["title"] == "Action Required")
-    assert action["gridPos"]["w"] == 24 and action["gridPos"]["h"] == 7
+    assert action["gridPos"]["w"] == 16 and action["gridPos"]["h"] == 7
+    printers = next(panel for panel in panels
+                    if panel["title"] == "Printers Requiring Attention")
+    assert printers["gridPos"]["w"] == 24
+    assert printers["gridPos"]["y"] >= action["gridPos"]["y"] + action["gridPos"]["h"]
     for index, left in enumerate(panels):
         a = left["gridPos"]
         for right in panels[index + 1:]:
@@ -464,7 +547,7 @@ def test_polished_grid_has_no_overlap_and_dominant_action_queue(tmp_path):
             assert not overlap, (left["title"], right["title"])
 
 
-def test_action_columns_widths_and_readable_freshness(tmp_path):
+def test_action_columns_widths_and_security_card(tmp_path):
     fixture(tmp_path).run(NOW)
     dashboard = json.loads((tmp_path / "grafana/operations-wallboard.json").read_text())
     panels = {panel["title"]: panel for panel in dashboard["panels"]}
@@ -475,7 +558,8 @@ def test_action_columns_widths_and_readable_freshness(tmp_path):
               for item in action["fieldConfig"]["overrides"]}
     assert widths["issue"] > widths["asset"] > widths["severity"]
     assert widths["age"] <= 90
-    assert rows(panels["Freshness"])[0]["value"] == "Fresh"
+    assert rows(panels["Security"])[0]["value"].startswith("Healthy")
+    assert "Freshness" not in panels
     assert "Collector State" not in panels
 
 

@@ -100,7 +100,7 @@ def _layout(dashboard):
     """Pack capability-gated panels into a deliberate, overlap-free grid."""
     panels = {value["title"]: value for value in dashboard["panels"]}
     summary = [
-        "Issues", "Overall Health", "Monitoring", "Freshness",
+        "Issues", "Overall Health", "Monitoring", "Security",
         "Internet", "Firewall", "Printing", "Certificates"]
     for index, title in enumerate(summary):
         if title not in panels:
@@ -116,41 +116,55 @@ def _layout(dashboard):
         "Compute Service", "Identity Service",
         "Storage Service", "Voice Service", "Email Service")
         if title in panels]
-    for index, title in enumerate(service_titles):
-        row, column = divmod(index, 6)
-        panels[title]["gridPos"] = {"x": column * 4, "y": y + row * 3,
-                                    "w": 4, "h": 3}
-    y += max(1, (len(service_titles) + 5) // 6) * 3
-
     infrastructure = [title for title in (
         "Wireless Access Points", "Switches", "Servers")
         if title in panels]
-    compact_width = 4 if len(infrastructure) == 4 else \
-                    5 if len(infrastructure) == 3 else \
-                    6 if len(infrastructure) == 2 else 8
-    for index, title in enumerate(infrastructure):
-        panels[title]["gridPos"] = {"x": index * compact_width, "y": y,
-                                    "w": compact_width, "h": 4}
-    if infrastructure:
-        y += 4
 
     wan_panels = sorted(
         (title for title in panels if title.startswith("WAN ·")),
         key=str.casefold)
+    last_wan = len(wan_panels) - 1
     for index, title in enumerate(wan_panels):
         row, column = divmod(index, 2)
+        single = len(wan_panels) == 1
+        final_odd = len(wan_panels) > 1 and index == last_wan and \
+            len(wan_panels) % 2 == 1
         panels[title]["gridPos"] = {
-            "x": column * 12, "y": y + row * 5, "w": 12, "h": 5}
+            "x": 0 if single or final_odd else column * 12,
+            "y": y + row * 8,
+            "w": 24 if single or final_odd else 12,
+            "h": 8}
     if wan_panels:
-        y += ((len(wan_panels) + 1) // 2) * 5
+        y += ((len(wan_panels) + 1) // 2) * 8
     if "WAN Telemetry" in panels:
         panels["WAN Telemetry"]["gridPos"] = {
             "x": 0, "y": y, "w": 24, "h": 4}
         y += 4
+    panels["Action Required"]["gridPos"] = {
+        "x": 0, "y": y, "w": 16, "h": 7}
     panels["Changes Since Yesterday"]["gridPos"] = {
-        "x": 0, "y": y, "w": 24, "h": 5}
-    y += 5
-    panels["Action Required"]["gridPos"] = {"x": 0, "y": y, "w": 24, "h": 7}
+        "x": 16, "y": y, "w": 8, "h": 7}
+    y += 7
+    if "Printers Requiring Attention" in panels:
+        panels["Printers Requiring Attention"]["gridPos"] = {
+            "x": 0, "y": y, "w": 24, "h": 6}
+        y += 6
+
+    # Optional capability and inventory detail belongs below the three
+    # operational rows. Keeping the rows above fully occupied prevents
+    # Grafana's classic grid compaction from lifting one WAN graph above its
+    # peer when only a subset of optional detail panels is enabled.
+    for index, title in enumerate(service_titles):
+        row, column = divmod(index, 6)
+        panels[title]["gridPos"] = {"x": column * 4, "y": y + row * 3,
+                                    "w": 4, "h": 3}
+    if service_titles:
+        y += ((len(service_titles) + 5) // 6) * 3
+    compact_width = 5 if len(infrastructure) == 3 else \
+                    6 if len(infrastructure) == 2 else 8
+    for index, title in enumerate(infrastructure):
+        panels[title]["gridPos"] = {"x": index * compact_width, "y": y,
+                                    "w": compact_width, "h": 4}
 
 
 def _topology(panel, topology):
@@ -213,12 +227,14 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         "Site Operational Status": "Issues",
         "Overall State": "Overall Health",
         "Last Service Health": "Certificates",
-        "Data Freshness": "Freshness",
+        "Data Freshness": "Security",
+        "Freshness": "Security",
         "Internet Service": "Internet",
         "Security Service": "Firewall",
         "Printing Service": "Printing",
         "Monitoring Service": "Monitoring",
         "Collector State": "Changes Since Yesterday",
+        "Printer Action Required": "Printers Requiring Attention",
     }
     for panel in dashboard["panels"]:
         panel["title"] = title_changes.get(panel["title"], panel["title"])
@@ -240,17 +256,23 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     _stat(panels["Issues"], issue_rows, "value", False)
     panels["Issues"]["description"] = (
         "Active operational issues for the selected canonical site (${site:text}).")
-    health_rows = [{"scope": scope, "value": value}
-                   for scope, value in sorted(summary["overall_health"].items())]
-    _stat(panels["Overall Health"], health_rows, "value", True)
-    refresh_rows = [{"scope": scope["scope"],
-        "value": freshness.get("age_display") or "Unavailable"}
-        for scope in summary["scopes"]]
-    freshness_rows = [{"scope": scope["scope"], "value": freshness["status"]}
-                      for scope in summary["scopes"]]
-    _stat(panels["Freshness"], freshness_rows, "value", True)
-    panels["Freshness"]["description"] = (
-        f"Stale when canonical platform inputs exceed {freshness['threshold_seconds']} seconds.")
+    overall_colors = {
+        value["display"]: HEALTH_COLORS.get(value["value"], "gray")
+        for value in summary["overall"]}
+    _stat(
+        panels["Overall Health"], summary["overall"], "display",
+        value_colors=overall_colors)
+    panels["Overall Health"]["description"] = (
+        "Highest canonical service state with its authoritative service-health explanation.")
+    security_colors = {
+        value["display"]: HEALTH_COLORS.get(value["value"], "gray")
+        for value in summary["security"]}
+    _stat(
+        panels["Security"], summary["security"], "display",
+        value_colors=security_colors)
+    panels["Security"]["description"] = (
+        "Canonical security service: certificates, subscriptions, threat "
+        "services, and security findings.")
     certificate_colors = {
         value["value"]: value["color"]
         for value in summary["certificates"]}
@@ -260,9 +282,9 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     panels["Certificates"]["description"] = (
         "Certificate conditions promoted by canonical Operations findings.")
     monitoring_colors = {
-        value["value"]: value["color"] for value in summary["monitoring"]}
+        value["display"]: value["color"] for value in summary["monitoring"]}
     _stat(
-        panels["Monitoring"], summary["monitoring"], "value",
+        panels["Monitoring"], summary["monitoring"], "display",
         value_colors=monitoring_colors)
     monitoring_details = []
     for value in summary["monitoring"]:
@@ -408,6 +430,16 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
             "custom": {"drawStyle": "line", "lineWidth": 2,
                        "fillOpacity": 12, "showPoints": "never"}},
             "overrides": []}
+        panel["options"] = {
+            "legend": {
+                "calcs": ["lastNotNull"],
+                "displayMode": "table",
+                "placement": "bottom",
+                "showLegend": True,
+                "width": 280,
+            },
+            "tooltip": {"mode": "multi", "sort": "desc"},
+        }
         latest = sorted(samples, key=lambda value: value.get("time", ""))[-1] \
             if samples else {}
         panel["description"] = (
@@ -432,8 +464,17 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         dashboard["panels"].append(panel)
         panels[panel["title"]] = panel
 
-    _table(panels["Printer Action Required"], summary["printer_exceptions"],
+    _table(panels["Printers Requiring Attention"],
+           summary["printer_exceptions"],
            ("scope", "asset", "location", "condition", "last_seen"))
+    printer_organize = panels[
+        "Printers Requiring Attention"]["transformations"][-1]["options"]
+    printer_organize["renameByName"] = {
+        "asset": "Printer", "location": "Location",
+        "condition": "Condition", "last_seen": "Last Seen"}
+    _column_widths(panels["Printers Requiring Attention"], {
+        "asset": 180, "location": 150,
+        "condition": 240, "last_seen": 170})
     _table(
         panels["Changes Since Yesterday"], summary["changes"],
         ("scope", "time", "service", "change"))
@@ -470,11 +511,13 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     firewall_uids = ("paloalto-operational-overview", "fortigate-infrastructure-overview",
                      "itp-infrastructure-overview")
     panels["Firewall"]["links"] = links(*firewall_uids)
+    panels["Security"]["links"] = links(*firewall_uids)
     panels["Internet"]["links"] = links(*firewall_uids)
     for title in (value for value in panels if value.startswith("WAN ·")):
         panels[title]["links"] = links(*firewall_uids)
     printing = [uid for uid in available if "print" in uid.lower()]
     panels["Printing"]["links"] = links(*printing)
+    panels["Printers Requiring Attention"]["links"] = links(*printing)
     panels["Monitoring"]["links"] = links("itp-collector-health")
     disabled_panels = {title for title, name in service_titles.items()
                        if name not in enabled_service_names}
@@ -482,8 +525,9 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                           "Switches": "Switching", "Servers": "Compute"}
     disabled_panels.update(title for title, service in service_for_domain.items()
                            if service not in enabled_service_names)
-    disabled_panels.update({
-        "Firewalls", "Printer Action Required"})
+    disabled_panels.add("Firewalls")
+    if "Printing" not in enabled_service_names:
+        disabled_panels.add("Printers Requiring Attention")
     dashboard["panels"] = [panel for panel in dashboard["panels"]
                            if panel["title"] not in disabled_panels]
     _layout(dashboard)

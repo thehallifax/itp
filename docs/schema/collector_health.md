@@ -5,7 +5,8 @@ optional `diagnostic_category`. Fields: `success`, `partial` (boolean), `duratio
 (milliseconds), `api_requests`, `retry_count`, `error_count`, `devices_returned`,
 `points_written` (counts). Example:
 `collector_health,collector=fortigate,customer=acme,site=hq success=true,partial=false,duration_ms=120i`.
-Collectors: Mist and FortiGate API; other collectors adopt this contract incrementally.
+Collectors: Mist, FortiGate API, Palo Alto, and PaperCut MF; other collectors
+adopt this contract incrementally.
 
 Palo Alto adds `api_duration_ms_total` and `api_duration_ms_max` to the
 existing `api_requests`, `retry_count`, `partial`, `error_count`,

@@ -262,7 +262,7 @@ class DashboardPackRegistry:
         }
         labels = {
             "Collectors Healthy": default_label,
-            "Collectors Failed": default_label,
+            "Collectors Requiring Attention": default_label,
             "Latest Duration": "No run yet",
             "Latest Points Written": "No run yet",
         }

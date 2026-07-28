@@ -544,7 +544,24 @@ class Scheduler:
 
     async def run(self, discovery_only=False):
         if discovery_only:
-            await self.execute_once("discover")
+            stop_event = asyncio.Event()
+            tasks = []
+            try:
+                await self.execute_once("discover")
+                tasks = [
+                    asyncio.create_task(self._continuous_loop(
+                        collector, "discover",
+                        collector.discovery_interval, stop_event))
+                    for collector in self.collectors
+                ]
+                await asyncio.gather(*tasks)
+            finally:
+                self._shutdown = True
+                stop_event.set()
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
             return
         stop_event = asyncio.Event()
         tasks = []

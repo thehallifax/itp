@@ -12,6 +12,10 @@ Tracked configuration lives in `profiles/<id>/`: `profile.yml`, `discovery.yml`,
 Profile IDs are stable lowercase identifiers. Customer display names and
 canonical site names remain separate.
 
+The canonical development baseline is the anonymised `mlc` profile. See
+[MLC canonical baseline](mlc-baseline.md) for its complete profile, runtime,
+database, collector, analysis, and dashboard lifecycle.
+
 Tracked profile metadata is anonymised. Copy `sites.yml` to the ignored
 `sites.local.yml` beside it to supply deployment-specific display names and
 aliases. Profile activation automatically mounts that complete local registry

@@ -109,6 +109,7 @@ services:
       - TZ=${TZ}
       - ITP_PROFILE=${ITP_PROFILE:-}
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
+      - COLLECTOR_CONFIG=/app/config.yml
       - ITP_RUNTIME_DIR=/app/runtime/${ITP_PROFILE:-legacy}
       - COLLECTOR_HEALTH_PATH=/app/runtime/${ITP_PROFILE:-legacy}/collector-health
       - SITES_CONFIG=/app/config/sites.yml

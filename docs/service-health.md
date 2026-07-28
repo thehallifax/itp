@@ -95,6 +95,26 @@ Storage, Voice, and Email remain `Not Enabled` until a collector manifest
 provides those capabilities. Security currently uses the existing firewall
 capability because firewall collectors provide the available security evidence.
 
+## Projection contract
+
+| Service | Evidence | Deterministic decision and explanation | Dashboard output |
+| --- | --- | --- | --- |
+| Internet | Authoritatively classified WAN signals | Critical when all configured uplinks are down; Warning for degraded redundancy; Healthy only with positive current uplink evidence | Internet card and per-WAN graphs |
+| Security | Firewall assets/signals plus security, subscription and certificate findings | Highest explicit availability or security degradation; summary states whether availability, certificate, or subscription evidence requires attention | Security, Firewall and Certificates cards |
+| Monitoring | Enabled collector records and collector findings | Critical/Warning for failed, stale or partial coverage; Healthy only with successful current collector evidence | Monitoring card and Collector Health |
+| Printing | Printer/server assets and printing findings | Critical/Warning for unavailable services or actionable device conditions; otherwise Healthy with current PaperCut evidence | Printing card and printer exception table |
+| Switching | Switch assets, availability and network findings | State follows authoritative switch availability and findings; no evidence remains Unknown | Switching card/detail |
+| Wireless | AP/client assets and wireless findings | State follows authoritative AP/client evidence; absent capability is Not Enabled | Wireless card/detail |
+| Identity | Identity service assets and findings | Explicit outage/degradation wins; no enabled capability is Not Enabled | Identity service card |
+| Compute | Server/virtualisation assets and findings | Explicit workload/platform impact wins; powered-off alone is not failure | Compute service card |
+| Storage | Storage assets and findings | Explicit unavailability/capacity evidence determines state | Storage service card |
+| Voice | Voice assets and findings | Explicit service-impact evidence determines state | Voice service card |
+| Email | Email assets and findings | Explicit service-impact evidence determines state | Email service card |
+
+Every emitted row contains the selected status, human explanation, affected
+assets/users where inferable, last change, and evidence. Dashboards render this
+projection; they do not re-evaluate the decision.
+
 Internet evaluation consumes only signals marked
 `classification_authoritative=true`. Unconfigured, invalid, incomplete, or
 stale WAN evidence is Unknown. All configured uplinks down is Critical;

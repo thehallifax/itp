@@ -25,8 +25,8 @@ def profile_tree(tmp_path):
     write(profile / "discovery.yml", {"schema_version": 1, "collectors": {}})
     write(profile / "dashboards.yml", {"enabled": True})
     write(profile / "sites.yml", {"sites": [{
-        "id": "MLC", "display_name": "Greenwood College",
-        "aliases": ["MLC", "Greenwood College"]}, {
+        "id": "MLC", "display_name": "MLC Reference Site",
+        "aliases": ["MLC", "MLC Reference Site"]}, {
         "id": "st-brigids-lesmurdie", "display_name": "Northwind College",
         "aliases": ["SBC", "Northwind College"]}]})
     write(profile / "profile.yml", {
@@ -137,6 +137,6 @@ def test_tracked_files_contain_no_production_site_names():
 def test_tracked_defaults_are_demo_safe_with_stable_ids():
     registry = SiteRegistry.load(ROOT / "config/sites.yml")
     assert {(site.site_id, site.display_name) for site in registry.sites} == {
-        ("site:MLC", "Greenwood College"),
+        ("site:MLC", "MLC Reference Site"),
         ("site:st-brigids-lesmurdie", "Northwind College"),
     }

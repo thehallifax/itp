@@ -17,3 +17,6 @@ Specifications:
 - [inventory](schema/inventory.md)
 - [relationship](schema/relationship.md)
 - [collector health](schema/collector_health.md)
+
+The profile-level collector-to-measurement contract and live validation method
+are documented in [Measurement contracts](measurement-contracts.md).

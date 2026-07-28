@@ -47,14 +47,13 @@ class PaperCutClient:
         for attempt in range(self.max_retries + 1):
             self.api_requests += 1
             try:
-                params = {}
+                headers = dict(self._headers)
                 if self.authorization_key:
-                    params["Authorization"] = self.authorization_key
+                    headers["Authorization"] = self.authorization_key
 
                 response = await self.client.get(
                     self.base_url + "/" + path.lstrip("/"),
-                    headers=self._headers,
-                    params=params)
+                    headers=headers)
             except httpx.TimeoutException as exc:
                 if attempt == self.max_retries:
                     raise PaperCutTimeoutError(

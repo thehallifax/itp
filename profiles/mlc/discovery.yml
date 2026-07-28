@@ -22,6 +22,8 @@ collectors:
     enabled: false
   fortigate:
     enabled: false
+  papercut:
+    enabled: false
   paloalto:
     enabled: true
     execution: edge

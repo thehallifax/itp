@@ -10,7 +10,9 @@ A **deployment profile** is one customer or organisation boundary. A **site** is
 a physical campus, office or data centre inside that profile. The **estate** is
 all enabled sites belonging to that one profile.
 
-- Greenwood College (`mlc`) is an anonymised single-site example profile.
+- MLC Reference Deployment (`mlc`) is the canonical single-site baseline.
+  Its tracked site metadata is anonymised; production display names come from
+  the ignored `profiles/mlc/sites.local.yml` override.
 - A school group can use one profile containing a head office and several schools.
 - A managed service provider uses separate profiles for separate customers.
 

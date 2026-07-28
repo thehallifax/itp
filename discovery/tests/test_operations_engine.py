@@ -121,26 +121,26 @@ def test_infrastructure_overview_findings_are_canonical_site_scoped(tmp_path):
             "site": site}
     result = {"generated_at": "2026-07-23T14:00:00Z",
         "issues": [
-            finding("mlc-pa", "site:mlc", "Greenwood College",
+            finding("mlc-pa", "site:mlc", "MLC Reference Site",
                     "MLC-PA licence expired"),
             finding("sbc-ap", "site:st-brigids",
                     "Northwind College", "SBC-AP offline"),
             finding("sbc-forti", "site:st-brigids",
                     "Northwind College", "SBC-Forti unavailable")],
         "risks": [
-            finding("mlc-risk", "site:mlc", "Greenwood College",
+            finding("mlc-risk", "site:mlc", "MLC Reference Site",
                     "MLC-PA security risk"),
             finding("sbc-risk", "site:st-brigids",
                     "Northwind College", "SBC-AP capacity risk")],
         "recommendations": [
-            finding("mlc-rec", "site:mlc", "Greenwood College",
+            finding("mlc-rec", "site:mlc", "MLC Reference Site",
                     "MLC-PA renew licence"),
             finding("sbc-rec", "site:st-brigids",
                     "Northwind College", "SBC-AP investigate")]}
     scopes = [{"scope": "all"}, {"scope": "site:mlc"},
               {"scope": "site:st-brigids"}]
     summary = {"site_options": [
-        {"site_id": "site:mlc", "display_name": "Greenwood College"},
+        {"site_id": "site:mlc", "display_name": "MLC Reference Site"},
         {"site_id": "site:st-brigids",
          "display_name": "Northwind College"}],
         "scopes": scopes}

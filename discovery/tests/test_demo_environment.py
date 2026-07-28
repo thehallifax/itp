@@ -97,7 +97,7 @@ def test_demo_run_isolated_and_seeds_all_runtime_outputs(tmp_path):
                     if value["name"] == "site")
     assert [(value["text"], value["value"]) for value in variable["options"]] == [
         ("All Sites", "all"),
-        ("Greenwood College", "site:MLC"),
+        ("MLC Reference Site", "site:MLC"),
         ("Northwind College", "site:st-brigids-lesmurdie"),
     ]
 
