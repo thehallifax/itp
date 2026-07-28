@@ -13,6 +13,8 @@ import yaml
 from analysis.dashboards import DashboardRegistry
 from analysis.notifications import NotificationStore
 from analysis.operator.engine import PipelineRunStore
+from analysis.readiness import empty_infrastructure_summary, evaluate_readiness
+from analysis.sites import SiteRegistry
 from collectors.writer import InfluxWriter, atomic_write
 
 
@@ -47,7 +49,7 @@ class DemoTelemetry:
         self.start_at = self.end_at - timedelta(days=self.days)
         self.random = random.Random(self.seed)
 
-    def _common(self, collector, hostname, site="Perth HQ"):
+    def _common(self, collector, hostname, site="Greenwood College"):
         return {
             "collector": collector, "customer": "ITP Demo",
             "site": site, "hostname": hostname,
@@ -75,7 +77,7 @@ class DemoTelemetry:
 
             # Standard Telegraf-style host metrics.
             host_tags = {"host": "itp-demo-host", "customer": "ITP Demo",
-                         "site": "Perth HQ"}
+                         "site": "Greenwood College"}
             cpu = max(2.0, min(98.0, 32 + jitter + (45 if warning else 0)))
             memory = max(10.0, min(98.0, 55 + jitter + (30 if warning else 0)))
             points.extend((
@@ -115,7 +117,7 @@ class DemoTelemetry:
                 hostname = f"mist-{platform}-{index + 1:02d}"
                 online = not (warning and index == 1)
                 tags = {
-                    **self._common("mist", hostname),
+                    **self._common("mist", hostname, "Northwind College"),
                     "device_id": f"mist-{index + 1}", "platform": platform,
                     "model": "AP45" if platform == "ap" else "EX4400",
                     "vendor": "Juniper",
@@ -172,7 +174,8 @@ class DemoTelemetry:
                 points.append(self._point(
                     "collector_health", at,
                     {"collector": collector, "customer": "ITP Demo",
-                     "site": "Perth HQ",
+                     "site": ("Northwind College" if collector == "mist"
+                              else "Greenwood College"),
                      "diagnostic_category": "success" if success else "api_failure"},
                     {"success": success, "partial": warning,
                      "duration_ms": 450 + int(self.random.random() * 500),
@@ -249,7 +252,7 @@ class DemoEngine:
     def _config(self):
         return {
             "schema_version": 1, "deployment_id": DEMO_DEPLOYMENT,
-            "customer": "ITP Demo", "site": "Perth HQ",
+            "customer": "ITP Demo", "site": "Greenwood College",
             "deployment": {"name": "ITP Demonstration", "type": "Home Lab"},
             "discovery": {"interval_seconds": 3600, "concurrency": 5,
                           "timeout_seconds": 1, "retries": 0},
@@ -268,12 +271,32 @@ class DemoEngine:
         self.runtime.mkdir(parents=True, exist_ok=True)
         config = self._config()
         atomic_write(self.config_path, yaml.safe_dump(config, sort_keys=False))
-        atomic_write(self.sites_path, yaml.safe_dump({
-            "schema_version": 1,
-            "deployment": {"model": "single-site"},
-            "sites": [{"id": "perth-hq", "display_name": "Perth HQ",
-                       "aliases": ["Perth HQ"], "enabled": True}],
-        }, sort_keys=False))
+        atomic_write(
+            self.sites_path,
+            (self.root / "config/sites.yml").read_text())
+        registry = SiteRegistry.load(self.sites_path)
+        generated_at = "1970-01-01T00:00:00Z"
+        state = {
+            "generated_at": generated_at, "deployment_id": DEMO_DEPLOYMENT,
+            "assets": [], "summary": {"observability_health": "Demo data active"},
+        }
+        registry.write(
+            self.runtime / "sites", self.runtime / "dashboard", state)
+        readiness = evaluate_readiness(
+            demo=True, deployment_configured=True, platform_running=True,
+            now=datetime(1970, 1, 1, tzinfo=timezone.utc))
+        summary = empty_infrastructure_summary(readiness)
+        summary["site_options"] = [
+            {"site_id": site.site_id, "display_name": site.display_name}
+            for site in registry.sites]
+        summary["scopes"] = [
+            {"scope": "all", "display_name": "All Sites"},
+            *({"scope": site.site_id, "display_name": site.display_name}
+              for site in registry.sites),
+        ]
+        atomic_write(
+            self.runtime / "dashboard/infrastructure-summary.json",
+            json.dumps(summary, indent=2, sort_keys=True) + "\n")
         atomic_write(self.env_path, "\n".join((
             f"ITP_DEPLOYMENT_ID={DEMO_DEPLOYMENT}",
             "INFLUXDB_NODE_ID=itp-demo-node",
@@ -322,7 +345,9 @@ class DemoEngine:
                     "source_coverage": sorted(
                         item["connector"] for item in connectors
                         if item["status"] == "success"),
-                    "provider_coverage": [], "site_coverage": ["perth-hq"],
+                    "provider_coverage": [],
+                    "site_coverage": [
+                        "site:MLC", "site:st-brigids-lesmurdie"],
                     "scopes": [], "warning_details": [],
                 },
                 "connectors": connectors,

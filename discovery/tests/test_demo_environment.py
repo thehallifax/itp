@@ -30,7 +30,7 @@ class RecordingLifecycle:
 
 
 def demo_root(tmp_path):
-    for name in ("dashboards", "collectors"):
+    for name in ("dashboards", "collectors", "config"):
         shutil.copytree(REPOSITORY / name, tmp_path / name)
     return tmp_path
 
@@ -89,6 +89,17 @@ def test_demo_run_isolated_and_seeds_all_runtime_outputs(tmp_path):
     assert (root / "runtime/demo/pipeline-runs/latest.json").is_file()
     assert (root / "runtime/demo/notifications/state.json").is_file()
     assert (root / "runtime/demo/dashboard/managed/registry.json").is_file()
+    infrastructure = (
+        root / "runtime/demo/dashboard/managed/infrastructure/"
+        "itp-infrastructure-overview.json")
+    dashboard = __import__("json").loads(infrastructure.read_text())
+    variable = next(value for value in dashboard["templating"]["list"]
+                    if value["name"] == "site")
+    assert [(value["text"], value["value"]) for value in variable["options"]] == [
+        ("All Sites", "all"),
+        ("Greenwood College", "site:MLC"),
+        ("Northwind College", "site:st-brigids-lesmurdie"),
+    ]
 
 
 def test_demo_rerun_is_deterministic_and_does_not_remove_user_files(tmp_path):

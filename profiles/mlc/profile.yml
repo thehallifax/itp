@@ -1,6 +1,6 @@
 profile:
   id: mlc
-  name: Methodist Ladies' College
+  name: Greenwood College
   environment: production
   timezone: Australia/Perth
   runtime_mode: edge

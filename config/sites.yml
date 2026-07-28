@@ -4,6 +4,7 @@ sites:
     aliases:
       - SBC
       - st-brigids
+      - st-brigids-lesmurdie
       - "Northwind College"
       - "Northwind College P2P"
 
@@ -11,4 +12,4 @@ sites:
     display_name: "Greenwood College"
     aliases:
       - MLC
-      - Methodist Ladies' College
+      - "Greenwood College"

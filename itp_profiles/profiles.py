@@ -129,6 +129,9 @@ class DeploymentProfile:
         profile_root = (root / "profiles" / profile_id).resolve()
         discovery = resolved("discovery_config", profile_root)
         sites = resolved("sites_config", profile_root)
+        local_sites = sites.with_name(f"{sites.stem}.local{sites.suffix}")
+        if local_sites.is_file():
+            sites = local_sites.resolve()
         dashboards = resolved("dashboards_config", profile_root)
         secrets = resolved("secrets_dir", root / "secrets")
         runtime = resolved("runtime_dir", root / "runtime")

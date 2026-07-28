@@ -10,7 +10,7 @@ A **deployment profile** is one customer or organisation boundary. A **site** is
 a physical campus, office or data centre inside that profile. The **estate** is
 all enabled sites belonging to that one profile.
 
-- Methodist Ladies' College (MLC) is a single-site profile.
+- Greenwood College (`mlc`) is an anonymised single-site example profile.
 - A school group can use one profile containing a head office and several schools.
 - A managed service provider uses separate profiles for separate customers.
 

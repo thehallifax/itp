@@ -223,11 +223,11 @@ def test_evaluator_registry_is_complete_and_deterministic():
 
 SITES = """sites:
   - id: mlc
-    display_name: Methodist Ladies College
-    aliases: [MLC, Methodist Ladies' College]
+    display_name: Greenwood College
+    aliases: [MLC, Greenwood]
   - id: st-brigids
-    display_name: St Brigid's College, Lesmurdie
-    aliases: [St Brigids, SBC]
+    display_name: Northwind College
+    aliases: [Northwind, SBC]
 """
 
 
@@ -236,7 +236,7 @@ def test_per_site_partitioning_aliases_collectors_and_estate_aggregate(tmp_path)
         {"canonical_id": "fw:1", "hostname": "MLC-PA", "device_type": "firewall",
          "online": True, "site": "MLC", "sources": ["paloalto"]},
         {"canonical_id": "ap:1", "hostname": "SBC-AP", "device_type": "access-point",
-         "online": False, "site": "St Brigids", "sources": ["mist"]},
+         "online": False, "site": "Northwind", "sources": ["mist"]},
         {"canonical_id": "sw:1", "hostname": "SBC-SW", "device_type": "switch",
          "online": True, "site": "SBC", "sources": ["snmp"]},
     ]
@@ -252,17 +252,17 @@ def test_per_site_partitioning_aliases_collectors_and_estate_aggregate(tmp_path)
     ]
     pa_risk = {"id": "pa-license", "rule_id": "PA-LICENCE-EXPIRED",
         "title": "Palo Alto licence", "category": "Security", "severity": "High",
-        "priority": 80, "device": "MLC-PA", "site": "Methodist Ladies' College",
+        "priority": 80, "device": "MLC-PA", "site": "Greenwood",
         "summary": "MLC Palo Alto licence expired.", "evidence": {}}
     issues = [
         {"id": "ap-down", "rule_id": "wireless.ap_offline",
          "title": "AP offline", "category": "Wireless", "severity": "High",
-         "priority": 80, "device": "SBC-AP", "site": "St Brigids",
-         "summary": "St Brigid's AP is offline.", "evidence": {}},
+         "priority": 80, "device": "SBC-AP", "site": "Northwind",
+         "summary": "Northwind AP is offline.", "evidence": {}},
         {"id": "forti-down", "rule_id": "firewall.unavailable",
          "title": "FortiGate unavailable", "category": "Firewall", "severity": "Critical",
          "priority": 95, "device": "SBC-FGT", "site": "SBC",
-         "summary": "St Brigid's FortiGate unavailable.",
+         "summary": "Northwind FortiGate unavailable.",
          "evidence": {"source_collector": "fortigate"}},
     ]
     caps = {"paloalto": ["firewall", "internet", "telemetry"],
@@ -278,7 +278,7 @@ def test_per_site_partitioning_aliases_collectors_and_estate_aggregate(tmp_path)
         "site:mlc", "site:st-brigids"]
     mlc = next(value for value in result["sites"] if value["site_id"] == "site:mlc")
     st = next(value for value in result["sites"] if value["site_id"] == "site:st-brigids")
-    assert mlc["site_name"] == "Methodist Ladies College"
+    assert mlc["site_name"] == "Greenwood College"
     assert mlc["enabled_collectors"] == ["paloalto"]
     assert st["enabled_collectors"] == ["fortigate", "mist", "snmp"]
     mlc_security = service(result, "Security", "site:mlc")

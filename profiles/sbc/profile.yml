@@ -1,6 +1,6 @@
 profile:
   id: sbc
-  name: St Brigid's College, Lesmurdie
+  name: Northwind College
   environment: production
   timezone: Australia/Perth
   runtime_mode: central

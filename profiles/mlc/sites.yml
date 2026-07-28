@@ -1,5 +1,6 @@
 sites:
   - id: MLC
-    display_name: Methodist Ladies College
+    display_name: Greenwood College
     aliases:
-      - Methodist Ladies' College
+      - MLC
+      - Greenwood College

@@ -12,6 +12,13 @@ Tracked configuration lives in `profiles/<id>/`: `profile.yml`, `discovery.yml`,
 Profile IDs are stable lowercase identifiers. Customer display names and
 canonical site names remain separate.
 
+Tracked profile metadata is anonymised. Copy `sites.yml` to the ignored
+`sites.local.yml` beside it to supply deployment-specific display names and
+aliases. Profile activation automatically mounts that complete local registry
+when present; otherwise it uses the tracked anonymised registry. Canonical
+`site:<id>` values must remain unchanged. See the
+[Canonical Site Registry](site-registry.md) for regeneration commands.
+
 ## Quick start
 
 ```sh
