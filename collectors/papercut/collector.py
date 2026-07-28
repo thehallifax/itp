@@ -73,7 +73,12 @@ def validate_settings(config):
         jvm_warning_percent=jvm_threshold,
         held_jobs_warning=held_threshold,
         upgrade_assurance_warning_days=assurance_threshold,
-        uptime_advisory_days=uptime_threshold)
+        uptime_advisory_days=uptime_threshold,
+        customer_name=str(raw.get("customer_name") or
+                          (config.get("identity") or {}).get(
+                              "customer_name") or ""),
+        site_name=str(raw.get("site_name") or config.get("site_name") or ""),
+        deployment_id=str(config.get("deployment_id") or ""))
 
 
 @CollectorRegistry.register
@@ -154,8 +159,13 @@ class PaperCutCollector(BaseCollector):
                 "measurement": "collector_health",
                 "tags": {
                     "collector": "papercut",
+                    "deployment_id": self.settings.deployment_id,
                     "customer": self.settings.customer,
+                    "customer_id": self.settings.customer,
                     "site": self.settings.site,
+                    "site_id": self.settings.site,
+                    "customer_name": self.settings.customer_name,
+                    "site_name": self.settings.site_name,
                     "diagnostic_category": category},
                 "fields": {
                     "success": success, "partial": partial,

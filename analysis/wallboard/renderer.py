@@ -379,6 +379,25 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         panels[title]["description"] = (
             f"Canonical service: {name}.\n" + "\n".join(summaries))
 
+    def capability_detail(value):
+        items = [item for item in value.get("evidence", [])
+                 if item.get("type") == "collector_capability"]
+        groups = {
+            "Evidence collected": sorted({
+                item.get("capability") for item in items
+                if item.get("collection") == "collected"}),
+            "Evidence unavailable": sorted({
+                item.get("capability") for item in items
+                if item.get("collection") in {"failed", "partial", "unavailable"}}),
+            "Capabilities not enabled": sorted({
+                item.get("capability") for item in items
+                if item.get("support") == "unsupported"
+                or item.get("collection") in {"disabled", "not_applicable"}}),
+        }
+        return " ".join(
+            f"{label}: {', '.join(values)}."
+            for label, values in groups.items() if values)
+
     def canonical_card(title, service, evidence, drilldown):
         rows = []
         summaries = []
@@ -389,7 +408,8 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
             rows.append({"scope": scope["scope"],
                          "value": _service_status(value["status"])})
             summaries.append(
-                f"{scope['display_name']}: {value.get('summary', '')}")
+                f"{scope['display_name']}: {value.get('summary', '')} "
+                f"{capability_detail(value)}".strip())
         _stat(panels[title], rows, "value", True)
         panels[title]["description"] = (
             f"State: canonical {service} service severity. Evidence: "
@@ -515,17 +535,27 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         dashboard["panels"].append(panel)
         panels[panel["title"]] = panel
 
+    printer_rows = summary["printer_exceptions"]
+    printer_empty = bool(printer_rows) and all(
+        value.get("asset") == "No printers require attention"
+        for value in printer_rows)
+    printer_fields = ("scope", "asset") if printer_empty else (
+        "scope", "asset", "location", "condition", "last_seen")
     _table(panels["Printers Requiring Attention"],
-           summary["printer_exceptions"],
-           ("scope", "asset", "location", "condition", "last_seen"))
+           printer_rows, printer_fields)
     printer_organize = panels[
         "Printers Requiring Attention"]["transformations"][-1]["options"]
-    printer_organize["renameByName"] = {
-        "asset": "Printer", "location": "Location",
-        "condition": "Condition", "last_seen": "Last Seen"}
-    _column_widths(panels["Printers Requiring Attention"], {
-        "asset": 180, "location": 150,
-        "condition": 240, "last_seen": 170})
+    if printer_empty:
+        printer_organize["renameByName"] = {"asset": "Status"}
+        _column_widths(
+            panels["Printers Requiring Attention"], {"asset": 800})
+    else:
+        printer_organize["renameByName"] = {
+            "asset": "Printer", "location": "Location",
+            "condition": "Condition", "last_seen": "Last Seen"}
+        _column_widths(panels["Printers Requiring Attention"], {
+            "asset": 180, "location": 150,
+            "condition": 240, "last_seen": 170})
     _table(
         panels["Changes Since Yesterday"], summary["changes"],
         ("scope", "time", "service", "change"))

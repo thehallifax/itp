@@ -1,6 +1,9 @@
 schema_version: 1
-customer: st-brigids
-site: st-brigids
+deployment_id: example
+customer_id: example
+customer: example
+site_id: site:st-brigids-lesmurdie
+site: site:st-brigids-lesmurdie
 
 discovery:
   interval_seconds: 3600

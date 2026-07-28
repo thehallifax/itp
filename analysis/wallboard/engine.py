@@ -354,9 +354,8 @@ def _certificate_rows(operations, scopes, enabled):
         if not enabled:
             label, color = "Not Enabled", "gray"
         elif selected:
-            label = (
-                "1 certificate requires attention" if len(selected) == 1
-                else f"{len(selected)} certificates require attention")
+            noun = "Certificate" if len(selected) == 1 else "Certificates"
+            label = f"{len(selected)} {noun}\nRequire Attention"
             color = "orange"
         else:
             label, color = "Certificates Healthy", "green"
@@ -394,9 +393,10 @@ def _firewall_rows(service_scopes, scopes, certificate_rows):
         certificate_label = str(certificate.get("value") or "")
         if status in {"Healthy", "Not Enabled"}:
             label = status
-        elif "requires attention" in certificate_label.casefold():
+        elif "require attention" in certificate_label.casefold():
             count = certificate_label.split(" ", 1)[0]
-            label = f"Certificates\n{count} Require Attention"
+            noun = "Certificate" if count == "1" else "Certificates"
+            label = f"{count} {noun}\nRequire Attention"
         elif status == "Unknown":
             label = "Not Yet Collected"
         else:

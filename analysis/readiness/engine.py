@@ -62,6 +62,7 @@ def credentials_ready(config, registry, environment):
 
 
 def evaluate_readiness(*, enabled_collectors=(), collector_records=(),
+                       capability_manifest=None,
                        capabilities=(), assets=(), operations_generated=False,
                        deployment_configured=True, platform_running=False,
                        credentials_configured=False, demo=False, now=None,
@@ -69,6 +70,30 @@ def evaluate_readiness(*, enabled_collectors=(), collector_records=(),
     """Return one deterministic readiness document without sensitive input."""
     now = now or datetime.now(timezone.utc)
     enabled = tuple(sorted(set(str(value) for value in enabled_collectors)))
+    if capability_manifest:
+        manifest_records = []
+        for name in enabled:
+            value = capability_manifest.get("collectors", {}).get(name, {})
+            state = value.get("execution", {}).get("state")
+            if not state:
+                state = value.get("state")
+            collection = value.get("last_collection", {})
+            if not isinstance(collection, dict):
+                collection = {
+                    "observed_at": collection,
+                    "last_success": value.get("last_successful_collection"),
+                }
+            status = {
+                "collected": "healthy", "partial": "warning",
+                "failed": "failed", "unavailable": "warning",
+                "not_yet_collected": "unknown",
+            }.get(state, "unknown")
+            manifest_records.append({
+                "collector": name, "status": status,
+                "last_run": collection.get("observed_at"),
+                "last_successful_run": collection.get("last_success"),
+            })
+        collector_records = manifest_records
     records = {
         str(value.get("collector")): value for value in collector_records
         if value.get("collector") in enabled}

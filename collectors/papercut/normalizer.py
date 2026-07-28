@@ -98,7 +98,9 @@ def normalize(snapshot, config, observed_at):
     record = {
         "id": identifier, "source": "papercut", "collector": "papercut",
         "source_asset_id": hostname, "source_record_id": identifier,
-        "customer": config.customer, "site": config.site,
+        "deployment_id": config.deployment_id,
+        "customer_id": config.customer, "customer": config.customer,
+        "site_id": config.site, "site": config.site_name or config.site,
         "hostname": hostname, "display_name": "PaperCut MF",
         "management_ip": hostname, "vendor": "PaperCut",
         "platform": "PaperCut MF", "device_type": "server",
@@ -112,7 +114,7 @@ def normalize(snapshot, config, observed_at):
             "license": license_data, "conditions": conditions,
             "partial": bool(snapshot.get("partial"))}},
         "_authoritative_fields": [
-            "customer", "site", "hostname", "vendor", "platform",
+            "customer_id", "site_id", "hostname", "vendor", "platform",
             "device_type", "device_role", "firmware_version", "online"],
     }
     records = [record]
@@ -128,8 +130,11 @@ def normalize(snapshot, config, observed_at):
         records.append({
             "id": device_id, "source": "papercut",
             "collector": "papercut", "source_asset_id": name,
-            "source_record_id": device_id, "customer": config.customer,
-            "site": config.site, "hostname": name, "display_name": name,
+            "source_record_id": device_id,
+            "deployment_id": config.deployment_id,
+            "customer_id": config.customer, "customer": config.customer,
+            "site_id": config.site, "site": config.site_name or config.site,
+            "hostname": name, "display_name": name,
             "vendor": str(device.get("type") or "PaperCut managed"),
             "platform": "PaperCut Embedded", "device_type": "printer",
             "device_role": "embedded-print-device",
@@ -142,11 +147,14 @@ def normalize(snapshot, config, observed_at):
                 "status_description": device.get("statusDescription"),
                 "last_job_age_seconds": device.get("lastJobSeconds")}},
             "_authoritative_fields": [
-                "customer", "site", "hostname", "vendor", "platform",
+                "customer_id", "site_id", "hostname", "vendor", "platform",
                 "device_type", "device_role", "online"],
         })
-    tags = {"collector": "papercut", "customer": config.customer,
-            "site": config.site, "device_id": identifier,
+    tags = {"collector": "papercut", "deployment_id": config.deployment_id,
+            "customer_id": config.customer, "customer": config.customer,
+            "customer_name": config.customer_name,
+            "site_id": config.site, "site": config.site,
+            "site_name": config.site_name, "device_id": identifier,
             "hostname": hostname, "vendor": "PaperCut",
             "platform": "PaperCut MF"}
     points = [

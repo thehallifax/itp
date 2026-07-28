@@ -130,7 +130,12 @@ def validate_settings(config, *, require_key=True):
         content_warning_days=parse_int(
             raw.get("content_warning_days", 30), minimum=0),
         content_critical_days=parse_int(
-            raw.get("content_critical_days", 90), minimum=0))
+            raw.get("content_critical_days", 90), minimum=0),
+        customer_name=str(raw.get("customer_name") or
+                          (config.get("identity") or {}).get(
+                              "customer_name") or ""),
+        site_name=str(raw.get("site_name") or config.get("site_name") or ""),
+        deployment_id=str(config.get("deployment_id") or ""))
 
 
 @CollectorRegistry.register
@@ -247,8 +252,15 @@ class PaloAltoCollector(BaseCollector):
                 locals().get("diagnostics_before", len(self.client.command_diagnostics)):]
             durations = [value["duration_ms"] for value in command_diagnostics]
             health = {"measurement": "collector_health",
-                "tags": {"collector": "paloalto", "customer": self.settings.customer,
-                         "site": self.settings.site, "diagnostic_category": category},
+                "tags": {"collector": "paloalto",
+                         "deployment_id": self.settings.deployment_id,
+                         "customer": self.settings.customer,
+                         "customer_id": self.settings.customer,
+                         "site": self.settings.site,
+                         "site_id": self.settings.site,
+                         "customer_name": self.settings.customer_name,
+                         "site_name": self.settings.site_name,
+                         "diagnostic_category": category},
                 "fields": {"success": success, "partial": partial,
                     "duration_ms": int((time.monotonic() - started) * 1000),
                     "api_requests": self.client.api_requests - requests,

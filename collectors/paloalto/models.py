@@ -55,6 +55,9 @@ class PaloAltoConfig:
     wan_interfaces: tuple["WanInterface", ...] = ()
     content_warning_days: int = 30
     content_critical_days: int = 90
+    customer_name: str = ""
+    site_name: str = ""
+    deployment_id: str = ""
 
 
 @dataclass(frozen=True)

@@ -18,6 +18,9 @@ class PaperCutConfig:
     held_jobs_warning: int = 25
     upgrade_assurance_warning_days: int = 90
     uptime_advisory_days: int = 180
+    customer_name: str = ""
+    site_name: str = ""
+    deployment_id: str = ""
 
 
 class PaperCutError(RuntimeError):

@@ -1,5 +1,13 @@
 # MLC canonical baseline
 
+Regenerate `runtime/mlc/capabilities/` before infrastructure, services,
+wallboard and dashboard projections. These files are untracked runtime evidence.
+
+The reference identity is deployment `mlc`, customer `mlc`, site `site:MLC`.
+Local display-name overrides do not change these IDs. When adopting the identity
+tag contract, reset the MLC telemetry database and regenerate runtime output so
+legacy and canonical identity partitions are not mixed.
+
 The `mlc` profile is ITP's authoritative single-site reference deployment.
 Tracked profile and site metadata remains anonymised as **MLC Reference
 Deployment** and **MLC Reference Site**. A production installation supplies its

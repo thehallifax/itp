@@ -1,5 +1,14 @@
 # Dashboard navigation
 
+Managed dashboards use the
+[collector capability manifest](collector-capabilities.md) for implemented,
+conditional, disabled, unavailable, failed and unsupported states. Dashboard
+authors must not infer support from a null query result.
+
+Managed dashboard variables show friendly labels but filter on canonical
+`customer_id`, `site_id` and `device_id` values. Display names must never be
+used as SQL joins. `All` uses a quoted SQL wildcard with `LIKE`.
+
 Dashboard selection and folder provisioning are capability-aware. See
 [Dashboard Platform](dashboard-platform.md) for manifest and ownership details.
 

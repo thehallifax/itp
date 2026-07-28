@@ -1,6 +1,9 @@
 schema_version: 1
+deployment_id: mlc
+customer_id: mlc
 customer: mlc
-site: mlc
+site_id: site:MLC
+site: site:MLC
 discovery:
   interval_seconds: 3600
   concurrency: 40
@@ -32,7 +35,9 @@ collectors:
     verify_tls: false
     timeout_seconds: 20
     customer: mlc
-    site: mlc
+    customer_id: mlc
+    site: site:MLC
+    site_id: site:MLC
     discovery_interval_seconds: 21600
     collection_interval_seconds: 120
     max_retries: 2

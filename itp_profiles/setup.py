@@ -158,7 +158,7 @@ class BootstrapWizard:
     @classmethod
     def detect_timezone(cls, *, environment=None, localtime=None,
                         windows_id=None):
-        environment = environment or os.environ
+        environment = os.environ if environment is None else environment
         candidate = str(environment.get("TZ") or "").strip()
         if candidate:
             try:

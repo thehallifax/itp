@@ -43,6 +43,7 @@ services:
       - INFLUXDB_ORG=${INFLUXDB_ORG}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
+      - ITP_CUSTOMER_ID=${ITP_CUSTOMER_ID:-legacy}
       - TELEGRAF_COLLECTION_INTERVAL=${TELEGRAF_COLLECTION_INTERVAL}
       - HOSTNAME=telegraf
     env_file:
@@ -67,7 +68,10 @@ services:
     env_file:
       - .env
     environment:
-      - TZ=${TZ}
+      - TZ=${TZ:-UTC}
+      - ITP_PROFILE=${ITP_PROFILE:-}
+      - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
+      - ITP_CUSTOMER_ID=${ITP_CUSTOMER_ID:-legacy}
       - ITP_CONNECTORS_CONFIG=/app/config/connectors.local.yml
     volumes:
       - ${ITP_DISCOVERY_CONFIG:-./discovery/config.yml}:/app/config.yml:ro
@@ -106,9 +110,12 @@ services:
       - INFLUXDB_HOST=${INFLUXDB_HOST}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
       - INFLUXDB_ORG=${INFLUXDB_ORG}
-      - TZ=${TZ}
+      - TZ=${TZ:-UTC}
       - ITP_PROFILE=${ITP_PROFILE:-}
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
+      - ITP_CUSTOMER_ID=${ITP_CUSTOMER_ID:-legacy}
+      - ITP_CUSTOMER_NAME=${ITP_CUSTOMER_NAME:-}
+      - ITP_DEPLOYMENT_MODE=${ITP_DEPLOYMENT_MODE:-standalone}
       - COLLECTOR_CONFIG=/app/config.yml
       - ITP_RUNTIME_DIR=/app/runtime/${ITP_PROFILE:-legacy}
       - COLLECTOR_HEALTH_PATH=/app/runtime/${ITP_PROFILE:-legacy}/collector-health
@@ -153,10 +160,11 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-      - TZ=${TZ}
+      - TZ=${TZ:-UTC}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/runtime-dashboard/managed/infrastructure/itp-infrastructure-overview.json
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
+      - ITP_CUSTOMER_ID=${ITP_CUSTOMER_ID:-legacy}
     depends_on:
       - influxdb3-core
     # Or switch to influxdb3-enterprise as needed

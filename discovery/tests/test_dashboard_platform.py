@@ -18,6 +18,31 @@ def registry(tmp_path, enabled):
     return DashboardRegistry(ROOT, config, tmp_path / "managed", tmp_path / "dashboards.yml")
 
 
+def test_managed_dashboard_empty_states_come_from_capability_manifest(tmp_path):
+    capability_dir = tmp_path / "capabilities"
+    capability_dir.mkdir()
+    (capability_dir / "paloalto.json").write_text(json.dumps({
+        "capabilities": [
+            {"id": "certificate_expiry", "collection": "not_applicable",
+             "panels": ["Certificate Expiry"],
+             "explanation": "Authoritative expiry is not collected."},
+            {"id": "configuration_commits", "collection": "failed",
+             "panels": ["Recent Configuration Commits"],
+             "explanation": "Latest collection failed."},
+        ]}))
+    registry(tmp_path, {"paloalto": True}).generate()
+    dashboard = json.loads((
+        tmp_path / "managed/vendor/paloalto-operational-overview.json"
+    ).read_text())
+    panels = {value["title"]: value for value in dashboard["panels"]}
+    assert panels["Certificate Expiry"]["fieldConfig"]["defaults"]["noValue"] == \
+        "Feature Not Enabled"
+    assert panels["Recent Configuration Commits"]["fieldConfig"][
+        "defaults"]["noValue"] == "Collection Failed"
+    assert "Authoritative expiry is not collected." in panels[
+        "Certificate Expiry"]["description"]
+
+
 def test_manifests_are_complete_unique_and_future_extensible(tmp_path):
     value = registry(tmp_path, {}).manifests()
     assert [item.collector for item in value] == [

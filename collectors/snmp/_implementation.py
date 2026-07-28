@@ -160,6 +160,13 @@ async def snmp_get(ip, communities, timeout, retries, semaphore):
 
 def merge_inventory(config, discoveries, previous, now=None):
     now = now or utcnow()
+    identity_tags = {
+        "deployment_id": config.get("deployment_id", ""),
+        "customer_id": config.get("customer_id", config["customer"]),
+        "site_id": config.get("site_id", config["site"]),
+        "customer": config.get("customer_id", config["customer"]),
+        "site": config.get("site_id", config["site"]),
+    }
     snmp_devices = [d for d in previous.get("devices", [])
                     if d.get("source") in (None, "snmp") and d.get("ip") and d.get("sys_object_id")]
     other_devices = [d for d in previous.get("devices", []) if d not in snmp_devices]
@@ -173,7 +180,8 @@ def merge_inventory(config, discoveries, previous, now=None):
         vendor, platform, role = classify(object_id, description, hostname, purpose)
         old = prior.get((ip, object_id), {})
         active_ips.add(ip)
-        devices.append({"ip": ip, "hostname": hostname, "description": description,
+        devices.append({**identity_tags,
+            "ip": ip, "hostname": hostname, "description": description,
             "sys_object_id": object_id, "location": location, "vendor": vendor,
             "platform": platform, "device_role": role, "snmp_version": 2,
             "community_index": community_index, "first_seen": old.get("first_seen", now),
@@ -184,11 +192,18 @@ def merge_inventory(config, discoveries, previous, now=None):
         try: last = datetime.fromisoformat(old["last_seen"].replace("Z", "+00:00"))
         except (KeyError, ValueError): continue
         if last >= cutoff:
-            retained = dict(old); retained["status"] = "unreachable"; devices.append(retained)
+            retained = {
+                **old, **identity_tags, "status": "unreachable"}
+            devices.append(retained)
     devices.sort(key=lambda d: ipaddress.ip_address(d["ip"]))
     devices.extend(other_devices)
-    return {"schema_version": 1, "generated_at": now, "customer": config["customer"],
-            "site": config["site"], "devices": devices}
+    return {
+        "schema_version": 1, "generated_at": now,
+        "deployment_id": config.get("deployment_id", ""),
+        "customer_id": config.get("customer_id", config["customer"]),
+        "site_id": config.get("site_id", config["site"]),
+        "customer": config["customer"], "site": config["site"],
+        "devices": devices}
 
 
 def toml_string(value):
@@ -200,13 +215,16 @@ def group_devices(inventory):
     for d in inventory["devices"]:
         if d.get("source") not in (None, "snmp"): continue
         if d["status"] != "active" or d["platform"] not in ("printer", "network-switch", "wireless-access-point", "ups", "synology"): continue
-        key = (inventory["customer"], inventory["site"], d["vendor"], d["platform"], d["device_role"], d["community_index"])
+        key = (
+            inventory["customer"], inventory["site"], d["vendor"],
+            d["platform"], d["device_role"], d["community_index"],
+            inventory.get("deployment_id", ""))
         groups.setdefault(key, []).append(d)
     return groups
 
 
 def render_group(key, devices, communities):
-    customer, site, vendor, platform, role, community_index = key
+    customer, site, vendor, platform, role, community_index, deployment_id = key
     measurement = {"printer": "printer_status", "network-switch": "network_device", "wireless-access-point": "wireless_access_point", "ups": "ups_status", "synology": "synology_status"}[platform]
     interval = "60s" if platform == "printer" else "30s"
     agents = ",\n    ".join(toml_string(f"udp://{d['ip']}:161") for d in sorted(devices, key=lambda x: ipaddress.ip_address(x["ip"])))
@@ -224,7 +242,10 @@ def render_group(key, devices, communities):
 
   [inputs.snmp.tags]
     collector = "snmp"
+    deployment_id = {toml_string(deployment_id)}
+    customer_id = {toml_string(customer)}
     customer = {toml_string(customer)}
+    site_id = {toml_string(site)}
     site = {toml_string(site)}
     vendor = {toml_string(vendor)}
     platform = {toml_string(platform)}
@@ -254,7 +275,7 @@ def render_group(key, devices, communities):
     oid = "1.3.6.1.2.1.1.4.0"
   [[inputs.snmp.table]]
     name = "wireless_interfaces"
-    inherit_tags = ["customer", "site", "vendor", "platform", "device_role", "device_ip", "hostname"]
+    inherit_tags = ["deployment_id", "customer_id", "customer", "site_id", "site", "vendor", "platform", "device_role", "device_ip", "hostname"]
     [[inputs.snmp.table.field]]
       name = "interface_index"
       oid = "1.3.6.1.2.1.2.2.1.1"
@@ -321,7 +342,7 @@ def render_group(key, devices, communities):
     oid = "1.3.6.1.2.1.43.16.5.1.2.1.1"
   [[inputs.snmp.table]]
     name = "printer_supplies"
-    inherit_tags = ["customer", "site", "vendor", "platform", "device_role", "device_ip", "hostname"]
+    inherit_tags = ["deployment_id", "customer_id", "customer", "site_id", "site", "vendor", "platform", "device_role", "device_ip", "hostname"]
     [[inputs.snmp.table.field]]
       name = "supply_description"
       oid = "1.3.6.1.2.1.43.11.1.1.6"
@@ -343,7 +364,7 @@ def render_group(key, devices, communities):
     is_tag = true
   [[inputs.snmp.table]]
     name = "network_interfaces"
-    inherit_tags = ["customer", "site", "vendor", "platform", "device_role", "device_ip", "hostname"]
+    inherit_tags = ["deployment_id", "customer_id", "customer", "site_id", "site", "vendor", "platform", "device_role", "device_ip", "hostname"]
     [[inputs.snmp.table.field]]
       name = "interface_index"
       oid = "1.3.6.1.2.1.2.2.1.1"

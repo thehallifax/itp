@@ -1,5 +1,13 @@
 # Deployment profiles
 
+Capability manifests are profile-scoped and carry canonical deployment,
+customer and site IDs. They contain no credentials or endpoints.
+
+Profiles authoritatively define deployment, customer and site identity as well
+as the [deployment mode](deployment-modes.md). For example, the MLC reference
+resolves to deployment `mlc`, customer `mlc` and site `site:MLC`; the friendly
+site name may come from the ignored local metadata overlay.
+
 An ITP profile is one independently operated customer deployment. Profiles share
 application code but never runtime state, secrets, site aliases, containers,
 volumes, dashboards, or telemetry databases.
@@ -71,6 +79,11 @@ missing files from `.env.example` templates and never overwrites existing files.
 Vendor credentials belong only in `secrets/<id>/`.
 
 ## Isolation model
+
+Identity and presentation are separate. `sites.local.yml` may change names and
+aliases only; changing its site ID set fails profile validation. Lifecycle
+commands resolve `standalone` or `cluster_member` explicitly and never attach to
+the other mode implicitly. See [Canonical identity](canonical-identity.md).
 
 Each profile uses Compose project `itp-<id>`, profile-scoped containers, network,
 InfluxDB and Grafana volumes, host ports, telemetry database, runtime directory,

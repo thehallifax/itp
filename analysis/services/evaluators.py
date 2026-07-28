@@ -153,6 +153,41 @@ class ServiceEvaluator:
                 severity=STATUS_SEVERITY["Not Enabled"],
                 evidence=({"type": "capability", "capability": definition.capability,
                            "enabled": False},))
+        declared = []
+        for collector, manifest in sorted(
+                context.get("capability_manifest", {}).items()):
+            if collector not in context.get("enabled_collectors", ()):
+                continue
+            for value in manifest.get("capabilities", []):
+                if definition.name in value.get("services", []):
+                    declared.append((collector, value))
+        applicable = [(collector, value) for collector, value in declared
+                      if value.get("support") != "unsupported"]
+        failed = [(collector, value) for collector, value in applicable
+                  if value.get("collection") == "failed"]
+        degraded = [(collector, value) for collector, value in applicable
+                    if value.get("collection") in {"partial", "unavailable"}]
+        capability_evidence = tuple({
+            "type": "collector_capability", "collector": collector,
+            "capability": value.get("id"), "support": value.get("support"),
+            "collection": value.get("collection"),
+            "explanation": value.get("explanation"),
+        } for collector, value in declared)
+        if failed:
+            return ServiceHealth(
+                definition.name, "Critical",
+                f"Required {definition.name.lower()} collection failed.",
+                tuple(sorted({collector for collector, _ in failed})),
+                severity=STATUS_SEVERITY["Critical"],
+                evidence=capability_evidence)
+        if degraded and not any(value.get("collection") == "collected"
+                                for _, value in applicable):
+            return ServiceHealth(
+                definition.name, "Warning",
+                f"{definition.name} evidence is incomplete or unavailable.",
+                tuple(sorted({collector for collector, _ in degraded})),
+                severity=STATUS_SEVERITY["Warning"],
+                evidence=capability_evidence)
         if definition.name == "Internet":
             return self._internet(context)
         if definition.name == "Security":

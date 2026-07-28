@@ -1,5 +1,13 @@
 # Canonical schema
 
+Collector support and runtime evidence are separate contracts. See
+[Collector capability manifests](collector-capabilities.md). Consumers must not
+infer support from missing telemetry.
+
+The authoritative join contract is `deployment_id`, `customer_id`, `site_id`
+and, for device-scoped records, `device_id`. Display names are metadata and must
+not be used as joins. See [Canonical identity](canonical-identity.md).
+
 Current platform schema version: **1**. Canonical measurements are `device`,
 `availability`, `performance`, `interface`, `wireless`, `firewall`, and
 `collector_health`. Vendor-specific and earlier normalized measurements remain during

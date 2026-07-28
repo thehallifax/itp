@@ -47,10 +47,12 @@ class ServiceHealthEngine:
                  operations_state="/app/runtime/operations/operations.json",
                  capability_registry="/app/runtime/dashboard/managed/registry.json",
                  output_dir="/app/runtime/services",
-                 sites_config="/app/config/sites.yml"):
+                 sites_config="/app/config/sites.yml",
+                 capability_manifest="/app/runtime/capabilities/collectors.json"):
         self.infrastructure_state = Path(infrastructure_state)
         self.operations_state = Path(operations_state)
         self.capability_registry = Path(capability_registry)
+        self.capability_manifest = Path(capability_manifest)
         self.output_dir = Path(output_dir)
         self.site_registry = SiteRegistry.load(sites_config)
 
@@ -71,6 +73,7 @@ class ServiceHealthEngine:
         registry = _read(self.capability_registry,
                          {"capabilities": [], "enabled_collectors": [],
                           "collector_capabilities": {}})
+        manifest = _read(self.capability_manifest, {"collectors": {}})
         enabled_collectors = tuple(sorted(registry.get("enabled_collectors", [])))
         enabled_set = set(enabled_collectors)
         diagnostics = []
@@ -193,6 +196,7 @@ class ServiceHealthEngine:
             "findings": findings,
             "capabilities": frozenset(registry.get("capabilities", [])),
             "collector_capabilities": registry.get("collector_capabilities", {}),
+            "capability_manifest": manifest.get("collectors", {}),
             "enabled_collectors": enabled_collectors, "diagnostics": diagnostics}
 
     @staticmethod

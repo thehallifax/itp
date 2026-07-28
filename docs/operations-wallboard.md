@@ -1,5 +1,12 @@
 # Operations Wallboard
 
+Service descriptions inherit collected, unavailable, failed and deliberately
+unsupported evidence from canonical Service Health. Visible stats stay concise.
+
+Wallboard scope values are canonical site IDs; labels come from resolved site
+metadata. Certificate attention text and printer empty states are deliberately
+compact for wallboard-distance reading.
+
 Operations Wallboard is a single-screen, exception-driven Grafana view for a
 16:9 IT office, NOC, school technology office, or MSP display. It complements,
 but does not replace, Infrastructure Overview and vendor drill-down dashboards.

@@ -86,7 +86,7 @@ class Scheduler:
                  wallboard_engine=None, dashboard_registry=None,
                  state_history_capture=None,
                  operations_interval=300, state_path=None, now_fn=None,
-                 monotonic_fn=None):
+                 monotonic_fn=None, capability_engine=None):
         self.collectors = list(collectors)
         self.health_path = Path(health_path) if health_path else None
         # Locks are created lazily inside the active event loop. Python 3.9
@@ -101,6 +101,7 @@ class Scheduler:
         self.service_health_engine = service_health_engine
         self.wallboard_engine = wallboard_engine
         self.dashboard_registry = dashboard_registry
+        self.capability_engine = capability_engine
         self.state_history_capture = state_history_capture
         self.operations_interval = max(1, int(operations_interval))
         self._operations_lock = None
@@ -154,6 +155,20 @@ class Scheduler:
             f"last_{phase}_outcome": status,
             f"last_{phase}_duration_ms": outcome["duration_ms"],
         })
+        # Persist only bounded, non-sensitive collection evidence needed by
+        # capability/readiness projections. Never persist raw responses.
+        result = outcome.get("value")
+        if isinstance(result, dict):
+            safe_keys = {
+                "points_written", "records_returned", "devices_returned",
+                "assets_returned", "partial", "status",
+            }
+            connector_state[f"last_{phase}_result"] = {
+                key: result[key] for key in sorted(safe_keys & result.keys())
+                if isinstance(result[key], (str, int, float, bool, type(None)))
+            }
+        connector_state["last_error_class"] = (
+            outcome.get("exception_type") or None)
         if status == "success":
             connector_state[f"last_successful_{phase}"] = now
         connector_states[connector] = connector_state
@@ -508,6 +523,8 @@ class Scheduler:
         started = time.monotonic() if started is None else started
         try:
             infrastructure = None
+            if self.capability_engine:
+                await asyncio.to_thread(self.capability_engine.generate)
             if self.infrastructure_engine:
                 infrastructure = await asyncio.to_thread(
                     self.infrastructure_engine.run)

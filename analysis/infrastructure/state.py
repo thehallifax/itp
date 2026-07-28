@@ -233,6 +233,9 @@ class InfrastructureStateEngine:
         readiness = evaluate_readiness(
             enabled_collectors=enabled_collectors,
             collector_records=collectors,
+            capability_manifest=_read(
+                self.inventory_dir.parent / "capabilities/collectors.json",
+                {}),
             assets=assets,
             operations_generated=(
                 self.operations_dir / "operations.json").is_file(),

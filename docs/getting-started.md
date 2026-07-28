@@ -1,5 +1,13 @@
 # Infrastructure Telemetry Platform
 
+After enabling collectors, inspect deterministic support and collection state
+with `./itp profile capabilities <profile>`.
+
+Choose a profile deployment mode before startup. Use `standalone` for a complete
+site-local stack, or the explicit `cluster_member` contract when Grafana and
+InfluxDB are shared. See [Deployment modes](deployment-modes.md) and
+[Canonical identity](canonical-identity.md).
+
 ITP gives an organisation one operational view of its infrastructure: what is
 working, what needs attention and which locations are affected. It collects
 facts from supported systems and applies fixed, explainable health rules.

@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from . import CollectorRegistry
 from .connector_registry import ConnectorMetadataRegistry
+from .capabilities import CapabilityManifestEngine, MANIFESTS
 from .config import load_config
 from .inventory import InventoryManager
 from .scheduler import Scheduler
@@ -107,6 +108,10 @@ async def _validate(config):
     registered = set(CollectorRegistry.names())
     check("collector registration", {"mist", "fortigate", "paloalto", "snmp"} <= registered,
           ", ".join(sorted(registered)))
+    declared = set(MANIFESTS) - {"framework"}
+    check("collector capability manifests",
+          {"paloalto", "papercut", "snmp"} <= declared,
+          ", ".join(sorted(declared)))
     for name, settings in config.get("collectors", {}).items():
         if not settings.get("enabled") or name not in registered: continue
         if name == "mist":
@@ -259,6 +264,21 @@ async def _run(args):
                   f"detected {output['change_count']} change(s)")
         return
     config = load_config(args.config)
+    if args.command == "capabilities":
+        runtime = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
+        engine = CapabilityManifestEngine(config, runtime)
+        result = engine.generate() if args.action == "generate" else engine.build()
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            for name, value in result["collectors"].items():
+                counts = value["capability_counts"]
+                print(
+                    f"{name}\t{value['execution']['state']}\t"
+                    f"collected={counts['collected']} failed={counts['failed']} "
+                    f"unavailable={counts['unavailable']} "
+                    f"not_applicable={counts['not_applicable']}")
+        return
     if args.command == "validate":
         await _validate(config)
         return
@@ -327,6 +347,8 @@ async def _run(args):
                 "operations_state", "/app/runtime/operations/operations.json"),
             capability_registry=settings.get(
                 "capability_registry", "/app/runtime/dashboard/managed/registry.json"),
+            capability_manifest=settings.get(
+                "capability_manifest", "/app/runtime/capabilities/collectors.json"),
             output_dir=settings.get("output_path", "/app/runtime/services"),
             sites_config=settings.get("sites_config", "/app/config/sites.yml"))
         if args.action == "evaluators":
@@ -509,6 +531,9 @@ async def _run(args):
     wallboard_settings = config.get("wallboard", {})
     services_settings = config.get("services", {})
     state_history = PipelineStateCapture(config.get("state_history", {}))
+    capability_engine = CapabilityManifestEngine(
+        config, Path(os.getenv("ITP_RUNTIME_DIR", "/app/runtime")))
+    capability_engine.generate()
     dashboard_registry = DashboardRegistry(ROOT, config,
         os.getenv("DASHBOARD_MANAGED_OUTPUT", str(ROOT / "runtime/dashboard/managed")),
         os.getenv("DASHBOARD_PROVISIONING",
@@ -573,6 +598,7 @@ async def _run(args):
                     service_health_engine=service_health,
                     wallboard_engine=wallboard,
                     dashboard_registry=dashboard_registry,
+                    capability_engine=capability_engine,
                     state_history_capture=state_history,
                     operations_interval=operations_settings.get("interval_seconds", 300),
                     state_path=Path(os.getenv(
@@ -631,6 +657,10 @@ def build_parser():
     dashboards = sub.add_parser("dashboards")
     dashboards.add_argument("action", choices=("generate", "status"), default="generate", nargs="?")
     dashboards.add_argument("--json", action="store_true")
+    capabilities = sub.add_parser("capabilities")
+    capabilities.add_argument("action", choices=("generate", "inspect"),
+                              default="inspect", nargs="?")
+    capabilities.add_argument("--json", action="store_true")
     history = sub.add_parser("state-history")
     history.add_argument("action", choices=("process", "capture-run", "inspect-run"),
                          default="process", nargs="?")

@@ -170,6 +170,9 @@ def test_no_actionable_printer_conditions(tmp_path):
     panel = next(value for value in dashboard["panels"]
                  if value["title"] == "Printers Requiring Attention")
     assert rows(panel)[0]["asset"] == "No printers require attention"
+    assert panel["targets"][0]["csvContent"].splitlines()[0] == \
+        "scope,asset"
+    assert "location" not in panel["targets"][0]["csvContent"]
 
 
 def test_printer_filter_includes_only_service_blocking_conditions(tmp_path):
@@ -428,7 +431,7 @@ def test_certificate_finding_is_consistent_across_service_cards_and_actions(
     actions = {value["issue"] for value in result["actions"]
                if value["scope"] == "site:hq"}
     assert security["value"] == "Critical"
-    assert certificates["value"] == "1 certificate requires attention"
+    assert certificates["value"] == "1 Certificate\nRequire Attention"
     assert overall["value"] == "Critical"
     assert "Security canonical summary." in overall["context"]
     assert any(value.startswith("Renew DNS Security")
@@ -762,4 +765,4 @@ def test_selected_site_uses_site_service_actions_and_collectors_without_leakage(
                 if value["scope"] == "site:branch")["value"] == "Not Enabled"
     assert next(value for value in status_rows
                 if value["scope"] == "site:hq")["value"] == \
-        "Certificates\n1 Require Attention"
+            "1 Certificate\nRequire Attention"

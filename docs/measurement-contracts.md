@@ -1,5 +1,15 @@
 # Collector measurement contracts
 
+Measurement availability is declared by the versioned
+[collector capability manifest](collector-capabilities.md). A documented
+measurement is not proof that the latest run collected it.
+
+All profile-scoped points require `deployment_id`, `customer_id`, `site_id` and
+`collector` tags. Device-scoped points additionally require `device_id` and
+`hostname`. During compatibility, `customer == customer_id` and
+`site == site_id`; conflicting values are rejected. See
+[Canonical identity](canonical-identity.md).
+
 Schema version 1 uses shared canonical measurements. Every native point carries
 `deployment_id`; device telemetry also carries `collector`, `customer`, `site`,
 `device_id`, `hostname`, `vendor`, `platform`, and `device_role` where the
@@ -50,4 +60,3 @@ For a live profile, use `SHOW TABLES`, `SHOW COLUMNS FROM <measurement>`, and a
 collector-grouped count/latest query. Validate the source dashboard JSON and
 the managed runtime copy. A measurement existing only because of old data is
 not proof: baseline validation starts from an empty profile database.
-

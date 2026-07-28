@@ -1,5 +1,9 @@
 # Canonical Service Health Engine
 
+Service evaluators consume the profile capability manifest. Unsupported
+capabilities explain exclusions without degrading health; failed supported
+evidence can degrade Monitoring and its related service.
+
 The Service Health Engine is the vendor-neutral policy boundary between
 canonical infrastructure data and operational dashboards. It evaluates
 Internet, Wireless, Switching, Printing, Identity, Compute, Storage, Voice,

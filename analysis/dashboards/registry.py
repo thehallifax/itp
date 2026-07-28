@@ -182,10 +182,48 @@ class DashboardPackRegistry:
                                             "value": deployment_id}]
         dashboard["tags"] = sorted(tags)
         dashboard["editable"] = False
+        self._apply_capability_states(dashboard, declaration)
         if dashboard.get("uid") == "itp-collector-health":
             self._collector_health_empty_state(
                 dashboard, getattr(self, "_readiness", {}))
         return dashboard
+
+    def _apply_capability_states(self, dashboard, declaration):
+        """Apply canonical empty-state labels without changing panel queries."""
+        collector = declaration.get("collector")
+        if collector in {"platform", "core"}:
+            return
+        runtime = (
+            self.output_root.parent.parent
+            if self.output_root.parent.name == "dashboard"
+            else self.output_root.parent)
+        manifest = self._read(
+            runtime / f"capabilities/{collector}.json", {})
+        labels = {
+            "disabled": "Collector Disabled",
+            "not_yet_collected": "Not Yet Collected",
+            "unavailable": "Currently Unavailable",
+            "failed": "Collection Failed",
+            "partial": "Partial Data",
+            "not_applicable": "Feature Not Enabled",
+        }
+        for capability in manifest.get("capabilities", []):
+            state = capability.get("collection")
+            if state == "collected":
+                continue
+            for panel in dashboard.get("panels", []):
+                title = str(panel.get("title") or "")
+                if not any(str(value).casefold() in title.casefold()
+                           for value in capability.get("panels", []) if value):
+                    continue
+                defaults = panel.setdefault("fieldConfig", {}).setdefault(
+                    "defaults", {})
+                defaults["noValue"] = labels.get(state, "Not Yet Collected")
+                explanation = capability.get("explanation")
+                if explanation:
+                    existing = str(panel.get("description") or "").strip()
+                    panel["description"] = (
+                        f"{existing}\n\nCapability state: {explanation}".strip())
 
     @staticmethod
     def _read(path, fallback):
@@ -206,6 +244,8 @@ class DashboardPackRegistry:
             runtime / "provisioning/state.json", {})
         operations = self._read(
             runtime / "operations/operations.json", {})
+        capability_manifest = self._read(
+            runtime / "capabilities/collectors.json", {})
         demo = (
             str(self.config.get("deployment_id") or "").casefold() == "demo"
             or (runtime / "demo.json").is_file())
@@ -226,6 +266,7 @@ class DashboardPackRegistry:
         value = evaluate_readiness(
             enabled_collectors=resolved["enabled_collectors"],
             collector_records=state.get("collectors", []),
+            capability_manifest=capability_manifest,
             capabilities=resolved["capabilities"],
             assets=state.get("assets", []),
             operations_generated=bool(operations.get("generated_at")),

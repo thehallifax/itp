@@ -1,5 +1,8 @@
 # Collectors
 
+Each reference collector publishes a versioned support and runtime-evidence
+contract. See [Collector capability manifests](collector-capabilities.md).
+
 | Collector | Placement | Credentials | Canonical output |
 | --- | --- | --- | --- |
 | Mist | central | `secrets/mist.env` | device, availability, performance, wireless, collector_health |

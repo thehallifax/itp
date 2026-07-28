@@ -76,9 +76,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT hostname AS \"Hostname\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT hostname AS \"Hostname\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT hostname AS \"Hostname\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT hostname AS \"Hostname\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -140,9 +140,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT model AS \"Model\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT model AS \"Model\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT model AS \"Model\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT model AS \"Model\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -204,9 +204,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT serial AS \"Serial\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT serial AS \"Serial\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT serial AS \"Serial\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT serial AS \"Serial\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -268,9 +268,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT firmware AS \"PAN-OS Version\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT firmware AS \"PAN-OS Version\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT firmware AS \"PAN-OS Version\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT firmware AS \"PAN-OS Version\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -332,9 +332,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT platform_family AS \"Platform Family\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT CASE WHEN platform_family = '400' THEN 'PA-400 Series' ELSE platform_family END AS \"Platform Family\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT platform_family AS \"Platform Family\" FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CASE WHEN platform_family = '400' THEN 'PA-400 Series' ELSE platform_family END AS \"Platform Family\" FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -388,7 +388,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -398,9 +398,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT uptime_seconds AS uptime FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT uptime_seconds AS uptime FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT uptime_seconds AS uptime FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT uptime_seconds AS uptime FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -475,9 +475,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT ha_status AS \"HA Status\" FROM firewall WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT CASE WHEN LOWER(ha_status) = 'standalone' THEN 'Standalone' ELSE ha_status END AS \"HA Status\" FROM firewall WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT ha_status AS \"HA Status\" FROM firewall WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CASE WHEN LOWER(ha_status) = 'standalone' THEN 'Standalone' ELSE ha_status END AS \"HA Status\" FROM firewall WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -551,7 +551,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -561,9 +561,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -625,9 +625,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT device_certificate_status AS \"Device Certificate Status\" FROM firewall WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT device_certificate_status AS \"Device Certificate Status\" FROM firewall WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT device_certificate_status AS \"Device Certificate Status\" FROM firewall WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT device_certificate_status AS \"Device Certificate Status\" FROM firewall WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -694,7 +694,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -704,9 +704,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT management_cpu_percent AS management_cpu FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT management_cpu_percent AS management_cpu FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT management_cpu_percent AS management_cpu FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT management_cpu_percent AS management_cpu FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -760,7 +760,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -770,9 +770,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT dataplane_cpu_percent AS dataplane_cpu FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT dataplane_cpu_percent AS dataplane_cpu FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT dataplane_cpu_percent AS dataplane_cpu FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT dataplane_cpu_percent AS dataplane_cpu FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -826,7 +826,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -836,9 +836,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT memory_used_percent AS memory_used FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT memory_used_percent AS memory_used FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT memory_used_percent AS memory_used FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT memory_used_percent AS memory_used FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -892,7 +892,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -902,9 +902,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT sessions_active AS active_sessions FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT sessions_active AS active_sessions FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT sessions_active AS active_sessions FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT sessions_active AS active_sessions FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -958,7 +958,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -968,9 +968,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT session_utilisation_percent AS session_utilisation FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT session_utilisation_percent AS session_utilisation FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT session_utilisation_percent AS session_utilisation FROM performance WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT session_utilisation_percent AS session_utilisation FROM performance WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -1047,9 +1047,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT interface_name, operational_status, speed, duplex, logical, wan_classified, wan_role, wan_display_name, rx_errors_total, rx_discards_total, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_name AS \"Interface\", operational_status AS \"Operational\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_display_name AS \"WAN Name\", wan_role AS \"WAN Role\", rx_errors_total AS \"RX Errors\", rx_discards_total AS \"RX Discards\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
+          "query": "WITH latest AS (SELECT interface_name, operational_status, speed, duplex, logical, wan_classified, wan_role, wan_display_name, rx_errors_total, rx_discards_total, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_name AS \"Interface\", operational_status AS \"Operational\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_display_name AS \"WAN Name\", wan_role AS \"WAN Role\", rx_errors_total AS \"RX Errors\", rx_discards_total AS \"RX Discards\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT interface_name, operational_status, speed, duplex, logical, wan_classified, wan_role, wan_display_name, rx_errors_total, rx_discards_total, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_name AS \"Interface\", operational_status AS \"Operational\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_display_name AS \"WAN Name\", wan_role AS \"WAN Role\", rx_errors_total AS \"RX Errors\", rx_discards_total AS \"RX Discards\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
+          "rawSql": "WITH latest AS (SELECT interface_name, operational_status, speed, duplex, logical, wan_classified, wan_role, wan_display_name, rx_errors_total, rx_discards_total, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_name AS \"Interface\", operational_status AS \"Operational\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_display_name AS \"WAN Name\", wan_role AS \"WAN Role\", rx_errors_total AS \"RX Errors\", rx_discards_total AS \"RX Discards\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
           "refId": "A"
         }
       ],
@@ -1112,9 +1112,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT interface_id, interface_name, speed, duplex, logical, wan_classified, wan_role, wan_display_name, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_id AS \"Interface ID\", interface_name AS \"Interface\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_classified AS \"WAN\", wan_role AS \"WAN Role\", wan_display_name AS \"Friendly Name\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
+          "query": "WITH latest AS (SELECT interface_id, interface_name, speed, duplex, logical, wan_classified, wan_role, wan_display_name, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_id AS \"Interface ID\", interface_name AS \"Interface\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_classified AS \"WAN\", wan_role AS \"WAN Role\", wan_display_name AS \"Friendly Name\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT interface_id, interface_name, speed, duplex, logical, wan_classified, wan_role, wan_display_name, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_id AS \"Interface ID\", interface_name AS \"Interface\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_classified AS \"WAN\", wan_role AS \"WAN Role\", wan_display_name AS \"Friendly Name\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
+          "rawSql": "WITH latest AS (SELECT interface_id, interface_name, speed, duplex, logical, wan_classified, wan_role, wan_display_name, time, ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT interface_id AS \"Interface ID\", interface_name AS \"Interface\", speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", wan_classified AS \"WAN\", wan_role AS \"WAN Role\", wan_display_name AS \"Friendly Name\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY interface_name",
           "refId": "A"
         }
       ],
@@ -1175,9 +1175,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH samples AS (SELECT time, rx_bytes_total, tx_bytes_total, LAG(time) OVER (ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
+          "query": "WITH samples AS (SELECT time, rx_bytes_total, tx_bytes_total, LAG(time) OVER (ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
           "rawQuery": true,
-          "rawSql": "WITH samples AS (SELECT time, rx_bytes_total, tx_bytes_total, LAG(time) OVER (ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
+          "rawSql": "WITH samples AS (SELECT time, rx_bytes_total, tx_bytes_total, LAG(time) OVER (ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
           "refId": "A"
         }
       ],
@@ -1235,9 +1235,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT time, interface_name, rx_errors_total, tx_errors_total, rx_discards_total FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time",
+          "query": "SELECT time, interface_name, rx_errors_total, tx_errors_total, rx_discards_total FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time",
           "rawQuery": true,
-          "rawSql": "SELECT time, interface_name, rx_errors_total, tx_errors_total, rx_discards_total FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time",
+          "rawSql": "SELECT time, interface_name, rx_errors_total, tx_errors_total, rx_discards_total FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time",
           "refId": "A"
         }
       ],
@@ -1313,9 +1313,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT subscription_name, status, expiry_date, remaining_days, expired_days, expired, perpetual, expiry_state, time, ROW_NUMBER() OVER (PARTITION BY hostname, subscription_name ORDER BY time DESC) AS rn FROM license WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT subscription_name AS \"Subscription\", expiry_state AS \"State\", status AS \"Status\", expiry_date AS \"Expiry\", remaining_days AS \"Days Remaining\", expired_days AS \"Days Expired\", perpetual AS \"Perpetual\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY subscription_name",
+          "query": "WITH latest AS (SELECT subscription_name, status, expiry_date, remaining_days, expired_days, expired, perpetual, expiry_state, time, ROW_NUMBER() OVER (PARTITION BY hostname, subscription_name ORDER BY time DESC) AS rn FROM license WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT subscription_name AS \"Subscription\", expiry_state AS \"State\", status AS \"Status\", expiry_date AS \"Expiry\", remaining_days AS \"Days Remaining\", expired_days AS \"Days Expired\", perpetual AS \"Perpetual\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY subscription_name",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT subscription_name, status, expiry_date, remaining_days, expired_days, expired, perpetual, expiry_state, time, ROW_NUMBER() OVER (PARTITION BY hostname, subscription_name ORDER BY time DESC) AS rn FROM license WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT subscription_name AS \"Subscription\", expiry_state AS \"State\", status AS \"Status\", expiry_date AS \"Expiry\", remaining_days AS \"Days Remaining\", expired_days AS \"Days Expired\", perpetual AS \"Perpetual\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY subscription_name",
+          "rawSql": "WITH latest AS (SELECT subscription_name, status, expiry_date, remaining_days, expired_days, expired, perpetual, expiry_state, time, ROW_NUMBER() OVER (PARTITION BY hostname, subscription_name ORDER BY time DESC) AS rn FROM license WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT subscription_name AS \"Subscription\", expiry_state AS \"State\", status AS \"Status\", expiry_date AS \"Expiry\", remaining_days AS \"Days Remaining\", expired_days AS \"Days Expired\", perpetual AS \"Perpetual\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY subscription_name",
           "refId": "A"
         }
       ],
@@ -1376,9 +1376,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT version AS \"Application Package\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'applications' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT version AS \"Application Package\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'applications' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT version AS \"Application Package\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'applications' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT version AS \"Application Package\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'applications' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -1440,9 +1440,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT version AS \"Threat Package\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'threats' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT version AS \"Threat Package\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'threats' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT version AS \"Threat Package\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'threats' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT version AS \"Threat Package\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'threats' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -1504,9 +1504,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT version AS \"Antivirus Package\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'antivirus' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT version AS \"Antivirus Package\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'antivirus' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT version AS \"Antivirus Package\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'antivirus' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT version AS \"Antivirus Package\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'antivirus' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -1568,9 +1568,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT version AS \"WildFire Package\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'wildfire' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT version AS \"WildFire Package\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'wildfire' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT version AS \"WildFire Package\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'wildfire' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT version AS \"WildFire Package\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'wildfire' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -1632,9 +1632,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT version AS \"URL Filtering\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'url_filtering' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT version AS \"URL Filtering\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'url_filtering' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT version AS \"URL Filtering\" FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND package_name = 'url_filtering' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT version AS \"URL Filtering\" FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND package_name = 'url_filtering' AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -1727,9 +1727,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT package_name, version, release_time, release_time_raw, age_days, time, ROW_NUMBER() OVER (PARTITION BY hostname, package_name ORDER BY time DESC) AS rn FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT package_name AS \"Package\", version AS \"Version\", release_time AS \"Release Time\", age_days AS \"Age (days)\", release_time_raw AS \"Raw Release Time\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY package_name",
+          "query": "WITH latest AS (SELECT package_name, version, release_time, release_time_raw, age_days, time, ROW_NUMBER() OVER (PARTITION BY hostname, package_name ORDER BY time DESC) AS rn FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT package_name AS \"Package\", version AS \"Version\", release_time AS \"Release Time\", age_days AS \"Age (days)\", release_time_raw AS \"Raw Release Time\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY package_name",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT package_name, version, release_time, release_time_raw, age_days, time, ROW_NUMBER() OVER (PARTITION BY hostname, package_name ORDER BY time DESC) AS rn FROM content_package WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT package_name AS \"Package\", version AS \"Version\", release_time AS \"Release Time\", age_days AS \"Age (days)\", release_time_raw AS \"Raw Release Time\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY package_name",
+          "rawSql": "WITH latest AS (SELECT package_name, version, release_time, release_time_raw, age_days, time, ROW_NUMBER() OVER (PARTITION BY hostname, package_name ORDER BY time DESC) AS rn FROM content_package WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT package_name AS \"Package\", version AS \"Version\", release_time AS \"Release Time\", age_days AS \"Age (days)\", release_time_raw AS \"Raw Release Time\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY package_name",
           "refId": "A"
         }
       ],
@@ -1805,9 +1805,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT hostname, serial, model, management_ip, firmware, platform, platform_family, time, ROW_NUMBER() OVER (PARTITION BY hostname ORDER BY time DESC) AS rn FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS \"Hostname\", serial AS \"Serial\", model AS \"Model\", management_ip AS \"Management IP\", firmware AS \"Software Version\", platform AS \"Platform\", platform_family AS \"Platform Family\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY hostname",
+          "query": "WITH latest AS (SELECT hostname, serial, model, management_ip, firmware, platform, platform_family, time, ROW_NUMBER() OVER (PARTITION BY hostname ORDER BY time DESC) AS rn FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS \"Hostname\", serial AS \"Serial\", model AS \"Model\", management_ip AS \"Management IP\", firmware AS \"Software Version\", platform AS \"Platform\", platform_family AS \"Platform Family\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY hostname",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT hostname, serial, model, management_ip, firmware, platform, platform_family, time, ROW_NUMBER() OVER (PARTITION BY hostname ORDER BY time DESC) AS rn FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS \"Hostname\", serial AS \"Serial\", model AS \"Model\", management_ip AS \"Management IP\", firmware AS \"Software Version\", platform AS \"Platform\", platform_family AS \"Platform Family\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY hostname",
+          "rawSql": "WITH latest AS (SELECT hostname, serial, model, management_ip, firmware, platform, platform_family, time, ROW_NUMBER() OVER (PARTITION BY hostname ORDER BY time DESC) AS rn FROM device WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS \"Hostname\", serial AS \"Serial\", model AS \"Model\", management_ip AS \"Management IP\", firmware AS \"Software Version\", platform AS \"Platform\", platform_family AS \"Platform Family\", time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY hostname",
           "refId": "A"
         }
       ],
@@ -1903,9 +1903,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -1967,9 +1967,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT CAST(time AS VARCHAR) AS \"Last Collection\" FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND success = true ORDER BY time DESC LIMIT 1",
+          "query": "SELECT CAST(time AS VARCHAR) AS \"Last Collection\" FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND success = true ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT CAST(time AS VARCHAR) AS \"Last Collection\" FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND success = true ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CAST(time AS VARCHAR) AS \"Last Collection\" FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND success = true ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -2033,9 +2033,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT duration_ms AS collection_duration FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -2099,9 +2099,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT points_written AS points_written FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -2165,9 +2165,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT api_duration_ms_max FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -2260,9 +2260,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT CASE WHEN success = false THEN 0 WHEN partial = true OR error_count > 0 THEN 1 ELSE 2 END AS quality FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT CASE WHEN success = false THEN 0 WHEN partial = true OR error_count > 0 THEN 1 ELSE 2 END AS quality FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT CASE WHEN success = false THEN 0 WHEN partial = true OR error_count > 0 THEN 1 ELSE 2 END AS quality FROM collector_health WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CASE WHEN success = false THEN 0 WHEN partial = true OR error_count > 0 THEN 1 ELSE 2 END AS quality FROM collector_health WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -2307,12 +2307,12 @@
           "type": "influxdb",
           "uid": "ffsu5ap2kr5dse"
         },
-        "definition": "SELECT DISTINCT customer FROM device WHERE collector = 'paloalto' ORDER BY customer",
+        "definition": "SELECT DISTINCT COALESCE(NULLIF(customer_name, ''), customer_id) AS __text, customer_id AS __value FROM device WHERE collector = 'paloalto' AND customer_id IS NOT NULL AND customer_id <> '' ORDER BY __text",
         "includeAll": true,
         "label": "Customer",
         "name": "customer",
         "options": [],
-        "query": "SELECT DISTINCT customer FROM device WHERE collector = 'paloalto' ORDER BY customer",
+        "query": "SELECT DISTINCT COALESCE(NULLIF(customer_name, ''), customer_id) AS __text, customer_id AS __value FROM device WHERE collector = 'paloalto' AND customer_id IS NOT NULL AND customer_id <> '' ORDER BY __text",
         "refresh": 1,
         "regex": "",
         "sort": 1,
@@ -2328,12 +2328,12 @@
           "type": "influxdb",
           "uid": "ffsu5ap2kr5dse"
         },
-        "definition": "SELECT DISTINCT site FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} ORDER BY site",
+        "definition": "SELECT DISTINCT COALESCE(NULLIF(site_name, ''), site_id) AS __text, site_id AS __value FROM device WHERE collector = 'paloalto' AND site_id IS NOT NULL AND site_id <> '' AND customer_id LIKE ${customer:sqlstring} ORDER BY __text",
         "includeAll": true,
         "label": "Site",
         "name": "site",
         "options": [],
-        "query": "SELECT DISTINCT site FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} ORDER BY site",
+        "query": "SELECT DISTINCT COALESCE(NULLIF(site_name, ''), site_id) AS __text, site_id AS __value FROM device WHERE collector = 'paloalto' AND site_id IS NOT NULL AND site_id <> '' AND customer_id LIKE ${customer:sqlstring} ORDER BY __text",
         "refresh": 1,
         "regex": "",
         "sort": 1,
@@ -2349,12 +2349,12 @@
           "type": "influxdb",
           "uid": "ffsu5ap2kr5dse"
         },
-        "definition": "SELECT DISTINCT hostname FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "definition": "SELECT DISTINCT COALESCE(NULLIF(hostname, ''), device_id) AS __text, device_id AS __value FROM device WHERE collector = 'paloalto' AND device_id IS NOT NULL AND device_id <> '' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} ORDER BY __text",
         "includeAll": true,
         "label": "Device",
         "name": "device",
         "options": [],
-        "query": "SELECT DISTINCT hostname FROM device WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "query": "SELECT DISTINCT COALESCE(NULLIF(hostname, ''), device_id) AS __text, device_id AS __value FROM device WHERE collector = 'paloalto' AND device_id IS NOT NULL AND device_id <> '' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} ORDER BY __text",
         "refresh": 1,
         "regex": "",
         "sort": 1,
@@ -2371,14 +2371,14 @@
           "type": "influxdb",
           "uid": "ffsu5ap2kr5dse"
         },
-        "definition": "SELECT DISTINCT COALESCE(NULLIF(wan_display_name, ''), INITCAP(wan_role), interface_name) || ' \u2014 ' || interface_name AS __text, interface_name AS __value FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND wan_classified = true ORDER BY __text",
+        "definition": "SELECT DISTINCT COALESCE(NULLIF(wan_display_name, ''), INITCAP(wan_role), interface_name) || ' \u2014 ' || interface_name AS __text, interface_name AS __value FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND wan_classified = true ORDER BY __text",
         "hide": 2,
         "includeAll": true,
         "label": "WAN Interface",
         "multi": true,
         "name": "wan_interface",
         "options": [],
-        "query": "SELECT DISTINCT COALESCE(NULLIF(wan_display_name, ''), INITCAP(wan_role), interface_name) || ' \u2014 ' || interface_name AS __text, interface_name AS __value FROM interface WHERE collector = 'paloalto' AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND wan_classified = true ORDER BY __text",
+        "query": "SELECT DISTINCT COALESCE(NULLIF(wan_display_name, ''), INITCAP(wan_role), interface_name) || ' \u2014 ' || interface_name AS __text, interface_name AS __value FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND wan_classified = true ORDER BY __text",
         "refresh": 1,
         "regex": "",
         "sort": 1,

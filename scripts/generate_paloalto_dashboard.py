@@ -15,7 +15,7 @@ def target(sql, ref="A"):
 
 
 def stat(panel_id, title, x, y, w, sql, *, unit="short", mappings=None,
-         thresholds=None, description="", string_field=None, show_name=True):
+         thresholds=None, description="", string_field=None, show_name=False):
     return {"id": panel_id, "type": "stat", "title": title, "description": description,
         "gridPos": {"x": x, "y": y, "w": w, "h": 4}, "datasource": DATASOURCE,
         "targets": [target(sql)], "transformations": [],
@@ -78,9 +78,9 @@ def row(panel_id, title, y):
 
 def where(table_name="device"):
     return (f"FROM {table_name} WHERE collector = 'paloalto' "
-            "AND customer LIKE ${customer:sqlstring} "
-            "AND site LIKE ${site:sqlstring} "
-            "AND hostname LIKE ${device:sqlstring}")
+            "AND customer_id LIKE ${customer:sqlstring} "
+            "AND site_id LIKE ${site:sqlstring} "
+            "AND device_id LIKE ${device:sqlstring}")
 
 
 def latest(column, table_name="device"):
@@ -111,19 +111,21 @@ def build():
              latest('firmware AS "PAN-OS Version"'), unit="string",
              string_field="PAN-OS Version"))
     add(stat(0, "Platform Family", 16, 1, 4,
-        latest('platform_family AS "Platform Family"'), unit="string",
+        latest("CASE WHEN platform_family = '400' THEN 'PA-400 Series' "
+               "ELSE platform_family END AS \"Platform Family\""), unit="string",
         string_field="Platform Family"))
     add(stat(0, "Uptime", 20, 1, 4, latest("uptime_seconds AS uptime"),
              unit="s", description="Latest uptime returned by PAN-OS."))
 
     add(row(0, "Health", 5))
     add(stat(0, "HA Status", 0, 6, 8,
-        latest('ha_status AS "HA Status"', "firewall"), unit="string",
+        latest("CASE WHEN LOWER(ha_status) = 'standalone' THEN 'Standalone' "
+               "ELSE ha_status END AS \"HA Status\"", "firewall"), unit="string",
         string_field="HA Status"))
     collector_status = ("SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status "
         "FROM collector_health WHERE collector = 'paloalto' "
-        "AND customer LIKE ${customer:sqlstring} "
-        "AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo "
+        "AND customer_id LIKE ${customer:sqlstring} "
+        "AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo "
         "ORDER BY time DESC LIMIT 1")
     add(stat(0, "Collector Status", 8, 6, 8, collector_status,
         mappings=[{"type": "value", "options": {
@@ -267,8 +269,8 @@ def build():
 
     add(row(0, "Operational", 68))
     health_filter = ("FROM collector_health WHERE collector = 'paloalto' "
-        "AND customer LIKE ${customer:sqlstring} "
-        "AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo "
+        "AND customer_id LIKE ${customer:sqlstring} "
+        "AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo "
         "ORDER BY time DESC LIMIT 1")
     add(stat(0, "Collector Health", 0, 69, 4, collector_status,
         mappings=[{"type": "value", "options": {
@@ -278,8 +280,8 @@ def build():
             {"color": "green", "value": 1}]}, show_name=False))
     successful_health_filter = (
         "FROM collector_health WHERE collector = 'paloalto' "
-        "AND customer LIKE ${customer:sqlstring} "
-        "AND site LIKE ${site:sqlstring} AND success = true "
+        "AND customer_id LIKE ${customer:sqlstring} "
+        "AND site_id LIKE ${site:sqlstring} AND success = true "
         "ORDER BY time DESC LIMIT 1")
     add(stat(0, "Last Successful Collection", 4, 69, 4,
              'SELECT CAST(time AS VARCHAR) AS "Last Collection" '
@@ -322,16 +324,29 @@ def build():
         "query": query, "definition": query, "refresh": 1, "sort": 1, "regex": "",
         "includeAll": True, "allValue": "'%'", "options": [],
         "current": {"text": "All", "value": "$__all"}}
-    customer_q = "SELECT DISTINCT customer FROM device WHERE collector = 'paloalto' ORDER BY customer"
-    site_q = ("SELECT DISTINCT site FROM device WHERE collector = 'paloalto' "
-              "AND customer LIKE ${customer:sqlstring} ORDER BY site")
-    device_q = ("SELECT DISTINCT hostname FROM device WHERE collector = 'paloalto' "
-                "AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} ORDER BY hostname")
+    customer_q = (
+        "SELECT DISTINCT COALESCE(NULLIF(customer_name, ''), customer_id) AS __text, "
+        "customer_id AS __value FROM device WHERE collector = 'paloalto' "
+        "AND customer_id IS NOT NULL AND customer_id <> '' "
+        "ORDER BY __text")
+    site_q = (
+        "SELECT DISTINCT COALESCE(NULLIF(site_name, ''), site_id) AS __text, "
+        "site_id AS __value FROM device WHERE collector = 'paloalto' "
+        "AND site_id IS NOT NULL AND site_id <> '' "
+        "AND customer_id LIKE ${customer:sqlstring} ORDER BY __text")
+    device_q = (
+        "SELECT DISTINCT COALESCE(NULLIF(hostname, ''), device_id) AS __text, "
+        "device_id AS __value FROM device WHERE collector = 'paloalto' "
+        "AND device_id IS NOT NULL AND device_id <> '' "
+        "AND customer_id LIKE ${customer:sqlstring} "
+        "AND site_id LIKE ${site:sqlstring} ORDER BY __text")
     wan_q = ("SELECT DISTINCT COALESCE(NULLIF(wan_display_name, ''), "
         "INITCAP(wan_role), interface_name) || ' — ' || interface_name AS __text, "
         "interface_name AS __value FROM interface WHERE collector = 'paloalto' "
-        "AND customer LIKE ${customer:sqlstring} AND site LIKE ${site:sqlstring} "
-        "AND hostname LIKE ${device:sqlstring} AND wan_classified = true ORDER BY __text")
+        "AND customer_id LIKE ${customer:sqlstring} "
+        "AND site_id LIKE ${site:sqlstring} "
+        "AND device_id LIKE ${device:sqlstring} "
+        "AND wan_classified = true ORDER BY __text")
     wan_variable = variable("wan_interface", "WAN Interface", wan_q, True)
     wan_variable.update({
         "includeAll": True,

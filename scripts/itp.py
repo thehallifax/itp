@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import warnings
 from datetime import datetime, timezone
@@ -75,6 +76,14 @@ def profile(value, *, secrets=True):
 
 def describe(value):
     print(f"Profile: {value.id} ({value.name})")
+    print(f"Customer: {value.customer_id}")
+    sites = SiteRegistry.load(value.paths.sites)
+    if len(sites.sites) == 1:
+        site = sites.sites[0]
+        print(f"Site: {site.site_id} ({site.display_name})")
+    else:
+        print(f"Sites: {len(sites.sites)} canonical sites")
+    print(f"Deployment mode: {value.deployment_mode}")
     print(f"Configuration: {value.paths.discovery}")
     print(f"Sites: {value.paths.sites}")
     print(f"Secrets: {value.paths.secrets}")
@@ -92,6 +101,19 @@ def compose(value, *arguments, capture=False):
 def generate_profile_dashboards(value):
     """Materialize managed folders before Grafana starts watching them."""
     config = load_config(value.paths.discovery)
+    raw_config = yaml.safe_load(value.paths.discovery.read_text()) or {}
+    legacy_sites = []
+    for label, settings in [
+            ("profile", raw_config),
+            *((name, settings) for name, settings in
+              (raw_config.get("collectors") or {}).items()
+              if isinstance(settings, dict) and settings.get("enabled"))]:
+        configured_site = str(settings.get("site") or "")
+        if configured_site and not configured_site.startswith("site:"):
+            legacy_sites.append(f"{label}={configured_site}")
+    if legacy_sites:
+        print("[WARN] Identity compatibility: legacy site aliases will be "
+              "normalised; update " + ", ".join(legacy_sites))
     return DashboardRegistry(
         ROOT, config, value.paths.managed_dashboards,
         value.paths.dashboard_runtime / "provisioning/dashboards.yml",
@@ -142,7 +164,9 @@ def validate(value, *, process_environment=None):
         "invalid_service_dependency", "unknown_dependency_site",
     }
     findings = [item for item in sites.validation() if item["type"] in blocking_types]
-    check("Manifest", True, f"deployment_id={value.deployment_id} timezone={value.timezone}")
+    check("Manifest", True, f"deployment_id={value.deployment_id} "
+          f"customer_id={value.customer_id} mode={value.deployment_mode} "
+          f"timezone={value.timezone}")
     check("Configuration", config.get("schema_version") == 1, "schema version 1")
     check("Sites", bool(sites.sites) and not findings,
           f"{len(sites.sites)} canonical site(s), model={sites.deployment_model}, "
@@ -187,10 +211,17 @@ def validate(value, *, process_environment=None):
     except (OSError, subprocess.CalledProcessError) as exc:
         compose_valid, compose_detail = False, str(exc)
     check("Compose", compose_valid, compose_detail)
-    occupied = [str(port) for port in (value.grafana_port, value.influxdb_port)
-                if not port_available(port)]
-    check("Ports", not occupied or _project_running(value),
-          "available" if not occupied else "in use: " + ", ".join(occupied))
+    if value.deployment_mode == "standalone":
+        occupied = [str(port) for port in
+                    (value.grafana_port, value.influxdb_port)
+                    if not port_available(port)]
+        check("Ports", not occupied or _project_running(value),
+              "available" if not occupied else "in use: " + ", ".join(occupied))
+    else:
+        check("Shared services", bool(
+            value.shared_grafana_url and value.shared_influxdb_url),
+            f"cluster={value.cluster_id} grafana={value.shared_grafana_url} "
+            f"influxdb={value.shared_influxdb_url}")
     if not all(checks):
         raise ProfileError(f"profile {value.id} validation failed")
     print(f"Status: valid ({len(checks)} checks)")
@@ -201,6 +232,60 @@ def _project_running(value):
         return bool(compose(value, "ps", "-q", capture=True).stdout.strip())
     except Exception:
         return False
+
+
+def _port_owner(port):
+    """Return the Compose project/container publishing a local port."""
+    try:
+        output = subprocess.run([
+            "docker", "ps", "--format",
+            '{{.Names}}\\t{{.Ports}}\\t{{.Label "com.docker.compose.project"}}'],
+            check=True, text=True, capture_output=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    marker = f":{port}->"
+    for line in output.splitlines():
+        name, ports, *project = line.split("\t")
+        if marker in ports:
+            return {"container": name, "project": project[0] if project else ""}
+    return None
+
+
+def preflight_start(value):
+    value.paths.create_runtime()
+    if value.deployment_mode == "cluster_member":
+        for label, endpoint in (
+                ("Grafana", value.shared_grafana_url),
+                ("InfluxDB", value.shared_influxdb_url)):
+            try:
+                with urllib.request.urlopen(endpoint, timeout=3):
+                    pass
+            except urllib.error.HTTPError as exc:
+                if exc.code < 500:
+                    continue
+                raise ProfileError(
+                    f"cluster-member profile {value.id} cannot reach shared "
+                    f"{label} at {endpoint}") from exc
+            except OSError as exc:
+                raise ProfileError(
+                    f"cluster-member profile {value.id} cannot reach shared "
+                    f"{label} at {endpoint}") from exc
+        return
+    if _project_running(value):
+        return
+    for label, port in (
+            ("Grafana", value.grafana_port),
+            ("InfluxDB", value.influxdb_port)):
+        if port_available(port):
+            continue
+        owner = _port_owner(port) or {}
+        detail = owner.get("project") or owner.get("container") or \
+            "an unknown local process"
+        raise ProfileError(
+            f"Cannot start standalone profile {value.id}. {label} port "
+            f"{port} is already used by {detail}. Stop the conflicting "
+            "deployment, configure alternate standalone ports, or use "
+            "cluster-member deployment mode.")
 
 
 def status(value):
@@ -217,7 +302,7 @@ def status(value):
                      if isinstance(settings, dict) and settings.get("enabled"))
     print("Enabled collectors: " + (", ".join(enabled) or "none"))
     sites = SiteRegistry.load(value.paths.sites)
-    print(f"Deployment model: {sites.deployment_model}")
+    print(f"Deployment model: {value.deployment_mode}")
     print(f"Enabled sites: {len(sites.sites)}")
     assets_path = value.paths.inventory / "assets.json"
     try:
@@ -237,8 +322,16 @@ def status(value):
     except Exception:
         count = 0
     print(f"Managed dashboards: {count}")
-    print(f"InfluxDB: http://localhost:{value.influxdb_port}")
-    print(f"Grafana: http://localhost:{value.grafana_port}")
+    if value.deployment_mode == "cluster_member":
+        print(f"Shared cluster: {value.cluster_id}")
+        print(f"InfluxDB: {value.shared_influxdb_url}")
+        print(f"Grafana: {value.shared_grafana_url}")
+    elif containers:
+        print(f"InfluxDB: http://localhost:{value.influxdb_port}")
+        print(f"Grafana: http://localhost:{value.grafana_port}")
+    else:
+        print("InfluxDB: stopped")
+        print("Grafana: stopped")
 
 
 def sites_status(value):
@@ -372,6 +465,8 @@ def init_secrets(value):
 
 def bootstrap_influx(value):
     """Create the first profile-local InfluxDB admin token without exposing it."""
+    if value.deployment_mode != "standalone":
+        return
     token_file = value.paths.secrets / "influxdb.env"
     if token_file.exists() and any(line.startswith("INFLUXDB_TOKEN=") and line.split("=", 1)[1].strip()
                                    for line in token_file.read_text().splitlines()):
@@ -581,7 +676,7 @@ def main():
     for name in ("validate", "status", "sites", "virtualisation-status",
                  "up", "down", "restart", "logs",
                  "init-secrets", "dashboards", "operations", "services",
-                 "wallboard", "shell"):
+                 "wallboard", "capabilities", "shell"):
         item = actions.add_parser(name); item.add_argument("profile")
     virt = actions.add_parser("virtualisation")
     virt.add_argument("profile")
@@ -874,16 +969,30 @@ def main():
     elif args.action in {"up", "down", "restart"}:
         describe(value)
         if args.action == "up":
+            preflight_start(value)
             bootstrap_influx(value)
             validate(value)
             generate_profile_dashboards(value)
-            compose(value, "up", "-d", "--build")
-        elif args.action == "down": compose(value, "down")
+            if value.deployment_mode == "cluster_member":
+                compose(value, "up", "-d", "--build", "--no-deps",
+                        "collector", "discovery")
+            else:
+                compose(value, "up", "-d", "--build")
+        elif args.action == "down":
+            if value.deployment_mode == "cluster_member":
+                compose(value, "stop", "collector", "discovery")
+            else:
+                compose(value, "down")
         else:
+            preflight_start(value)
             bootstrap_influx(value)
             validate(value)
             generate_profile_dashboards(value)
-            compose(value, "up", "-d", "--build", "--remove-orphans")
+            if value.deployment_mode == "cluster_member":
+                compose(value, "up", "-d", "--build", "--no-deps",
+                        "--force-recreate", "collector", "discovery")
+            else:
+                compose(value, "up", "-d", "--build", "--remove-orphans")
     elif args.action == "logs":
         compose(value, "logs", "--tail=200", "-f")
     elif args.action == "shell":
@@ -891,7 +1000,8 @@ def main():
     elif args.action == "collect":
         compose(value, "exec", "collector", "python", "-m", "collectors",
                 "--profile", value.id, "collect", args.collector)
-    elif args.action in {"dashboards", "operations", "services", "wallboard"}:
+    elif args.action in {"dashboards", "operations", "services", "wallboard",
+                         "capabilities"}:
         compose(value, "exec", "collector", "python", "-m", "collectors",
                 "--profile", value.id, args.action, "generate")
 

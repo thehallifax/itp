@@ -1,6 +1,9 @@
 schema_version: 1
-customer: st-brigids
-site: st-brigids
+deployment_id: sbc
+customer_id: sbc
+customer: sbc
+site_id: site:st-brigids-lesmurdie
+site: site:st-brigids-lesmurdie
 discovery:
   interval_seconds: 3600
   concurrency: 40

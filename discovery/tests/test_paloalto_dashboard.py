@@ -63,12 +63,26 @@ def test_variables_are_sql_safe_and_paloalto_scoped():
     assert "__value" in variables[3]["query"]
     assert "wan_classified = true" in variables[3]["query"]
     assert all("collector = 'paloalto'" in value["query"] for value in variables)
+    assert all("__text" in value["query"] and "__value" in value["query"]
+               for value in variables)
+    assert "customer_id AS __value" in variables[0]["query"]
+    assert "site_name" in variables[1]["query"]
+    assert "site_id AS __value" in variables[1]["query"]
+    assert "device_id AS __value" in variables[2]["query"]
     assert "${customer:sqlstring}" in variables[1]["query"]
     assert "${site:sqlstring}" in variables[2]["query"]
     queries = [target["rawSql"] for panel in module().build()["panels"]
                for target in panel.get("targets", [])]
     assert all("'${customer}'" not in query and "'${site}'" not in query
                and "'${device}'" not in query for query in queries)
+    assert all("customer LIKE" not in query and "site LIKE" not in query
+               and "hostname LIKE" not in query for query in queries)
+    assert all("customer_id LIKE ${customer:sqlstring}" in query
+               for query in queries)
+    assert all("site_id LIKE ${site:sqlstring}" in query
+               for query in queries)
+    assert all("device_id LIKE ${device:sqlstring}" in query
+               for query in queries if "FROM collector_health" not in query)
 
 
 def test_operational_telemetry_panels_use_live_canonical_measurements():
@@ -161,8 +175,8 @@ def test_string_stats_render_confirmed_canonical_fields_without_reduction():
         "Model": 'model AS "Model"',
         "Serial": 'serial AS "Serial"',
         "PAN-OS Version": 'firmware AS "PAN-OS Version"',
-        "Platform Family": 'platform_family AS "Platform Family"',
-        "HA Status": 'ha_status AS "HA Status"',
+        "Platform Family": 'AS "Platform Family"',
+        "HA Status": 'AS "HA Status"',
     }
     for title, selection in expected.items():
         panel = panels[title]
@@ -185,6 +199,17 @@ def test_string_stats_render_confirmed_canonical_fields_without_reduction():
     assert "FROM device" in panels["Model"]["targets"][0]["rawSql"]
     assert "FROM device" in panels["PAN-OS Version"]["targets"][0]["rawSql"]
     assert "FROM firewall" in panels["HA Status"]["targets"][0]["rawSql"]
+    assert "'Standalone'" in panels["HA Status"]["targets"][0]["rawSql"]
+    assert "'PA-400 Series'" in \
+        panels["Platform Family"]["targets"][0]["rawSql"]
+
+
+def test_numeric_stats_hide_raw_query_aliases():
+    panels = {panel["title"]: panel for panel in module().build()["panels"]}
+    for title in (
+            "CPU", "Data Plane CPU", "Memory Used", "Active Sessions",
+            "Session Utilisation", "Collector Status"):
+        assert panels[title]["options"]["textMode"] == "value"
 
 
 def test_implemented_panels_have_explicit_empty_states_and_valid_columns():
