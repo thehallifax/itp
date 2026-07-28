@@ -158,6 +158,11 @@ python -m collectors connectors list
 python -m collectors connectors inspect mist
 ```
 
+For PaperCut MF, copy `secrets/papercut.env.example`, configure the HTTPS
+System Health endpoint under `collectors.papercut`, and enable the collector.
+The Authorization key is optional; keep it only in the ignored secret file.
+See the [PaperCut connector guide](../collectors/papercut/README.md).
+
 OOBE-001 bootstraps the platform. The registry introduced by OOBE-002 supplies
 future onboarding metadata, but Phase 1 does not prompt for vendor credentials.
 Connectors marked manual or profile-only are deliberately not presented as

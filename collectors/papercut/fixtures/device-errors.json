@@ -1,0 +1,28 @@
+{
+  "health": {
+    "applicationServer": {
+      "systemInfo": {"version": "24.0.3", "operatingSystem": "Linux", "processors": 4},
+      "systemMetrics": {
+        "uptimeHours": 96,
+        "systemCpuLoadPercentage": 20,
+        "jvmMemoryUsedPercentage": 45,
+        "diskSpaceUsedPercentage": 55
+      }
+    },
+    "database": {"status": "OK"},
+    "printers": {"count": 12, "inErrorCount": 1, "heldJobsCountTotal": 3},
+    "devices": {"count": 1, "inErrorCount": 1},
+    "printProviders": {"count": 1, "offlineCount": 0, "status": "OK"},
+    "license": {"valid": true, "upgradeAssuranceRemainingDays": 120}
+  },
+  "devices": {
+    "devices": [{
+      "name": "Reception MFD",
+      "type": "PaperCut Embedded",
+      "status": "ERROR",
+      "statusDescription": "Device communication failed",
+      "lastJobSeconds": 7200
+    }]
+  },
+  "partial": false
+}

@@ -84,6 +84,27 @@ connectors:
     aliases: [panos, pan-os, palo-alto]
     notes: Native read-only PAN-OS XML API collector; guided setup is unavailable.
 
+  - id: papercut
+    display_name: PaperCut MF
+    vendor: PaperCut
+    domains: [printing, servers]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: supported
+    guided_setup: false
+    configuration_mode: manual
+    credential_fields:
+      - {id: authorization_key, env: PAPERCUT_AUTHORIZATION_KEY, required: false, secret: true}
+    configuration_fields: [collectors.papercut.base_url, collectors.papercut.site]
+    secret_handling:
+      templates: [secrets/papercut.env.example]
+      scope: root-or-profile
+    capabilities: {validation: true, doctor: false, status: true, demo_fixture: false}
+    documentation: collectors/papercut/README.md
+    implementation: collectors/papercut/collector.py:PaperCutCollector
+    dashboard_manifest: collectors/papercut/dashboard-manifest.yml
+    aliases: [papercut-mf, pc-mf]
+    notes: Read-only PaperCut MF System Health JSON API collector; guided setup remains manual.
+
   - id: proxmox
     display_name: Proxmox VE
     vendor: Proxmox Server Solutions

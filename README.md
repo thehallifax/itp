@@ -178,6 +178,7 @@ On Windows PowerShell, use `.\itp.ps1 demo`.
 | Juniper Mist | Network and wireless telemetry through the Mist API |
 | FortiGate | Firewall, system, performance, and interface telemetry |
 | Palo Alto PAN-OS | Firewall, security, interface, licensing, and content telemetry |
+| PaperCut MF | Application, database, printer, embedded-device, service, and licence health |
 | VMware vSphere | Managers, clusters, hosts, workloads, storage, and networks |
 | Microsoft Hyper-V | Hosts, workloads, storage, and virtual networks |
 | Proxmox VE | Clusters, nodes, virtual machines, containers, and storage |

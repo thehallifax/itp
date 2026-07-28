@@ -20,6 +20,7 @@ def test_mist_secret_is_optional_and_collector_only():
         {"path": "${ITP_SECRETS_DIR:-./secrets}/mist.env", "required": False},
         {"path": "${ITP_SECRETS_DIR:-./secrets}/fortigate.env", "required": False},
         {"path": "${ITP_SECRETS_DIR:-./secrets}/paloalto.env", "required": False},
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/papercut.env", "required": False},
     ]
     environment = "\n".join(collector["environment"])
     assert "MIST_ORG_ID" not in environment and "MIST_API_TOKEN" not in environment
@@ -40,6 +41,8 @@ def test_secret_files_are_excluded_from_git_and_docker_context():
     assert "FORTIGATE_API_TOKEN=\n" in fortigate
     assert "FORTIGATE_VERIFY_TLS=true\n" in fortigate
     assert (ROOT / "secrets/paloalto.env.example").read_text() == "PALOALTO_API_KEY=\n"
+    assert (ROOT / "secrets/papercut.env.example").read_text() == \
+        "PAPERCUT_AUTHORIZATION_KEY=\n"
     assert "MIST_" not in (ROOT / ".env.example").read_text()
 
 

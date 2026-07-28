@@ -97,6 +97,8 @@ services:
         required: false
       - path: ${ITP_SECRETS_DIR:-./secrets}/paloalto.env
         required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/papercut.env
+        required: false
     environment:
       - ITP_RUNTIME_MODE=${ITP_RUNTIME_MODE:-central}
       - INFLUXDB_HOST=${INFLUXDB_HOST}

@@ -1,0 +1,64 @@
+{
+  "health": {
+    "applicationServer": {
+      "systemInfo": {
+        "version": "24.0.3",
+        "operatingSystem": "Linux",
+        "processors": 8,
+        "architecture": "amd64"
+      },
+      "systemMetrics": {
+        "uptimeHours": 120,
+        "systemCpuLoadPercentage": 18.5,
+        "processCpuLoadPercentage": 7.2,
+        "jvmMemoryMaxMB": 4096,
+        "jvmMemoryUsedMB": 1536,
+        "jvmMemoryUsedPercentage": 37.5,
+        "diskSpaceFreeMB": 180000,
+        "diskSpaceTotalMB": 250000,
+        "diskSpaceUsedPercentage": 28.0
+      }
+    },
+    "database": {
+      "status": "OK",
+      "totalConnections": 12,
+      "activeConnections": 3,
+      "maxConnections": 100,
+      "timeToQueryMilliseconds": 4,
+      "timeToConnectMilliseconds": 2
+    },
+    "printers": {"count": 42, "inErrorCount": 0, "heldJobsCountTotal": 2},
+    "devices": {"count": 2, "inErrorCount": 0},
+    "mobilityPrintServers": {"count": 1, "offlineCount": 0, "status": "OK"},
+    "printProviders": {"count": 2, "offlineCount": 0, "status": "OK"},
+    "siteServers": {"count": 1, "offlineCount": 0, "status": "OK"},
+    "webPrint": {"count": 1, "offlineCount": 0, "status": "OK"},
+    "job-ticketing": {"count": 1, "offlineCount": 0, "status": "OK"},
+    "license": {
+      "valid": true,
+      "licenseRemainingDays": 365,
+      "upgradeAssuranceRemainingDays": 180,
+      "users": {"used": 650, "licensed": 1000},
+      "installedLicensePacks": [{"name": "MF", "value": "1000 users"}]
+    }
+  },
+  "devices": {
+    "devices": [
+      {
+        "name": "Library MFD",
+        "type": "PaperCut Embedded",
+        "status": "OK",
+        "statusDescription": "Ready",
+        "lastJobSeconds": 90
+      },
+      {
+        "name": "Office MFD",
+        "type": "PaperCut Embedded",
+        "status": "OK",
+        "statusDescription": "Ready",
+        "lastJobSeconds": 300
+      }
+    ]
+  },
+  "partial": false
+}

@@ -12,7 +12,8 @@ class CollectorRegistry:
             return
         cls._builtins_loaded = True
         import importlib
-        for module in (".snmp", ".mist", ".fortigate", ".paloalto"):
+        for module in (
+                ".snmp", ".mist", ".fortigate", ".paloalto", ".papercut"):
             importlib.import_module(module, "collectors")
 
     @classmethod

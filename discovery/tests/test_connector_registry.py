@@ -18,7 +18,7 @@ from itp_profiles.setup import BootstrapWizard, SetupOptions
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED = {
-    "snmp", "mist", "fortigate", "paloalto",
+    "snmp", "mist", "fortigate", "paloalto", "papercut",
     "vmware", "hyperv", "proxmox",
 }
 
@@ -50,7 +50,8 @@ def test_alias_lookup_and_manual_only_inventory(registry):
 def test_domain_and_deployment_filters(registry):
     assert {value.id for value in registry.filter(domain="virtualisation")} == {
         "vmware", "hyperv", "proxmox"}
-    assert {value.id for value in registry.filter(domain="printing")} == {"snmp"}
+    assert {value.id for value in registry.filter(domain="printing")} == {
+        "papercut", "snmp"}
     assert {value.id for value in registry.filter(
         deployment_type="Home Lab")} == EXPECTED
     assert {value.id for value in registry.filter(deployment_type="School")} == EXPECTED

@@ -56,7 +56,7 @@ def _enabled_collectors(config):
     if runtime_mode not in ("central", "edge"):
         raise ValueError(f"unsupported ITP_RUNTIME_MODE: {runtime_mode}")
     inventory_path = os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json")
-    for name in ("mist", "fortigate", "paloalto"):
+    for name in ("mist", "fortigate", "paloalto", "papercut"):
         collector_settings = settings.get(name, {})
         if not collector_settings.get("enabled", False): continue
         eligible, execution = CollectorRegistry.execution_eligible(

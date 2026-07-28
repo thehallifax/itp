@@ -74,6 +74,10 @@ class PaloAltoAdapter(CollectorAdapter):
     name = "paloalto"; collector = "paloalto"; priority = 200
 
 
+class PaperCutAdapter(CollectorAdapter):
+    name = "papercut"; collector = "papercut"; priority = 200
+
+
 class SNMPAdapter(CollectorAdapter):
     name = "snmp"; collector = "snmp"; priority = 100
 

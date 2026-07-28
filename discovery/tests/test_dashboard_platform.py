@@ -21,7 +21,8 @@ def registry(tmp_path, enabled):
 def test_manifests_are_complete_unique_and_future_extensible(tmp_path):
     value = registry(tmp_path, {}).manifests()
     assert [item.collector for item in value] == [
-        "fortigate", "mist", "paloalto", "platform", "snmp", "virtualisation"]
+        "fortigate", "mist", "paloalto", "papercut", "platform", "snmp",
+        "virtualisation"]
     assert all(item.version == 1 for item in value)
     assert all(item.path.name in {"dashboard-manifest.yml", "platform-manifest.yml"}
                for item in value)
@@ -49,6 +50,18 @@ def test_enabled_vendor_dashboards_and_capabilities_are_selected(tmp_path):
     assert set(resolved["capabilities"]) == {
         "firewall", "internet", "inventory", "switching", "telemetry", "wireless"}
     assert len(list((tmp_path / "managed/vendor").glob("*.json"))) == 3
+
+
+def test_enabled_papercut_pack_is_provisioned_in_printing(tmp_path):
+    resolved = registry(tmp_path, {"papercut": True}).generate()
+    assert {value["uid"] for value in resolved["dashboards"]} == {
+        "itp-operations-wallboard", "itp-infrastructure-overview",
+        "itp-collector-health", "papercut-operational-overview"}
+    assert {"inventory", "printing", "telemetry"} <= set(
+        resolved["capabilities"])
+    assert (
+        tmp_path / "managed/printing/papercut-operational-overview.json"
+    ).is_file()
 
 
 def test_generation_is_deterministic_managed_and_removes_stale_only(tmp_path):
@@ -92,7 +105,7 @@ def test_pack_versions_metadata_and_disabled_pack_cleanup(tmp_path):
 
 def test_connector_metadata_links_dashboard_manifests():
     metadata = ConnectorMetadataRegistry.load(ROOT)
-    for name in ("snmp", "mist", "fortigate", "paloalto"):
+    for name in ("snmp", "mist", "fortigate", "paloalto", "papercut"):
         connector = metadata.get(name)
         assert connector.dashboard_manifest
         assert (ROOT / connector.dashboard_manifest).is_file()

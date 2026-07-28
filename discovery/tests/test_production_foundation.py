@@ -52,6 +52,7 @@ def test_dashboard_folders_and_uids_are_fixed():
         "fortigate-infrastructure-overview", "paloalto-operational-overview",
         "itp-operations-wallboard", "itp-collector-health",
         "itp-virtualisation-overview", "itp-snmp-overview",
+        "papercut-operational-overview",
     }
 
 
@@ -75,7 +76,8 @@ def test_flightsql_datasource_is_provisioned_with_dashboard_uid():
 def test_deployment_scripts_and_templates_exist():
     for path in ("scripts/install.sh", "scripts/update.sh", "scripts/Install-ITP.ps1",
                  "scripts/Update-ITP.ps1", ".env.example", "discovery/config.example.yml",
-                 "secrets/mist.env.example", "secrets/fortigate.env.example"):
+                 "secrets/mist.env.example", "secrets/fortigate.env.example",
+                 "secrets/papercut.env.example"):
         assert (ROOT / path).is_file()
     gitignore = (ROOT / ".gitignore").read_text().splitlines()
     assert ".env" in gitignore and "discovery/config.yml" in gitignore

@@ -168,3 +168,20 @@ collectors:
       - name: ethernet1/2
         role: backup
         display_name: Backup Internet
+  papercut:
+    enabled: false
+    execution: central
+    customer: Customer Name
+    site: customer-site-slug
+    base_url: https://papercut.example.test:9192
+    authorization_key_env: PAPERCUT_AUTHORIZATION_KEY
+    verify_tls: true
+    timeout_seconds: 20
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 60
+    max_retries: 2
+    disk_warning_percent: 85
+    jvm_warning_percent: 85
+    held_jobs_warning: 25
+    upgrade_assurance_warning_days: 90
+    uptime_advisory_days: 180

@@ -71,9 +71,9 @@ def fixture(tmp_path):
 
 def test_rules_are_auto_registered_and_stable():
     rules = Rule.registered()
-    assert len(rules) == 19
+    assert len(rules) == 20
     assert [rule.id for rule in rules] == sorted(rule.id for rule in rules)
-    assert len({rule.id for rule in rules}) == 19
+    assert len({rule.id for rule in rules}) == 20
 
 
 def test_engine_is_deterministic_explainable_and_sorted(tmp_path):
