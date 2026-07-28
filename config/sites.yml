@@ -9,7 +9,6 @@ sites:
       - "Northwind College P2P"
 
   - id: MLC
-    display_name: "Greenwood College"
+    display_name: "MLC Reference Site"
     aliases:
       - MLC
-      - "Greenwood College"

@@ -30,7 +30,7 @@ def test_dashboard_is_classic_stable_and_runtime_provisioned(tmp_path):
     dashboard = module().build()
     assert dashboard["uid"] == "paloalto-operational-overview"
     assert dashboard["schemaVersion"] == 41
-    assert isinstance(dashboard["panels"], list) and len(dashboard["panels"]) == 35
+    assert isinstance(dashboard["panels"], list) and len(dashboard["panels"]) == 42
     assert "elements" not in dashboard and "layout" not in dashboard
     provision = (ROOT / "grafana/provisioning/dashboards/dashboards.yml").read_text()
     assert "/var/lib/grafana/runtime-dashboard/managed/vendor" in provision
@@ -77,20 +77,31 @@ def test_operational_telemetry_panels_use_live_canonical_measurements():
     expected = {
         "Device Certificate Status": "FROM firewall",
         "Platform Family": "FROM device",
-        "Management CPU": "FROM performance",
+        "CPU": "FROM performance",
         "Data Plane CPU": "FROM performance",
         "Memory Used": "FROM performance",
         "Active Sessions": "FROM performance",
         "Session Utilisation": "FROM performance",
+        "Interface Inventory": "FROM interface",
         "${wan_interface:text}": "FROM interface",
         "Interface Fault Counters": "FROM interface",
-        "Subscriptions and Expiry": "FROM license",
+        "Licences": "FROM license",
+        "Threat Package": "FROM content_package",
+        "Antivirus Package": "FROM content_package",
+        "WildFire Package": "FROM content_package",
+        "URL Filtering": "FROM content_package",
         "Installed Content Packages": "FROM content_package",
-        "Max API Duration": "FROM collector_health",
+        "Collection Latency": "FROM collector_health",
+        "Quality Rule": "FROM collector_health",
     }
     for title, table in expected.items():
         assert table in panels[title]["targets"][0]["rawSql"]
-    assert not [panel for panel in dashboard["panels"] if panel["type"] == "text"]
+    unavailable = {panel["title"]: panel for panel in dashboard["panels"]
+                   if panel["type"] == "text"}
+    assert set(unavailable) == {
+        "Certificate Expiry", "Recent Configuration Commits"}
+    assert all("Feature Not Enabled" in panel["options"]["content"]
+               for panel in unavailable.values())
 
 
 def test_wan_panel_repeats_per_interface_without_aggregation():
@@ -114,29 +125,32 @@ def test_collector_diagnostics_render_values_without_internal_names():
     dashboard = module().build()
     panels = {value["title"]: value for value in dashboard["panels"]}
     for title in (
-            "Collector Result", "Last Collection", "Collection Duration",
-            "Points Written", "API Requests", "Max API Duration",
-            "Partial", "Errors"):
+            "Collector Health", "Last Successful Collection",
+            "Collection Duration", "Points Written", "Collection Latency",
+            "Quality Rule"):
         assert panels[title]["options"]["textMode"] == "value"
-    last_collection = panels["Last Collection"]["targets"][0]["rawSql"]
+    last_collection = panels["Last Successful Collection"]["targets"][0]["rawSql"]
     assert 'CAST(time AS VARCHAR) AS "Last Collection"' in last_collection
     assert "ORDER BY time DESC LIMIT 1" in last_collection
+    assert "success = true" in last_collection
     assert "$__timeFrom" not in last_collection
     assert "$__timeTo" not in last_collection
-    assert panels["Last Collection"]["options"]["reduceOptions"] == {
+    assert panels["Last Successful Collection"]["options"]["reduceOptions"] == {
         "calcs": [], "fields": "/^Last Collection$/", "values": True}
 
 
 def test_required_operational_sections_and_panels_exist():
     dashboard = module().build()
     rows = [panel["title"] for panel in dashboard["panels"] if panel["type"] == "row"]
-    assert rows == ["Overview", "Health", "Resources", "Interfaces", "Licensing",
-                    "Content Updates", "Inventory", "Collector Diagnostics"]
+    assert rows == ["Overview", "Health", "Resources", "Interfaces", "Security",
+                    "Content Updates", "Inventory", "Operational"]
     titles = {panel["title"] for panel in dashboard["panels"]}
-    assert {"Hostname", "Model", "PAN-OS Version", "Uptime", "HA Status",
+    assert {"Hostname", "Model", "Serial", "PAN-OS Version", "Platform Family",
+            "Uptime", "HA Status",
             "Collector Status", "Interface Status", "Firewall Inventory",
-            "Last Collection", "Collection Duration", "Points Written",
-            "Collector Result"} <= titles
+            "Last Successful Collection", "Collection Duration",
+            "Points Written", "Collector Health", "Quality Rule",
+            "Recent Configuration Commits"} <= titles
 
 
 def test_string_stats_render_confirmed_canonical_fields_without_reduction():
@@ -145,7 +159,9 @@ def test_string_stats_render_confirmed_canonical_fields_without_reduction():
     expected = {
         "Hostname": 'hostname AS "Hostname"',
         "Model": 'model AS "Model"',
+        "Serial": 'serial AS "Serial"',
         "PAN-OS Version": 'firmware AS "PAN-OS Version"',
+        "Platform Family": 'platform_family AS "Platform Family"',
         "HA Status": 'ha_status AS "HA Status"',
     }
     for title, selection in expected.items():
@@ -154,7 +170,8 @@ def test_string_stats_render_confirmed_canonical_fields_without_reduction():
         assert panel["targets"][0]["refId"] == "A"
         assert panel["transformations"] == []
         assert panel["fieldConfig"]["defaults"]["unit"] == "string"
-        assert panel["fieldConfig"]["defaults"]["noValue"] == "No data"
+        assert panel["fieldConfig"]["defaults"]["noValue"] == \
+            "Not Yet Collected"
         assert panel["fieldConfig"]["defaults"]["mappings"] == []
         assert panel["fieldConfig"]["overrides"] == []
         assert panel["options"]["reduceOptions"] == {
@@ -168,6 +185,19 @@ def test_string_stats_render_confirmed_canonical_fields_without_reduction():
     assert "FROM device" in panels["Model"]["targets"][0]["rawSql"]
     assert "FROM device" in panels["PAN-OS Version"]["targets"][0]["rawSql"]
     assert "FROM firewall" in panels["HA Status"]["targets"][0]["rawSql"]
+
+
+def test_implemented_panels_have_explicit_empty_states_and_valid_columns():
+    dashboard = module().build()
+    for panel in dashboard["panels"]:
+        if panel["type"] in {"stat", "table", "timeseries"}:
+            assert panel["fieldConfig"]["defaults"]["noValue"] == \
+                "Not Yet Collected"
+    queries = [target["rawSql"] for panel in dashboard["panels"]
+               for target in panel.get("targets", [])]
+    assert all("admin_status" not in query for query in queries)
+    assert all("No data" not in json.dumps(panel)
+               for panel in dashboard["panels"])
 
 
 def test_generated_managed_dashboard_matches_source(tmp_path):

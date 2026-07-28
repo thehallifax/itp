@@ -19,6 +19,8 @@ HEALTH_COLORS = {"Healthy": "green", "Fresh": "green", "Warning": "orange",
                  "Awaiting first collection": "gray",
                  "Collectors unavailable": "red",
                  "Unavailable": "red",
+                 "Not Yet Collected": "gray",
+                 "Collector Disabled": "gray",
                  "Waiting for first run": "gray",
                  "Waiting for first success": "gray"}
 PROVIDER_LABELS = {"vmware": "VMware", "hyperv": "Hyper-V", "proxmox": "Proxmox"}
@@ -53,6 +55,20 @@ def _mapping(value_colors=None):
         for index, (name, color) in enumerate(colors.items())}}]
 
 
+def _service_status(value):
+    """Constrain wallboard service tiles to the operator-facing vocabulary."""
+    if value in {"Healthy", "Warning", "Critical", "Not Enabled",
+                 "Not Yet Collected", "Collector Disabled"}:
+        return value
+    lowered = str(value or "").casefold()
+    if "not configured" in lowered or "not started" in lowered \
+            or "disabled" in lowered:
+        return "Collector Disabled"
+    if "unavailable" in lowered or "failed" in lowered:
+        return "Critical"
+    return "Not Yet Collected"
+
+
 def _stat(panel, rows, field, health=False, value_colors=None):
     values = []
     for row in rows:
@@ -69,7 +85,7 @@ def _stat(panel, rows, field, health=False, value_colors=None):
         "excludeByName": {"scope": True}, "renameByName": {"value": display_field}}}]
     panel["fieldConfig"] = {"defaults": {"color": {"mode": "thresholds"},
         "mappings": _mapping(value_colors) if health or value_colors else [],
-        "noValue": "State unavailable",
+        "noValue": "Not Yet Collected",
         "thresholds": {"mode": "absolute", "steps": [{"color": "green" if health else "blue", "value": None}]}},
         "overrides": []}
     # Grafana 13's Stat reducer ignores string-only CSV fields when numeric
@@ -83,8 +99,10 @@ def _table(panel, rows, fields, scoped=True):
     panel["datasource"] = DATASOURCE; panel["targets"] = [_target(_csv(rows, fields))]
     panel["transformations"] = (_scope_filter() + [{"id": "organize", "options": {
         "excludeByName": {"scope": True}}}]) if scoped else []
-    panel["fieldConfig"] = {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"},
-        "filterable": False, "inspect": False}}, "overrides": []}
+    panel["fieldConfig"] = {"defaults": {
+        "custom": {"align": "auto", "cellOptions": {"type": "auto"},
+                   "filterable": False, "inspect": False},
+        "noValue": "Not Yet Collected"}, "overrides": []}
     panel["options"] = {"cellHeight": "sm", "footer": {"show": False}, "showHeader": True}
 
 
@@ -141,9 +159,9 @@ def _layout(dashboard):
             "x": 0, "y": y, "w": 24, "h": 4}
         y += 4
     panels["Action Required"]["gridPos"] = {
-        "x": 0, "y": y, "w": 16, "h": 7}
+        "x": 0, "y": y, "w": 12, "h": 7}
     panels["Changes Since Yesterday"]["gridPos"] = {
-        "x": 16, "y": y, "w": 8, "h": 7}
+        "x": 12, "y": y, "w": 12, "h": 7}
     y += 7
     if "Printers Requiring Attention" in panels:
         panels["Printers Requiring Attention"]["gridPos"] = {
@@ -256,23 +274,30 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     _stat(panels["Issues"], issue_rows, "value", False)
     panels["Issues"]["description"] = (
         "Active operational issues for the selected canonical site (${site:text}).")
+    overall_rows = [{**value, "value": _service_status(value["value"])}
+                    for value in summary["overall"]]
     overall_colors = {
-        value["display"]: HEALTH_COLORS.get(value["value"], "gray")
-        for value in summary["overall"]}
+        value["value"]: HEALTH_COLORS.get(value["value"], "gray")
+        for value in overall_rows}
     _stat(
-        panels["Overall Health"], summary["overall"], "display",
+        panels["Overall Health"], overall_rows, "value",
         value_colors=overall_colors)
     panels["Overall Health"]["description"] = (
-        "Highest canonical service state with its authoritative service-health explanation.")
+        "State: the highest canonical Service Health severity for the selected "
+        "site. Evidence: enabled service evaluations and active findings. "
+        "Drill-down: open Infrastructure Overview for service evidence.")
+    security_rows = [{**value, "value": _service_status(value["value"])}
+                     for value in summary["security"]]
     security_colors = {
-        value["display"]: HEALTH_COLORS.get(value["value"], "gray")
-        for value in summary["security"]}
+        value["value"]: HEALTH_COLORS.get(value["value"], "gray")
+        for value in security_rows}
     _stat(
-        panels["Security"], summary["security"], "display",
+        panels["Security"], security_rows, "value",
         value_colors=security_colors)
     panels["Security"]["description"] = (
-        "Canonical security service: certificates, subscriptions, threat "
-        "services, and security findings.")
+        "State: canonical Security service severity. Evidence: certificates, "
+        "subscriptions, threat services, and security findings. Drill-down: "
+        "open the firewall operational dashboard.")
     certificate_colors = {
         value["value"]: value["color"]
         for value in summary["certificates"]}
@@ -281,20 +306,32 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         value_colors=certificate_colors)
     panels["Certificates"]["description"] = (
         "Certificate conditions promoted by canonical Operations findings.")
-    monitoring_colors = {
-        value["display"]: value["color"] for value in summary["monitoring"]}
-    _stat(
-        panels["Monitoring"], summary["monitoring"], "display",
-        value_colors=monitoring_colors)
+    monitoring_service = []
     monitoring_details = []
-    for value in summary["monitoring"]:
+    for scope in summary["scopes"]:
+        service = next(value for value in
+                       summary["service_scopes"][scope["scope"]]["services"]
+                       if value["service"] == "Monitoring")
+        value = next(value for value in summary["monitoring"]
+                     if value["scope"] == scope["scope"])
+        status = service["status"]
+        if status == "Unknown":
+            status = ("Collector Disabled"
+                      if not summary.get("enabled_collectors")
+                      else "Not Yet Collected")
+        monitoring_service.append({
+            "scope": scope["scope"], "value": status})
         services = ", ".join(value["stale_services"]) or "none"
         monitoring_details.append(
             f"{value['scope']}: collectors with issues="
             f"{value['collectors_with_issues']}; last successful collection="
             f"{value['last_successful_collection'] or 'never'}; "
             f"stale services={services}")
-    panels["Monitoring"]["description"] = "\n".join(monitoring_details)
+    _stat(panels["Monitoring"], monitoring_service, "value", True)
+    panels["Monitoring"]["description"] = (
+        "State: canonical Monitoring service severity. Evidence: collector "
+        "outcomes, freshness, and last successful collection. Drill-down: "
+        "open Collector Health.\n" + "\n".join(monitoring_details))
 
     enabled_service_names = {value["service"] for scope in summary["service_scopes"].values()
                              for value in scope["services"]
@@ -335,38 +372,52 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                 if item["service"] == name)
             status = value["status"]
             if status == "Unknown":
-                status = {
-                    "waiting_first_collection": "Awaiting telemetry",
-                    "unavailable": "Unavailable",
-                }.get(readiness_state, status)
+                status = "Not Yet Collected"
             service_rows.append({"scope": scope["scope"], "value": status})
             summaries.append(f"{scope['display_name']}: {value.get('summary', '')}")
         _stat(panels[title], service_rows, "value", True)
         panels[title]["description"] = (
             f"Canonical service: {name}.\n" + "\n".join(summaries))
 
-    def canonical_card(title, service):
+    def canonical_card(title, service, evidence, drilldown):
         rows = []
         summaries = []
         for scope in summary["scopes"]:
             value = next(item for item in
                 summary["service_scopes"][scope["scope"]]["services"]
                 if item["service"] == service)
-            rows.append({"scope": scope["scope"], "value": value["status"]})
+            rows.append({"scope": scope["scope"],
+                         "value": _service_status(value["status"])})
             summaries.append(
                 f"{scope['display_name']}: {value.get('summary', '')}")
         _stat(panels[title], rows, "value", True)
-        panels[title]["description"] = "\n".join(summaries)
+        panels[title]["description"] = (
+            f"State: canonical {service} service severity. Evidence: "
+            f"{evidence}. Drill-down: {drilldown}.\n" + "\n".join(summaries))
 
-    canonical_card("Firewall", "Security")
-    canonical_card("Printing", "Printing")
+    firewall_colors = {
+        value["value"]: HEALTH_COLORS.get(value["status"], "gray")
+        for value in summary["firewall"]}
+    _stat(panels["Firewall"], summary["firewall"], "value",
+          value_colors=firewall_colors)
+    panels["Firewall"]["description"] = (
+        "State: canonical Security service severity, with the highest-priority "
+        "firewall cue when one is available. Evidence: firewall availability, "
+        "certificates, subscriptions, and security findings. Drill-down: open "
+        "the firewall operational dashboard.")
+    canonical_card(
+        "Printing", "Printing",
+        "printer availability, device errors, services, and consumables",
+        "open the PaperCut operational dashboard")
     internet_colors = {
         value["value"]: value["color"] for value in summary["internet"]}
     _stat(
         panels["Internet"], summary["internet"], "value",
         value_colors=internet_colors)
     panels["Internet"]["description"] = (
-        "Derived only from authoritative WAN interface telemetry.")
+        "State: canonical Internet service severity. Evidence: authoritative "
+        "WAN classification and current interface state; the count is healthy "
+        "WANs over classified WANs. Drill-down: open the firewall WAN view.")
 
     def health_card(title, domain):
         rows = []
@@ -459,8 +510,8 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         panel["targets"] = []
         panel["transformations"] = []
         panel["options"] = {"mode": "markdown", "content":
-            "## No WAN Telemetry\n\nNo authoritative WAN interface "
-            "traffic is available for the selected site."}
+            "## Not Yet Collected\n\nNo authoritative WAN interface "
+            "traffic has been collected for the selected site."}
         dashboard["panels"].append(panel)
         panels[panel["title"]] = panel
 

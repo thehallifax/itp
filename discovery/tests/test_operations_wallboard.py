@@ -226,7 +226,7 @@ def test_multiple_authoritative_wan_uplinks_and_samples(tmp_path):
     internet = next(value for value in dashboard["panels"]
                     if value["title"] == "Internet")
     assert next(value for value in rows(internet)
-                if value["scope"] == "all")["value"] == "Secondary Down"
+                if value["scope"] == "all")["value"] == "1 / 2 WANs Healthy"
 
 
 def test_one_wan_renders_one_identified_graph(tmp_path):
@@ -250,7 +250,7 @@ def test_one_wan_renders_one_identified_graph(tmp_path):
     internet = next(value for value in dashboard["panels"]
                     if value["title"] == "Internet")
     assert next(value for value in rows(internet)
-                if value["scope"] == "all")["value"] == "All WANs Up"
+                if value["scope"] == "all")["value"] == "1 / 1 WANs Healthy"
 
 
 def test_three_wans_wrap_as_two_columns_then_full_width(tmp_path):
@@ -293,7 +293,7 @@ def test_unclassified_interfaces_do_not_become_wan(tmp_path):
     traffic = next(value for value in dashboard["panels"]
                    if value["title"] == "WAN Telemetry")
     assert traffic["type"] == "text"
-    assert "No WAN Telemetry" in traffic["options"]["content"]
+    assert "Not Yet Collected" in traffic["options"]["content"]
 
 
 def test_action_required_is_consolidated_filtered_and_ordered(tmp_path):
@@ -332,7 +332,7 @@ def test_collector_summary_is_compact_and_enabled_only(tmp_path):
         value["title"] for value in dashboard["panels"]}
     monitoring = next(value for value in dashboard["panels"]
                       if value["title"] == "Monitoring")
-    assert rows(monitoring)[0]["value"] == "Monitoring Healthy"
+    assert rows(monitoring)[0]["value"] == "Healthy"
 
 
 def test_monitoring_card_is_actionable_and_links_to_diagnostics(tmp_path):
@@ -446,7 +446,7 @@ def test_site_summary_security_links_and_supported_csv_contract(tmp_path):
     assert rows(panels["Issues"])[0]["value"].endswith(
         "active issues")
     assert "Security" in panels
-    assert "Canonical security service" in panels["Security"]["description"]
+    assert "canonical Security service" in panels["Security"]["description"]
     assert panels["Monitoring"]["links"][0]["url"].startswith(
         "/d/itp-collector-health")
     assert panels["Wireless Access Points"]["links"][0]["url"].startswith(
@@ -533,7 +533,11 @@ def test_polished_grid_has_no_overlap_and_dominant_action_queue(tmp_path):
         "Security", "Internet", "Firewall", "Printing", "Certificates"}
     assert {panel["gridPos"]["w"] for panel in summaries.values()} == {3}
     action = next(panel for panel in panels if panel["title"] == "Action Required")
-    assert action["gridPos"]["w"] == 16 and action["gridPos"]["h"] == 7
+    assert action["gridPos"]["w"] == 12 and action["gridPos"]["h"] == 7
+    changes = next(panel for panel in panels
+                   if panel["title"] == "Changes Since Yesterday")
+    assert changes["gridPos"]["x"] == 12
+    assert changes["gridPos"]["w"] == 12
     printers = next(panel for panel in panels
                     if panel["title"] == "Printers Requiring Attention")
     assert printers["gridPos"]["w"] == 24
@@ -561,6 +565,29 @@ def test_action_columns_widths_and_security_card(tmp_path):
     assert rows(panels["Security"])[0]["value"].startswith("Healthy")
     assert "Freshness" not in panels
     assert "Collector State" not in panels
+
+
+def test_service_tiles_are_concise_explainable_and_never_generic_no_data(tmp_path):
+    fixture(tmp_path).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    panels = {panel["title"]: panel for panel in dashboard["panels"]}
+    allowed = {
+        "Healthy", "Warning", "Critical", "Not Enabled",
+        "Not Yet Collected", "Collector Disabled"}
+    for title in (
+            "Overall Health", "Security", "Monitoring", "Printing"):
+        assert {value["value"] for value in rows(panels[title])} <= allowed
+    for title in (
+            "Overall Health", "Security", "Internet", "Firewall",
+            "Monitoring", "Printing"):
+        description = panels[title]["description"]
+        assert "State:" in description
+        assert "Evidence:" in description
+        assert "Drill-down:" in description
+        assert panels[title]["fieldConfig"]["defaults"]["noValue"] == \
+            "Not Yet Collected"
+    assert "No data" not in json.dumps(dashboard)
 
 
 def test_virtualisation_tiles_are_conditional_and_reflowed(tmp_path):
@@ -734,4 +761,5 @@ def test_selected_site_uses_site_service_actions_and_collectors_without_leakage(
     assert next(value for value in status_rows
                 if value["scope"] == "site:branch")["value"] == "Not Enabled"
     assert next(value for value in status_rows
-                if value["scope"] == "site:hq")["value"] == "Warning"
+                if value["scope"] == "site:hq")["value"] == \
+        "Certificates\n1 Require Attention"

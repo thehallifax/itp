@@ -32,14 +32,15 @@ Longer-term governance risks and recommendations remain in detailed operational
 dashboards. Collection duration, points, retries, and errors remain in Collector
 Health. The landing page does not expose a collector-state table.
 
-The Monitoring card reports how many enabled collectors require attention, the
-latest successful collection, and the operator services with stale collection
-coverage. It links to Monitoring diagnostics; connector internals remain in
-Collector Health and `./itp doctor`.
+The Monitoring card displays the canonical Monitoring status. Its description
+records how many enabled collectors require attention, the latest successful
+collection, and services with stale coverage. It links to Collector Health;
+connector internals remain there and in `./itp doctor`.
 
-Overall Health includes the explanation supplied by the highest canonical
-service state. Security uses the canonical Security service and covers
-certificates, subscriptions, threat services, and security findings.
+Overall Health and Security display concise canonical states. Their descriptions
+retain the Service Health explanation and evidence. Firewall may promote the
+highest-priority certificate/subscription cue while retaining the canonical
+Security severity and firewall drill-down.
 Certificates is a focused projection of the same Operations evidence, including
 certificate and subscription expiry findings; it cannot report Healthy while a
 matching action remains active.
@@ -90,9 +91,9 @@ domain exists. Links are added only for dashboard UIDs selected by the registry,
 so optional packs may be absent safely.
 
 Unclassified interfaces never become WAN uplinks. The Internet card is derived
-directly from authoritative WAN signals and uses concise states such as **All
-WANs Up**, **Backup Down**, and **No WAN Telemetry**. It does not create a
-second Internet calculation.
+directly from authoritative WAN signals and uses evidence-based wording such as
+**2 / 2 WANs Healthy**, **1 / 2 WANs Healthy**, and **Not Yet Collected**. It
+does not create a second Internet calculation.
 
 Each classified interface receives its own responsive graph named with both its
 friendly role and interface name. Download and Upload use bits per second,
@@ -154,7 +155,7 @@ The renderer packs the grid after capability filtering:
 
 1. Eight equal operator-facing status cards.
 2. Responsive, eight-row-high per-interface WAN traffic graphs.
-3. A lower row containing Action Required and Changes Since Yesterday.
+3. Equal-width Action Required and Changes Since Yesterday tables.
 4. A full-width Printers Requiring Attention table.
 5. Capability-gated service and compact infrastructure detail.
 

@@ -217,9 +217,9 @@ def test_clean_managed_dashboards_have_deliberate_empty_rows_and_no_generic_no_d
     wallboard = json.loads(
         (managed / "operations/itp-operations-wallboard.json").read_text())
     wall_panels = {panel["title"]: panel for panel in wallboard["panels"]}
-    assert "Monitoring not started" in wall_panels[
+    assert "Collector Disabled" in wall_panels[
         "Overall Health"]["targets"][0]["csvContent"]
-    assert "Monitoring not started" in wall_panels[
+    assert "Collector Disabled" in wall_panels[
         "Monitoring"]["targets"][0]["csvContent"]
     assert "Collector State" not in wall_panels
 

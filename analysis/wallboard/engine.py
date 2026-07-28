@@ -269,18 +269,19 @@ def _internet_rows(wan_rows, scopes, capability_enabled):
         if not capability_enabled:
             label, color = "Not Enabled", "gray"
         elif not selected:
-            label, color = "No WAN Telemetry", "gray"
+            label, color = "Not Yet Collected", "gray"
         else:
             down = [value for value in selected if value["state"] == "Down"]
             unknown = [value for value in selected if value["state"] == "Unknown"]
+            healthy = len(selected) - len(down) - len(unknown)
             if down:
-                names = ", ".join(value["label"] for value in down)
-                label, color = f"{names} Down", "red" if len(
-                    down) == len(selected) else "orange"
+                label = f"{healthy} / {len(selected)} WANs Healthy"
+                color = "red" if len(down) == len(selected) else "orange"
             elif unknown:
-                label, color = "WAN State Unknown", "gray"
+                label, color = "Not Yet Collected", "gray"
             else:
-                label, color = "All WANs Up", "green"
+                label, color = (
+                    f"{len(selected)} / {len(selected)} WANs Healthy", "green")
         rows.append({"scope": scope["scope"], "value": label, "color": color})
     return rows
 
@@ -310,7 +311,7 @@ def _monitoring_rows(collector_rows, scopes):
              for value in real if value.get("status") == "Healthy"),
             reverse=True)
         if not real:
-            label, color = "Monitoring not started", "gray"
+            label, color = "Collector Disabled", "gray"
         elif issues:
             label = (
                 f"{len(issues)} collector requires attention"
@@ -318,7 +319,7 @@ def _monitoring_rows(collector_rows, scopes):
                 else f"{len(issues)} collectors require attention")
             color = "orange"
         else:
-            label, color = "Monitoring Healthy", "green"
+            label, color = "Healthy", "green"
         detail = "; ".join(
             f"{value['collector']} {str(value.get('status', '')).casefold()} "
             f"({value.get('freshness') or 'never'})"
@@ -376,6 +377,35 @@ def _service_card_rows(service_scopes, scopes, service):
             "scope": scope["scope"], "value": status,
             "display": f"{status}\n{summary}" if summary else status,
             "summary": summary,
+        })
+    return rows
+
+
+def _firewall_rows(service_scopes, scopes, certificate_rows):
+    """Present the canonical Security state with its highest useful cue."""
+    certificates = {value["scope"]: value for value in certificate_rows}
+    rows = []
+    for scope in scopes:
+        service = next(item for item in
+                       service_scopes[scope["scope"]]["services"]
+                       if item["service"] == "Security")
+        status = service["status"]
+        certificate = certificates.get(scope["scope"], {})
+        certificate_label = str(certificate.get("value") or "")
+        if status in {"Healthy", "Not Enabled"}:
+            label = status
+        elif "requires attention" in certificate_label.casefold():
+            count = certificate_label.split(" ", 1)[0]
+            label = f"Certificates\n{count} Require Attention"
+        elif status == "Unknown":
+            label = "Not Yet Collected"
+        else:
+            label = status
+        rows.append({
+            "scope": scope["scope"],
+            "value": label,
+            "status": status,
+            "summary": str(service.get("summary") or "").strip(),
         })
     return rows
 
@@ -713,6 +743,8 @@ class WallboardEngine:
             operations, scopes, "firewall" in capabilities)
         security_rows = _service_card_rows(
             service_scopes, scopes, "Security")
+        firewall_rows = _firewall_rows(
+            service_scopes, scopes, certificate_rows)
         overall_rows = _overall_rows(
             scope_health, service_scopes, scopes)
         runtime_root = self.operations_state.parent.parent \
@@ -747,6 +779,7 @@ class WallboardEngine:
             "internet": internet,
             "certificates": certificate_rows,
             "security": security_rows,
+            "firewall": firewall_rows,
             "changes": changes,
             "collectors": sorted(collector_rows, key=lambda value: (
                 value["scope"], value["collector"], value["site"])),

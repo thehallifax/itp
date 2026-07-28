@@ -21,7 +21,7 @@ def stat(panel_id, title, x, y, w, sql, *, unit="short", mappings=None,
         "targets": [target(sql)], "transformations": [],
         "fieldConfig": {"defaults": {
             "color": {"mode": "thresholds"}, "unit": unit, "mappings": mappings or [],
-            **({"noValue": "No data"} if string_field else {}),
+            "noValue": "Not Yet Collected",
             "thresholds": thresholds or {"mode": "absolute", "steps": [
                 {"color": "green", "value": None}]}}, "overrides": []},
         "options": {"colorMode": "none" if string_field else "background",
@@ -50,6 +50,7 @@ def table(panel_id, title, x, y, w, h, sql, description=""):
         "targets": [target(sql)], "fieldConfig": {"defaults": {
             "custom": {"align": "auto", "cellOptions": {"type": "auto"},
                        "filterable": True, "inspect": False},
+            "noValue": "Not Yet Collected",
             "mappings": [], "thresholds": {"mode": "absolute",
                 "steps": [{"color": "green", "value": None}]}}, "overrides": []},
         "options": {"cellHeight": "sm", "footer": {"countRows": False,
@@ -61,6 +62,7 @@ def timeseries(panel_id, title, x, y, w, h, sql, *, unit="short", description=""
         "description": description, "gridPos": {"x": x, "y": y, "w": w, "h": h},
         "datasource": DATASOURCE, "targets": [target(sql)],
         "fieldConfig": {"defaults": {"unit": unit,
+            "noValue": "Not Yet Collected",
             "color": {"mode": "palette-classic"},
             "custom": {"drawStyle": "line", "lineInterpolation": "linear",
                 "lineWidth": 1, "fillOpacity": 12, "showPoints": "never",
@@ -87,7 +89,7 @@ def latest(column, table_name="device"):
 
 
 def unavailable(title, detail):
-    return (f"### {title}: not collected\n\n{detail}\n\n"
+    return (f"### {title}: Feature Not Enabled\n\n{detail}\n\n"
             "No query is issued because the current canonical Palo Alto measurements "
             "do not contain the required fields.")
 
@@ -99,39 +101,42 @@ def build():
         value["id"] = pid; pid += 1; panels.append(value)
 
     add(row(0, "Overview", 0))
-    add(stat(0, "Hostname", 0, 1, 6, latest('hostname AS "Hostname"'),
+    add(stat(0, "Hostname", 0, 1, 4, latest('hostname AS "Hostname"'),
              unit="string", string_field="Hostname"))
-    add(stat(0, "Model", 6, 1, 6, latest('model AS "Model"'),
+    add(stat(0, "Model", 4, 1, 4, latest('model AS "Model"'),
              unit="string", string_field="Model"))
-    add(stat(0, "PAN-OS Version", 12, 1, 6,
+    add(stat(0, "Serial", 8, 1, 4, latest('serial AS "Serial"'),
+             unit="string", string_field="Serial"))
+    add(stat(0, "PAN-OS Version", 12, 1, 4,
              latest('firmware AS "PAN-OS Version"'), unit="string",
              string_field="PAN-OS Version"))
-    add(stat(0, "Uptime", 18, 1, 6, latest("uptime_seconds AS uptime"),
+    add(stat(0, "Platform Family", 16, 1, 4,
+        latest('platform_family AS "Platform Family"'), unit="string",
+        string_field="Platform Family"))
+    add(stat(0, "Uptime", 20, 1, 4, latest("uptime_seconds AS uptime"),
              unit="s", description="Latest uptime returned by PAN-OS."))
 
     add(row(0, "Health", 5))
-    add(stat(0, "HA Status", 0, 6, 6,
+    add(stat(0, "HA Status", 0, 6, 8,
         latest('ha_status AS "HA Status"', "firewall"), unit="string",
         string_field="HA Status"))
     collector_status = ("SELECT CASE WHEN success THEN 1 ELSE 0 END AS collector_status "
         "FROM collector_health WHERE collector = 'paloalto' "
+        "AND customer LIKE ${customer:sqlstring} "
         "AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo "
         "ORDER BY time DESC LIMIT 1")
-    add(stat(0, "Collector Status", 6, 6, 6, collector_status,
+    add(stat(0, "Collector Status", 8, 6, 8, collector_status,
         mappings=[{"type": "value", "options": {
             "0": {"color": "red", "index": 0, "text": "Failed"},
             "1": {"color": "green", "index": 1, "text": "Healthy"}}}],
         thresholds={"mode": "absolute", "steps": [{"color": "red", "value": None},
             {"color": "green", "value": 1}]}))
-    add(stat(0, "Device Certificate Status", 12, 6, 6,
+    add(stat(0, "Device Certificate Status", 16, 6, 8,
         latest('device_certificate_status AS "Device Certificate Status"', "firewall"),
         unit="string", string_field="Device Certificate Status"))
-    add(stat(0, "Platform Family", 18, 6, 6,
-        latest('platform_family AS "Platform Family"'), unit="string",
-        string_field="Platform Family"))
 
     add(row(0, "Resources", 10))
-    add(stat(0, "Management CPU", 0, 11, 5,
+    add(stat(0, "CPU", 0, 11, 5,
         latest("management_cpu_percent AS management_cpu", "performance"), unit="percent"))
     add(stat(0, "Data Plane CPU", 5, 11, 5,
         latest("dataplane_cpu_percent AS dataplane_cpu", "performance"), unit="percent"))
@@ -144,19 +149,32 @@ def build():
         unit="percent"))
 
     add(row(0, "Interfaces", 16))
-    interface_sql = ("WITH latest AS (SELECT interface_name, admin_status, operational_status, "
+    interface_sql = ("WITH latest AS (SELECT interface_name, operational_status, "
         "speed, duplex, logical, wan_classified, wan_role, wan_display_name, "
         "rx_errors_total, rx_discards_total, time, ROW_NUMBER() OVER "
         "(PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn "
         f"{where('interface')} AND time >= $__timeFrom AND time <= $__timeTo) "
-        "SELECT interface_name AS \"Interface\", admin_status AS \"Admin\", "
+        "SELECT interface_name AS \"Interface\", "
         "operational_status AS \"Operational\", speed AS \"Speed\", duplex AS \"Duplex\", "
         "logical AS \"Logical\", wan_display_name AS \"WAN Name\", wan_role AS \"WAN Role\", "
         "rx_errors_total AS \"RX Errors\", rx_discards_total AS \"RX Discards\", "
         "time AS \"Observed\" FROM latest WHERE rn = 1 "
         "ORDER BY interface_name")
-    add(table(0, "Interface Status", 0, 17, 24, 8, interface_sql,
+    add(table(0, "Interface Status", 0, 17, 12, 8, interface_sql,
         "Latest state per selected firewall and interface. Blank logical-interface state is unavailable."))
+    inventory_interface_sql = (
+        "WITH latest AS (SELECT interface_id, interface_name, speed, duplex, "
+        "logical, wan_classified, wan_role, wan_display_name, time, "
+        "ROW_NUMBER() OVER (PARTITION BY hostname, interface_name ORDER BY time DESC) AS rn "
+        f"{where('interface')} AND time >= $__timeFrom AND time <= $__timeTo) "
+        "SELECT interface_id AS \"Interface ID\", interface_name AS \"Interface\", "
+        "speed AS \"Speed\", duplex AS \"Duplex\", logical AS \"Logical\", "
+        "wan_classified AS \"WAN\", wan_role AS \"WAN Role\", "
+        "wan_display_name AS \"Friendly Name\", time AS \"Observed\" "
+        "FROM latest WHERE rn = 1 ORDER BY interface_name")
+    add(table(0, "Interface Inventory", 12, 17, 12, 8,
+        inventory_interface_sql,
+        "Latest canonical interface identity, type, speed, and WAN classification."))
     traffic_sql = ("WITH samples AS (SELECT time, rx_bytes_total, "
         "tx_bytes_total, LAG(time) OVER (ORDER BY time) "
         "AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) "
@@ -191,7 +209,7 @@ def build():
     add(timeseries(0, "Interface Fault Counters", 0, 34, 24, 8, fault_sql,
         description="Cumulative counters. Missing PAN-OS counters remain null."))
 
-    add(row(0, "Licensing", 42))
+    add(row(0, "Security", 42))
     license_sql = ("WITH latest AS (SELECT subscription_name, status, expiry_date, "
         "remaining_days, expired_days, expired, perpetual, expiry_state, time, "
         "ROW_NUMBER() OVER (PARTITION BY hostname, subscription_name ORDER BY time DESC) AS rn "
@@ -200,9 +218,31 @@ def build():
         "status AS \"Status\", expiry_date AS \"Expiry\", remaining_days AS \"Days Remaining\", "
         "expired_days AS \"Days Expired\", perpetual AS \"Perpetual\", time AS \"Observed\" "
         "FROM latest WHERE rn = 1 ORDER BY subscription_name")
-    add(table(0, "Subscriptions and Expiry", 0, 43, 24, 6, license_sql))
+    add(table(0, "Licences", 0, 43, 24, 6, license_sql,
+        "Current PAN-OS subscription state and expiry evidence."))
 
-    add(row(0, "Content Updates", 49))
+    def package_version(title, package_name, x):
+        sql = latest(
+            f'version AS "{title}"', "content_package")
+        sql = sql.replace(
+            "AND time >= $__timeFrom",
+            f"AND package_name = '{package_name}' AND time >= $__timeFrom")
+        add(stat(0, title, x, 49, 4, sql, unit="string",
+                 string_field=title,
+                 description=f"Latest {package_name} content package version."))
+
+    package_version("Application Package", "applications", 0)
+    package_version("Threat Package", "threats", 4)
+    package_version("Antivirus Package", "antivirus", 8)
+    package_version("WildFire Package", "wildfire", 12)
+    package_version("URL Filtering", "url_filtering", 16)
+    add(text(0, "Certificate Expiry", 20, 49, 4, 4,
+        unavailable(
+            "Certificate Expiry",
+            "The canonical firewall measurement reports certificate validity "
+            "but not an expiry timestamp.")))
+
+    add(row(0, "Content Updates", 53))
     content_sql = ("WITH latest AS (SELECT package_name, version, release_time, "
         "release_time_raw, age_days, time, ROW_NUMBER() OVER "
         "(PARTITION BY hostname, package_name ORDER BY time DESC) AS rn "
@@ -211,9 +251,9 @@ def build():
         "release_time AS \"Release Time\", age_days AS \"Age (days)\", "
         "release_time_raw AS \"Raw Release Time\", time AS \"Observed\" "
         "FROM latest WHERE rn = 1 ORDER BY package_name")
-    add(table(0, "Installed Content Packages", 0, 50, 24, 7, content_sql))
+    add(table(0, "Installed Content Packages", 0, 54, 24, 7, content_sql))
 
-    add(row(0, "Inventory", 57))
+    add(row(0, "Inventory", 61))
     inventory_sql = ("WITH latest AS (SELECT hostname, serial, model, management_ip, "
         "firmware, platform, platform_family, time, "
         "ROW_NUMBER() OVER (PARTITION BY hostname ORDER BY time DESC) AS rn "
@@ -222,42 +262,60 @@ def build():
         "management_ip AS \"Management IP\", firmware AS \"Software Version\", "
         "platform AS \"Platform\", platform_family AS \"Platform Family\", "
         "time AS \"Observed\" FROM latest WHERE rn = 1 ORDER BY hostname")
-    add(table(0, "Firewall Inventory", 0, 58, 24, 6, inventory_sql,
-        "Management IP is explicit unavailable text because it is not present in the device measurement."))
+    add(table(0, "Firewall Inventory", 0, 62, 24, 6, inventory_sql,
+        "Latest canonical device identity, management address, software, and platform data."))
 
-    add(row(0, "Collector Diagnostics", 64))
+    add(row(0, "Operational", 68))
     health_filter = ("FROM collector_health WHERE collector = 'paloalto' "
+        "AND customer LIKE ${customer:sqlstring} "
         "AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo "
         "ORDER BY time DESC LIMIT 1")
-    latest_health_filter = ("FROM collector_health WHERE collector = 'paloalto' "
-        "AND site LIKE ${site:sqlstring} ORDER BY time DESC LIMIT 1")
-    add(stat(0, "Collector Result", 0, 65, 3, collector_status,
+    add(stat(0, "Collector Health", 0, 69, 4, collector_status,
         mappings=[{"type": "value", "options": {
             "0": {"color": "red", "index": 0, "text": "Failed"},
             "1": {"color": "green", "index": 1, "text": "Successful"}}}],
         thresholds={"mode": "absolute", "steps": [{"color": "red", "value": None},
             {"color": "green", "value": 1}]}, show_name=False))
-    add(stat(0, "Last Collection", 3, 65, 3,
+    successful_health_filter = (
+        "FROM collector_health WHERE collector = 'paloalto' "
+        "AND customer LIKE ${customer:sqlstring} "
+        "AND site LIKE ${site:sqlstring} AND success = true "
+        "ORDER BY time DESC LIMIT 1")
+    add(stat(0, "Last Successful Collection", 4, 69, 4,
              'SELECT CAST(time AS VARCHAR) AS "Last Collection" '
-             + latest_health_filter,
+             + successful_health_filter,
              unit="string", string_field="Last Collection",
              show_name=False))
-    add(stat(0, "Collection Duration", 6, 65, 3,
+    add(stat(0, "Collection Duration", 8, 69, 4,
              "SELECT duration_ms AS collection_duration " + health_filter,
              unit="ms", show_name=False))
-    add(stat(0, "Points Written", 9, 65, 3,
+    add(stat(0, "Points Written", 12, 69, 4,
              "SELECT points_written AS points_written " + health_filter,
              show_name=False))
-    add(stat(0, "API Requests", 12, 65, 3,
-        "SELECT api_requests " + health_filter, show_name=False))
-    add(stat(0, "Max API Duration", 15, 65, 3,
+    add(stat(0, "Collection Latency", 16, 69, 4,
         "SELECT api_duration_ms_max " + health_filter,
         unit="ms", show_name=False))
-    add(stat(0, "Partial", 18, 65, 3,
-        "SELECT CASE WHEN partial THEN 1 ELSE 0 END AS partial " + health_filter,
-        show_name=False))
-    add(stat(0, "Errors", 21, 65, 3,
-        "SELECT error_count " + health_filter, show_name=False))
+    quality_sql = (
+        "SELECT CASE WHEN success = false THEN 0 "
+        "WHEN partial = true OR error_count > 0 THEN 1 ELSE 2 END AS quality "
+        + health_filter)
+    add(stat(0, "Quality Rule", 20, 69, 4, quality_sql,
+        mappings=[{"type": "value", "options": {
+            "0": {"color": "red", "index": 0, "text": "Critical"},
+            "1": {"color": "orange", "index": 1, "text": "Warning"},
+            "2": {"color": "green", "index": 2, "text": "Healthy"}}}],
+        thresholds={"mode": "absolute", "steps": [
+            {"color": "red", "value": None},
+            {"color": "orange", "value": 1},
+            {"color": "green", "value": 2}]},
+        show_name=False,
+        description="Deterministic collection quality: failed is Critical; "
+        "partial or errors is Warning; complete success is Healthy."))
+    add(text(0, "Recent Configuration Commits", 0, 73, 24, 4,
+        unavailable(
+            "Recent Configuration Commits",
+            "No canonical configuration-commit measurement is emitted by the "
+            "current read-only Palo Alto collector.")))
 
     variable = lambda name, label, query, depends=False: {
         "name": name, "label": label, "type": "query", "datasource": DATASOURCE,

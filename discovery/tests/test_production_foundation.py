@@ -71,6 +71,9 @@ def test_flightsql_datasource_is_provisioned_with_dashboard_uid():
         "insecureGrpc": True,
     }
     assert datasource["secureJsonData"]["token"] == "${INFLUXDB_TOKEN}"
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    assert "INFLUXDB_BUCKET=${INFLUXDB_BUCKET}" in \
+        compose["services"]["grafana"]["environment"]
 
 
 def test_deployment_scripts_and_templates_exist():
