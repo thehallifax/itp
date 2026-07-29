@@ -180,7 +180,7 @@ def test_dashboard_generation_is_profile_runtime_only(monkeypatch, tmp_path):
     output = runtime / "dashboard/managed"
     provision = runtime / "dashboard/provisioning/dashboards.yml"
     result = DashboardRegistry(ROOT, config, output, provision).generate()
-    assert result["enabled_collectors"] == ["paloalto", "snmp"]
+    assert result["enabled_collectors"] == ["aruba", "paloalto", "snmp"]
     assert provision.exists()
     dashboards = list(output.glob("*/*.json"))
     assert dashboards
