@@ -1,6 +1,6 @@
 # Automatic provisioning
 
-`./itp setup` and `./itp start` invoke the idempotent provisioning layer.
+`./itp deploy` and `./itp start` invoke the idempotent provisioning layer.
 
 It creates required runtime, daemon, notification, dashboard, and provisioning
 directories; generates managed Grafana provisioning and bundled dashboards;

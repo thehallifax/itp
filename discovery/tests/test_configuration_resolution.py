@@ -289,6 +289,6 @@ def test_compose_connector_environment_sources_are_explicit():
     files = compose["services"]["collector"]["env_file"]
     paths = [value if isinstance(value, str) else value["path"]
              for value in files]
-    assert paths[0] == ".env"
+    assert paths[0] == "${ITP_ENV_FILE:-.env.example}"
     assert "${ITP_SECRETS_DIR:-./secrets}/collector.env" in paths
     assert "${ITP_SECRETS_DIR:-./secrets}/papercut.env" in paths

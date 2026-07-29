@@ -128,7 +128,7 @@ def test_profile_validation_accepts_multiple_sites_and_rejects_cross_site(tmp_pa
 
 
 def test_profiles_without_virtualisation_are_backwards_compatible():
-    for name in ("mlc", "sbc"):
+    for name in ("example-school", "example-corporate"):
         config = yaml.safe_load((ROOT / "profiles" / name / "discovery.yml").read_text())
         assert validate_virtualisation(
             config, ROOT / "profiles" / name / "sites.yml", ROOT) == []
@@ -177,7 +177,5 @@ def test_error_classification_never_exposes_credentials(exc, category):
 def test_secret_examples_are_trackable_and_populated_files_ignored():
     gitignore = (ROOT / ".gitignore").read_text()
     assert "secrets/**/*.env" in gitignore
-    for profile in ("mlc", "sbc"):
-        for provider in ("vmware", "hyperv", "proxmox"):
-            assert (ROOT / "secrets" / profile /
-                    f"{provider}.env.example").exists()
+    for provider in ("vmware", "hyperv", "proxmox"):
+        assert (ROOT / "secrets" / f"{provider}.env.example").exists()

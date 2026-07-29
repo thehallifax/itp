@@ -57,9 +57,9 @@ wireless AP inventory is the connector's initial authoritative resource.
 With the profile configuration and ignored Aruba secret file in place, run:
 
 ```bash
-python -m collectors --profile mlc inspect aruba
-python -m collectors --profile mlc inspect aruba --json
-python -m collectors --profile mlc capabilities inspect --json
+python -m collectors --profile example-school inspect aruba
+python -m collectors --profile example-school inspect aruba --json
+python -m collectors --profile example-school capabilities inspect --json
 ```
 
 The live inspection authenticates and reads discovery endpoints without writing

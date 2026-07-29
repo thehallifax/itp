@@ -1,0 +1,11 @@
+schema_version: 1
+deployment_id: example-school
+customer_id: example-school
+display_name: Example School
+timezone: Australia/Perth
+deployment:
+  mode: standalone
+network:
+  listen_address: 127.0.0.1
+  grafana_port: 3000
+  influxdb_port: 8181

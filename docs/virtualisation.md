@@ -15,10 +15,10 @@ old or excessive snapshots. Missing optional data produces Unknown or no
 finding rather than an invented failure.
 
 ```bash
-./itp profile virtualisation mlc --fixture vmware
-./itp profile virtualisation mlc --fixture hyperv
-./itp profile virtualisation mlc --fixture proxmox
-./itp profile virtualisation-status mlc
+./itp profile virtualisation example-school --fixture vmware
+./itp profile virtualisation example-school --fixture hyperv
+./itp profile virtualisation example-school --fixture proxmox
+./itp profile virtualisation-status example-school
 ```
 
 Outputs are below `runtime/<profile>/virtualisation/`. See the

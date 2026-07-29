@@ -2,11 +2,11 @@ services:
   influxdb3-core:
     image: influxdb:3-core
     env_file:
-      - .env
+      - ${ITP_ENV_FILE:-.env.example}
       - path: ${ITP_SECRETS_DIR:-./secrets}/influxdb.env
         required: false
     ports:
-      - "${INFLUXDB_PORT:-8181}:8181"
+      - "${INFLUXDB_ADDRESS:-127.0.0.1}:${INFLUXDB_PORT:-8181}:8181"
     command:
       - influxdb3
       - serve
@@ -47,7 +47,7 @@ services:
       - TELEGRAF_COLLECTION_INTERVAL=${TELEGRAF_COLLECTION_INTERVAL}
       - HOSTNAME=telegraf
     env_file:
-      - .env
+      - ${ITP_ENV_FILE:-.env.example}
       - path: ${ITP_SECRETS_DIR:-./secrets}/influxdb.env
         required: false
       - path: ${ITP_SECRETS_DIR:-./secrets}/collector.env
@@ -57,7 +57,7 @@ services:
     volumes:
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
       - ./telegraf/telegraf.d/canonical.conf:/etc/telegraf/telegraf.d/canonical.conf:ro
-      - ${ITP_RUNTIME_DIR:-./runtime}/telegraf-generated:/etc/telegraf/telegraf.d/generated:ro
+      - ${ITP_TELEGRAF_DIR:-./runtime/telegraf-generated}:/etc/telegraf/telegraf.d/generated:ro
     restart: unless-stopped
 
   discovery:
@@ -66,7 +66,7 @@ services:
       dockerfile: discovery/Dockerfile
     restart: unless-stopped
     env_file:
-      - .env
+      - ${ITP_ENV_FILE:-.env.example}
     environment:
       - TZ=${TZ:-UTC}
       - ITP_PROFILE=${ITP_PROFILE:-}
@@ -92,7 +92,7 @@ services:
       dockerfile: discovery/Dockerfile
     restart: unless-stopped
     env_file:
-      - .env
+      - ${ITP_ENV_FILE:-.env.example}
       - path: ${ITP_SECRETS_DIR:-./secrets}/influxdb.env
         required: false
       - path: ${ITP_SECRETS_DIR:-./secrets}/collector.env
@@ -106,6 +106,12 @@ services:
       - path: ${ITP_SECRETS_DIR:-./secrets}/papercut.env
         required: false
       - path: ${ITP_SECRETS_DIR:-./secrets}/aruba.env
+        required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/snmp.env
+        required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/vmware.env
+        required: false
+      - path: ${ITP_SECRETS_DIR:-./secrets}/proxmox.env
         required: false
     environment:
       - ITP_RUNTIME_MODE=${ITP_RUNTIME_MODE:-central}
@@ -149,16 +155,16 @@ services:
   grafana:
     image: grafana/grafana
     env_file:
-      - .env
+      - ${ITP_ENV_FILE:-.env.example}
       - path: ${ITP_SECRETS_DIR:-./secrets}/influxdb.env
         required: false
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "${GRAFANA_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ${ITP_RUNTIME_DIR:-./runtime}/dashboard/provisioning:/etc/grafana/provisioning/dashboards:ro
-      - ${ITP_RUNTIME_DIR:-./runtime}/dashboard:/var/lib/grafana/runtime-dashboard:ro
+      - ${ITP_DASHBOARD_DIR:-./runtime/dashboard}/provisioning:/etc/grafana/provisioning/dashboards:ro
+      - ${ITP_DASHBOARD_DIR:-./runtime/dashboard}:/var/lib/grafana/runtime-dashboard:ro
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
@@ -168,7 +174,14 @@ services:
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
       - ITP_CUSTOMER_ID=${ITP_CUSTOMER_ID:-legacy}
     depends_on:
-      - influxdb3-core
+      influxdb3-core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     # Or switch to influxdb3-enterprise as needed
     restart: unless-stopped
 

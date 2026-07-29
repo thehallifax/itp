@@ -4,8 +4,8 @@ Capability manifests are profile-scoped and carry canonical deployment,
 customer and site IDs. They contain no credentials or endpoints.
 
 Profiles authoritatively define deployment, customer and site identity as well
-as the [deployment mode](deployment-modes.md). For example, the MLC reference
-resolves to deployment `mlc`, customer `mlc` and site `site:MLC`; the friendly
+as the [deployment mode](deployment-modes.md). For example, the example-school reference
+resolves to deployment `example-school`, customer `example-school` and site `site:example-school`; the friendly
 site name may come from the ignored local metadata overlay.
 
 An ITP profile is one independently operated customer deployment. Profiles share
@@ -20,8 +20,8 @@ Tracked configuration lives in `profiles/<id>/`: `profile.yml`, `discovery.yml`,
 Profile IDs are stable lowercase identifiers. Customer display names and
 canonical site names remain separate.
 
-The canonical development baseline is the anonymised `mlc` profile. See
-[MLC canonical baseline](mlc-baseline.md) for its complete profile, runtime,
+The canonical development baseline is the anonymised `example-school` profile.
+See [Deployment runtime](DEPLOYMENT_RUNTIME.md) for the profile, runtime,
 database, collector, analysis, and dashboard lifecycle.
 
 Tracked profile metadata is anonymised. Copy `sites.yml` to the ignored
@@ -39,35 +39,35 @@ precedence, validation, rotation, and backup requirements.
 
 ```sh
 ./itp profile list
-./itp profile init-secrets mlc
-# Edit secrets/mlc/*.env without changing variable names.
-./itp profile validate mlc
-./itp profile up mlc
-./itp profile status mlc
+./itp profile init-secrets example-school
+# Edit secrets/example-school/*.env without changing variable names.
+./itp profile validate example-school
+./itp profile up example-school
+./itp profile status example-school
 ```
 
 Operational commands include:
 
 ```sh
-./itp profile down mlc
-./itp profile restart mlc
-./itp profile logs mlc
-./itp profile shell mlc
-./itp profile collect mlc paloalto
-./itp profile dashboards mlc
-./itp profile services mlc
+./itp profile down example-school
+./itp profile restart example-school
+./itp profile logs example-school
+./itp profile shell example-school
+./itp profile collect example-school paloalto
+./itp profile dashboards example-school
+./itp profile services example-school
 ```
 
 The direct framework equivalents are:
 
 ```sh
-python -m collectors --profile mlc validate
-python -m collectors --profile mlc run
-python -m collectors --profile mlc dashboards generate
-python -m collectors --profile mlc services generate
+python -m collectors --profile example-school validate
+python -m collectors --profile example-school run
+python -m collectors --profile example-school dashboards generate
+python -m collectors --profile example-school services generate
 ```
 
-No arbitrary profile is selected automatically. `ITP_PROFILE=mlc` is supported
+No arbitrary profile is selected automatically. `ITP_PROFILE=example-school` is supported
 for direct Compose use, but `./itp` is preferred because it resolves and prints
 the selected paths.
 
@@ -92,7 +92,7 @@ each profile has a separate Grafana instance.
 
 Every native and Telegraf point includes `deployment_id`; canonical `site_id`
 remains independent. Separate databases are the primary isolation boundary.
-MLC defaults to ports 3000/8181 and SBC to 3100/8281, allowing concurrent stacks.
+example-school defaults to ports 3000/8181 and example-corporate to 3100/8281, allowing concurrent stacks.
 
 ## Creating a profile
 
@@ -117,9 +117,9 @@ database; new profiles use their own database and add `deployment_id`.
 
 ```sh
 git pull --ff-only
-./itp profile validate mlc
-./itp profile restart mlc
-./itp profile status mlc
+./itp profile validate example-school
+./itp profile restart example-school
+./itp profile status example-school
 ```
 
 Repeat for every profile. Back up `profiles/<id>/`, `secrets/<id>/`,
@@ -137,7 +137,7 @@ Virtualisation is optional. Each endpoint has a stable ID, provider, canonical
 site, TLS/transport policy and profile-scoped secret file. Multiple providers
 may serve different sites in one profile. Static validation checks these
 references and thresholds without requiring credentials. See
-`configs/examples/virtualisation.yml`; never point a profile at another
+`config/examples/virtualisation.yml`; never point a profile at another
 customer's management endpoint.
 
 Run fixture integration without live endpoints, then generate the same

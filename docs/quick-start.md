@@ -1,298 +1,74 @@
 # ITP Quick Start
 
-This guide prepares a new root Docker Compose deployment. Use deployment
-profiles when multiple isolated customer estates must run on the same host.
+This guide starts from a clean clone. ITP stores deployment configuration,
+credentials, generated dashboards, and persistent state under the ignored
+`runtime/` directory.
 
-## Requirements
+## Prerequisites
 
-- Docker Desktop or Docker Engine
-- Docker Compose v2 (`docker compose version`)
+- Git
 - Python 3.9 or later
-- Available host TCP ports (the wizard recommends alternatives when 3000 or
-  8181 is occupied)
+- Docker Desktop or Docker Engine
+- Docker Compose v2
 
-Clone ITP and run the bootstrap wizard:
+## Install and validate
 
 ```sh
-git clone https://github.com/thehallifax/itp.git
-cd itp
-./itp setup
+git clone https://github.com/<organisation>/<repository> infrastructure-telemetry-platform
+cd infrastructure-telemetry-platform
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+./itp deploy
+```
+
+The deployment wizard verifies Docker, selects available ports, writes
+owner-only runtime configuration, provisions managed dashboards, starts the
+stack, and prints the Grafana URL. All external collectors remain disabled
+until explicitly configured.
+
+On Windows PowerShell, use:
+
+```powershell
+.\itp.ps1 deploy
+```
+
+## Verify the deployment
+
+```sh
 ./itp doctor
-./itp start
 ./itp status
+./itp collector list
 ```
 
-On Windows PowerShell:
-
-```powershell
-.\itp.ps1 setup
-```
-
-The launcher locates Python, creates `.venv`, and installs runtime dependencies
-on the first invocation. It synchronises dependencies only when the tracked
-project definition changes. Activation and global package installation are not
-required.
-
-### PowerShell execution policy
-
-Windows may initially block local PowerShell scripts. The recommended
-per-user setting permits local scripts while requiring downloaded scripts to
-be signed:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-
-Alternatively, run ITP once without changing the persistent user policy:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 demo
-```
-
-With PowerShell 7 installed, the equivalent is:
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 demo
-```
-
-ITP cannot bypass an execution policy enforced through organisational Group
-Policy. In a managed environment, ask the administrator to permit signed or
-local scripts.
-
-The wizard asks for a deployment name and type, detected IANA timezone,
-recommended Grafana and InfluxDB host ports, a safe collection-interval preset,
-whether to load the isolated demo, and whether to start services. It then:
-
-1. Verifies Docker and Docker Compose.
-2. Finds available Grafana and InfluxDB host ports.
-3. Creates `.env` and `discovery/config.yml` from tracked examples when absent.
-4. Writes a stable deployment UUID and complete database, organisation,
-   timezone, port, and collection settings.
-5. Runs `docker compose config --quiet`.
-6. Optionally bootstraps InfluxDB, provisions the configured database and
-   dashboards, starts the remaining services, and waits for readiness.
-
-All external collectors, including SNMP, remain disabled after fresh setup.
-Nothing contacts infrastructure until credentials/configuration are added and
-the collector is explicitly enabled.
-
-When startup completes, open the printed dashboard URL, normally
-`http://localhost:3000`.
-
-## Evaluate with demo data
-
-If you want to evaluate the interface before configuring real connectors, run:
+To evaluate the interface without live infrastructure:
 
 ```sh
 ./itp demo
 ```
 
-On Windows PowerShell:
+Demo data uses an isolated deployment and cannot overwrite a production
+database.
 
-```powershell
-.\itp.ps1 demo
-```
-
-The demo is a separate Compose project on Grafana port 3300 and InfluxDB port
-8281. It provisions dashboard packs and seeds 30 days of deterministic
-telemetry, pipeline runs, and notification history. It cannot target the root
-deployment database or runtime directory. Continue with
-[Demo Environment](demo.md) for details.
-
-## Automated setup
-
-All prompts can be replaced with command-line options:
+## Add a collector
 
 ```sh
-./itp setup --non-interactive \
-  --deployment-name "North Campus" \
-  --deployment-type "School" \
-  --timezone "Australia/Perth" \
-  --grafana-port 3000 \
-  --influxdb-port 8181 \
-  --collection-interval 60s \
-  --start
+./itp collector add snmp
+./itp collector test snmp
+./itp dashboard generate
+./itp restart
 ```
 
-Without `--start`, setup validates the deployment and prints the command needed
-to start it. `--health-timeout` changes the default 180-second startup wait.
+The CLI reports any connector-specific configuration still required. Never
+commit files under `runtime/`, populated secret files, or local environment
+files.
 
-## Safe reruns
+Continue with:
 
-Running setup again does not overwrite `.env` or `discovery/config.yml`.
-Interactive mode asks before updating the fields owned by the wizard. For
-automation, `--force` explicitly permits updates to:
-
-- `GRAFANA_PORT` in `.env`
-- `INFLUXDB_PORT`, `TZ`, and `TELEGRAF_COLLECTION_INTERVAL` in `.env`
-- `deployment.name` and `deployment.type` in `discovery/config.yml`
-- `customer` and `site` slugs derived from the deployment name
-
-Other environment variables and configuration sections are retained.
-Blank generated `INFLUXDB_BUCKET` and `INFLUXDB_ORG` values are repaired with
-the canonical `local_system` and `itp` defaults. Non-empty custom database and
-organisation values are preserved. The deprecated `INFLUXDB_HTTP_PORT` is
-migrated to `INFLUXDB_PORT`; conflicting values must be resolved explicitly.
-
-## Enable collectors
-
-The wizard does not request or store credentials. After setup:
-
-1. Copy the required vendor file from `secrets/*.env.example` to its matching
-   ignored `.env` file.
-2. Add credentials only to that local secret file.
-3. Set the collector's `enabled` value in `discovery/config.yml`.
-4. Restart the collector service:
-
-   ```sh
-   docker compose restart collector
-   ```
-
-Never commit `.env`, `discovery/config.yml`, populated files under `secrets/`,
-or generated files under `runtime/`.
-
-Inspect all implemented connector boundaries before manual onboarding:
-
-```sh
-python -m collectors connectors list
-python -m collectors connectors inspect mist
-```
-
-For PaperCut MF, copy `secrets/papercut.env.example`, configure the HTTPS
-System Health endpoint under `collectors.papercut`, and enable the collector.
-The Authorization key is optional; keep it only in the ignored secret file.
-See the [PaperCut connector guide](../collectors/papercut/README.md).
-
-OOBE-001 bootstraps the platform. The registry introduced by OOBE-002 supplies
-future onboarding metadata, but Phase 1 does not prompt for vendor credentials.
-Connectors marked manual or profile-only are deliberately not presented as
-guided options.
-
-For multi-customer deployments, continue with
-[deployment profiles](deployment-profiles.md).
-
-## Diagnose setup
-
-```sh
-./itp doctor --offline
-./itp doctor
-```
-
-The first command checks local files without Docker access. The second includes
-containers and known local HTTP health endpoints. Use
-`./itp doctor --json --strict` for support automation. Doctor is read-only and
-reports credential presence without displaying values.
-
-Docker Compose is an implementation detail for normal operation. Use
-`./itp start`, `./itp stop`, `./itp restart`, and `./itp logs`; see
-[Deployment](deployment.md).
-
-## Collect and inspect status
-
-Run every enabled connector once using the platform scheduler:
-
-```sh
-./itp collect
-./itp collect --json
-```
-
-The summary identifies successful, failed, disabled, and runtime-unavailable
-connectors. Each run records deterministic `PipelineRun` metadata under
-`runtime/pipeline-runs/`; connector result details are restricted to
-non-sensitive operational counters.
-
-Inspect the current deployment without running a connector:
-
-```sh
-./itp status
-./itp status --json
-```
-
-Status combines registry metadata, the latest collection run, and generated
-service health. Connector freshness is reported as `Fresh`, `Stale`, `Unknown`,
-`Never Run`, `Failed`, or `Disabled`. Existing profile-specific workflows
-continue to use `./itp profile status` and `./itp profile collect`.
-
-## Continuous operation
-
-Start scheduled collection in the background:
-
-```sh
-./itp daemon
-./itp status
-```
-
-Each connector uses its existing `discovery_interval_seconds` and
-`collection_interval_seconds` configuration. The daemon uses an exclusive PID
-lock under `runtime/daemon/`, maintains a durable heartbeat, and records
-scheduled collection outcomes as canonical pipeline runs. A failed connector
-does not stop other connectors. Startup completes initial discovery before
-initial collection, then anchors recurring deadlines to completion. See
-[Scheduler lifecycle](scheduler.md) for state, recovery, overlap, and diagnostic
-details.
-
-Use foreground mode with a service manager or container:
-
-```sh
-./itp daemon --foreground
-```
-
-`SIGINT` and `SIGTERM` stop scheduling cleanly and persist a final `Stopped`
-state. For automation that needs exactly one lock-protected cycle:
-
-```sh
-./itp daemon --once
-```
-
-Only non-sensitive counters and exception types are written to daemon state,
-pipeline results, or command output. Background runtime logs are written to
-`runtime/daemon/daemon.log`.
-
-## Notifications
-
-Notifications are opt-in. Configure `notifications` in
-`discovery/config.yml`, then validate delivery before enabling operational
-evaluation:
-
-```sh
-./itp notifications test
-./itp notifications evaluate
-./itp notifications list
-./itp status
-```
-
-Use `--json` with any notification command for automation. Webhook URLs and
-authorization headers should be supplied through the environment placeholders
-shown in `.env.example`; they are never included in notification state or
-delivery errors. See [Notifications](notifications.md) for configuration,
-deduplication, recovery, acknowledgement, and troubleshooting.
-
-## Bootstrap troubleshooting
-
-- **Python is not installed:** install Python 3.9 or later from your operating
-  system package manager or [python.org](https://www.python.org/downloads/),
-  then rerun `./itp` or `.\itp.ps1`.
-- **Python is unsupported:** upgrade to Python 3.9 or later. The launcher does
-  not install or modify system Python.
-- **PowerShell blocks the launcher:** use the recommended
-  `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`, or
-  invoke the process-scoped command shown above. Organisation-enforced Group
-  Policy requires administrator assistance.
-- **Python opens the Microsoft Store:** install Python 3.9 or later from
-  python.org with `Add python.exe to PATH` and the Python launcher enabled.
-  Disable the `python.exe` and `python3.exe` Windows App Execution Aliases when
-  they redirect to the Store.
-- **Docker prerequisites fail:** install or update Docker Desktop, confirm
-  `docker compose version`, and wait for `docker info` to succeed before
-  rerunning the command.
-- **Installation is offline:** the first run needs the packages declared by
-  `pyproject.toml`. Connect temporarily, configure an internal Python package
-  index, or pre-populate pip's package cache, then rerun the command.
-- **An interrupted installation left `.venv` incomplete:** rerun the command.
-  ITP safely replaces only the repository-local incomplete environment. If a
-  process is locking it, close that process, remove `.venv`, and retry.
-
-Bootstrap progress and installation diagnostics are written to stderr, so
-commands such as `./itp status --json` keep stdout machine-readable.
-Detailed Windows virtualization, macOS, and Linux prerequisites are documented
-in [Platform prerequisites](platform-prerequisites.md).
+- [Deployment runtime](DEPLOYMENT_RUNTIME.md)
+- [Collector onboarding](COLLECTOR_ONBOARDING.md)
+- [Security and secrets](SECURITY_AND_SECRETS.md)
+- [Doctor and troubleshooting](doctor.md)

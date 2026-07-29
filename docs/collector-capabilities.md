@@ -22,9 +22,9 @@ They never contain endpoints, credentials, tokens, payloads or raw exceptions.
 ## Generate and inspect
 
 ```bash
-python -m collectors --profile mlc capabilities generate
-python -m collectors --profile mlc capabilities inspect --json
-./itp profile capabilities mlc
+python -m collectors --profile example-school capabilities generate
+python -m collectors --profile example-school capabilities inspect --json
+./itp profile capabilities example-school
 ```
 
 Outputs are deterministic runtime artefacts:

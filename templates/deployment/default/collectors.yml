@@ -1,0 +1,7 @@
+schema_version: 1
+deployment_id: ${DEPLOYMENT_ID}
+customer_id: ${CUSTOMER_ID}
+site_id: site:${DEPLOYMENT_ID}
+collectors: {}
+inventory: {}
+writer: {}

@@ -147,7 +147,7 @@ Content age does not become Critical without an explicit policy.
 Generate the classic dashboard with:
 
 ```sh
-python3 scripts/generate_paloalto_dashboard.py
+python scripts/generate_paloalto_dashboard.py
 ```
 
 ```sh

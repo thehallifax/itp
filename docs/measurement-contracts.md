@@ -16,7 +16,7 @@ Schema version 1 uses shared canonical measurements. Every native point carries
 source provides them. `collector_health` uses `collector`, `customer`, `site`,
 and `diagnostic_category`.
 
-## MLC reference collectors
+## example-school reference collectors
 
 | Collector | Measurements | Required fields | Normal interval |
 | --- | --- | --- | --- |

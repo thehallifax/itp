@@ -21,7 +21,7 @@ from collectors.writer import atomic_write
 
 
 NOW = datetime(2026, 7, 24, 0, 5, tzinfo=timezone.utc)
-SCENARIOS = ("sbc", "vmware", "hyperv", "proxmox")
+SCENARIOS = ("example-corporate", "vmware", "hyperv", "proxmox")
 
 
 def write(path, value):
@@ -44,7 +44,7 @@ def render(scenario, output):
     infrastructure_path = output / "infrastructure/state.json"
     operations_path = output / "operations/operations.json"
 
-    if scenario == "sbc":
+    if scenario == "example-corporate":
         capabilities = ["switching", "telemetry", "wireless"]
         enabled = ["mist", "snmp"]
         collector_capabilities = {
@@ -52,13 +52,13 @@ def render(scenario, output):
             "snmp": ["inventory", "switching", "telemetry"],
         }
         assets = [
-            {"canonical_id": "evidence:ap:1", "hostname": "SBC-AP-Offline-Example",
-             "display_name": "SBC-AP-Offline-Example", "device_type": "access-point",
+            {"canonical_id": "evidence:ap:1", "hostname": "example-corporate-AP-Offline-Example",
+             "display_name": "example-corporate-AP-Offline-Example", "device_type": "access-point",
              "online": False, "sources": ["mist"], "site_id": site_id,
              "site": {"site_id": site_id,
                       "display_name": "Release Evidence — Long Canonical Site Name"}},
-            {"canonical_id": "evidence:switch:1", "hostname": "SBC-Core-Switch",
-             "display_name": "SBC-Core-Switch", "device_type": "switch",
+            {"canonical_id": "evidence:switch:1", "hostname": "example-corporate-Core-Switch",
+             "display_name": "example-corporate-Core-Switch", "device_type": "switch",
              "online": True, "sources": ["snmp"], "site_id": site_id,
              "site": {"site_id": site_id,
                       "display_name": "Release Evidence — Long Canonical Site Name"}},
@@ -77,7 +77,7 @@ def render(scenario, output):
                 "category": "Wireless", "severity": "High" if index < 3 else "Medium",
                 "priority": 85 - index,
                 "canonical_id": f"evidence:ap:{index}",
-                "device": f"SBC-AP-{index:02d}-Sanitized-Example",
+                "device": f"example-corporate-AP-{index:02d}-Sanitized-Example",
                 "site_id": site_id, "site": "Release Evidence — Long Canonical Site Name",
                 "summary": "Sanitized wireless evidence requires operator attention.",
                 "evidence": {"age_seconds": index * 240,
@@ -116,7 +116,7 @@ def render(scenario, output):
         "dashboards": [{"uid": "itp-operations-wallboard"},
                        {"uid": "itp-collector-health"}]})
 
-    if scenario != "sbc":
+    if scenario != "example-corporate":
         OperationsEngine(
             output_dir=output / "operations",
             dashboard_template=output / "missing-dashboard.json",
@@ -144,7 +144,7 @@ def render(scenario, output):
     ).run(NOW)
 
     config = {"collectors": {}, "deployment_id": f"evidence-{scenario}"}
-    if scenario == "sbc":
+    if scenario == "example-corporate":
         config["collectors"] = {"mist": {"enabled": True},
                                 "snmp": {"enabled": True}}
     else:

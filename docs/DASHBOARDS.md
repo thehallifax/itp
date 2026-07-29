@@ -89,7 +89,7 @@ The generated **Palo Alto Operational Overview** source is written to
 managed dashboard pack into the normalized Vendor folder:
 
 ```sh
-python3 scripts/generate_paloalto_dashboard.py
+python scripts/generate_paloalto_dashboard.py
 docker compose exec collector python -m collectors dashboards generate
 docker compose restart grafana
 ```

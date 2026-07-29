@@ -11,16 +11,15 @@ ITP supports Python 3.9 or later.
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-python -m pytest
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
 ```
 
 For stack-level validation:
 
 ```sh
-cp .env.example .env
-cp discovery/config.example.yml discovery/config.yml
-docker compose config --quiet
+docker compose --env-file .env.example config --quiet
 ```
 
 Never use production credentials or customer evidence in development fixtures.

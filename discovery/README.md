@@ -43,7 +43,7 @@ measurement. Radio, client, SSID, channel, and RF metrics are not yet collected.
 Inspect active APs without exposing communities:
 
 ```sh
-python3 -c 'import json; d=json.load(open("runtime/inventory/devices.json")); print(json.dumps([x for x in d["devices"] if x["platform"] == "wireless-access-point"], indent=2))'
+python -c 'import json; d=json.load(open("runtime/inventory/devices.json")); print(json.dumps([x for x in d["devices"] if x["platform"] == "wireless-access-point"], indent=2))'
 ```
 
 To add a model, first record its `sysObjectID` and `sysDescr`, add a narrow marker

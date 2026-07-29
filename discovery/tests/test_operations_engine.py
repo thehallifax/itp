@@ -121,27 +121,27 @@ def test_infrastructure_overview_findings_are_canonical_site_scoped(tmp_path):
             "site": site}
     result = {"generated_at": "2026-07-23T14:00:00Z",
         "issues": [
-            finding("mlc-pa", "site:mlc", "MLC Reference Site",
-                    "MLC-PA licence expired"),
-            finding("sbc-ap", "site:st-brigids",
-                    "Northwind College", "SBC-AP offline"),
-            finding("sbc-forti", "site:st-brigids",
-                    "Northwind College", "SBC-Forti unavailable")],
+            finding("example-school-pa", "site:example-school", "example-school Reference Site",
+                    "example-school-PA licence expired"),
+            finding("example-corporate-ap", "site:example-corporate",
+                    "Northwind College", "example-corporate-AP offline"),
+            finding("example-corporate-forti", "site:example-corporate",
+                    "Northwind College", "example-corporate-Forti unavailable")],
         "risks": [
-            finding("mlc-risk", "site:mlc", "MLC Reference Site",
-                    "MLC-PA security risk"),
-            finding("sbc-risk", "site:st-brigids",
-                    "Northwind College", "SBC-AP capacity risk")],
+            finding("example-school-risk", "site:example-school", "example-school Reference Site",
+                    "example-school-PA security risk"),
+            finding("example-corporate-risk", "site:example-corporate",
+                    "Northwind College", "example-corporate-AP capacity risk")],
         "recommendations": [
-            finding("mlc-rec", "site:mlc", "MLC Reference Site",
-                    "MLC-PA renew licence"),
-            finding("sbc-rec", "site:st-brigids",
-                    "Northwind College", "SBC-AP investigate")]}
-    scopes = [{"scope": "all"}, {"scope": "site:mlc"},
-              {"scope": "site:st-brigids"}]
+            finding("example-school-rec", "site:example-school", "example-school Reference Site",
+                    "example-school-PA renew licence"),
+            finding("example-corporate-rec", "site:example-corporate",
+                    "Northwind College", "example-corporate-AP investigate")]}
+    scopes = [{"scope": "all"}, {"scope": "site:example-school"},
+              {"scope": "site:example-corporate"}]
     summary = {"site_options": [
-        {"site_id": "site:mlc", "display_name": "MLC Reference Site"},
-        {"site_id": "site:st-brigids",
+        {"site_id": "site:example-school", "display_name": "example-school Reference Site"},
+        {"site_id": "site:example-corporate",
          "display_name": "Northwind College"}],
         "scopes": scopes}
     output = tmp_path / "infrastructure-overview.json"
@@ -151,11 +151,12 @@ def test_infrastructure_overview_findings_are_canonical_site_scoped(tmp_path):
     for title in ("Active Issues", "Operational Risks", "Recommendations"):
         values = list(csv.DictReader(io.StringIO(
             panels[title]["targets"][0]["csvContent"])))
-        mlc = [value for value in values if value["scope"] == "site:mlc"]
-        st = [value for value in values if value["scope"] == "site:st-brigids"]
-        assert mlc and st
-        assert all("SBC" not in value["item"] for value in mlc)
-        assert all("MLC" not in value["item"] for value in st)
+        example_school = [value for value in values if value["scope"] == "site:example-school"]
+        st = [value for value in values if value["scope"] == "site:example-corporate"]
+        assert example_school and st
+        assert all("example-corporate" not in value["item"]
+                   for value in example_school)
+        assert all("example-school" not in value["item"] for value in st)
     all_issues = [value for value in list(csv.DictReader(io.StringIO(
         panels["Active Issues"]["targets"][0]["csvContent"])))
         if value["scope"] == "all"]

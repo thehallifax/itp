@@ -1,0 +1,5 @@
+sites:
+  - id: example-corporate
+    display_name: Example Corporate
+    aliases: [corporate.example]
+    enabled: true

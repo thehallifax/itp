@@ -190,13 +190,13 @@ Sanitized evidence is generated below `runtime/evidence/` and never enters a
 profile's canonical runtime:
 
 ```bash
-.venv/bin/python scripts/render_wallboard_scenario.py sbc
+.venv/bin/python scripts/render_wallboard_scenario.py example-corporate
 .venv/bin/python scripts/render_wallboard_scenario.py vmware
 .venv/bin/python scripts/render_wallboard_scenario.py hyperv
 .venv/bin/python scripts/render_wallboard_scenario.py proxmox
 ```
 
 Each scenario contains a complete managed dashboard and provisioning file under
-`runtime/evidence/<scenario>/dashboard/`. SBC demonstrates wireless and Mist
+`runtime/evidence/<scenario>/dashboard/`. example-corporate demonstrates wireless and Mist
 state; the remaining scenarios reuse sanitized provider fixtures. Use
 1920×1080 for primary release images and 1440×900 for the compact-layout check.

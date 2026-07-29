@@ -84,7 +84,7 @@ connectors:
     credential_fields: []
     configuration_fields: [virtualisation.endpoints]
     secret_handling:
-      templates: [secrets/mlc/hyperv.env.example]
+      templates: [secrets/hyperv.env.example]
       scope: profile
     capabilities: {validation: true, doctor: false, status: true, demo_fixture: true}
     documentation: docs/collectors/hyperv.md
@@ -169,7 +169,7 @@ connectors:
       - {id: token_secret, env: PROXMOX_TOKEN_SECRET, required: true, secret: true}
     configuration_fields: [virtualisation.endpoints]
     secret_handling:
-      templates: [secrets/mlc/proxmox.env.example]
+      templates: [secrets/proxmox.env.example]
       scope: profile
     capabilities: {validation: true, doctor: false, status: true, demo_fixture: true}
     documentation: docs/collectors/proxmox.md
@@ -211,7 +211,7 @@ connectors:
       - {id: password, env: VMWARE_PASSWORD, required: true, secret: true}
     configuration_fields: [virtualisation.endpoints]
     secret_handling:
-      templates: [secrets/mlc/vmware.env.example]
+      templates: [secrets/vmware.env.example]
       scope: profile
     capabilities: {validation: true, doctor: false, status: true, demo_fixture: true}
     documentation: docs/collectors/vmware.md

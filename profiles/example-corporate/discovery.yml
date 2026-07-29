@@ -1,0 +1,16 @@
+schema_version: 1
+deployment_id: example-corporate
+customer_id: example-corporate
+site_id: site:example-corporate
+site: site:example-corporate
+networks:
+  - cidr: 198.51.100.0/24
+collectors:
+  snmp:
+    enabled: false
+  mist:
+    enabled: false
+  paloalto:
+    enabled: false
+inventory: {}
+writer: {}

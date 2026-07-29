@@ -11,7 +11,7 @@
 ## Demo and privacy
 
 - [x] Remove real customer names from the default site catalogue
-- [ ] Coordinate renaming of legacy MLC/SBC profiles and fixtures
+- [ ] Coordinate renaming of legacy example-school/example-corporate profiles and fixtures
 - [ ] Review demo data for customer hostnames, domains and addresses
 
 ## Validation

@@ -2,11 +2,11 @@
 
 ITP uses one profile-owned identity contract at every layer:
 
-| Field | Purpose | MLC reference value |
+| Field | Purpose | example-school reference value |
 |---|---|---|
-| `deployment_id` | Deployment and runtime partition | `mlc` |
-| `customer_id` | Customer or tenant partition | `mlc` |
-| `site_id` | Canonical site join | `site:MLC` |
+| `deployment_id` | Deployment and runtime partition | `example-school` |
+| `customer_id` | Customer or tenant partition | `example-school` |
+| `site_id` | Canonical site join | `site:example-school` |
 | `device_id` | Collector-qualified device identity | `paloalto:<serial>` |
 
 IDs are stable, machine-safe, case-sensitive values. Their configured case is
@@ -33,7 +33,7 @@ be removed after existing deployments have regenerated telemetry and dashboards.
 
 Historical points written with display names or slugs remain queryable directly,
 but are not mixed silently into canonical selectors. Doctor/profile validation
-should be used before regeneration; a clean database reset is the supported MLC
+should be used before regeneration; a clean database reset is the supported example-school
 reference migration.
 
 ## Dashboard variables

@@ -222,46 +222,46 @@ def test_evaluator_registry_is_complete_and_deterministic():
 
 
 SITES = """sites:
-  - id: mlc
-    display_name: MLC Reference Site
-    aliases: [MLC, MLC Reference Site]
-  - id: st-brigids
+  - id: example-school
+    display_name: example-school Reference Site
+    aliases: [example-school, example-school Reference Site]
+  - id: example-corporate
     display_name: Northwind College
-    aliases: [Northwind, SBC]
+    aliases: [Northwind, example-corporate]
 """
 
 
 def test_per_site_partitioning_aliases_collectors_and_estate_aggregate(tmp_path):
     assets = [
-        {"canonical_id": "fw:1", "hostname": "MLC-PA", "device_type": "firewall",
-         "online": True, "site": "MLC", "sources": ["paloalto"]},
-        {"canonical_id": "ap:1", "hostname": "SBC-AP", "device_type": "access-point",
+        {"canonical_id": "fw:1", "hostname": "example-school-PA", "device_type": "firewall",
+         "online": True, "site": "example-school", "sources": ["paloalto"]},
+        {"canonical_id": "ap:1", "hostname": "example-corporate-AP", "device_type": "access-point",
          "online": False, "site": "Northwind", "sources": ["mist"]},
-        {"canonical_id": "sw:1", "hostname": "SBC-SW", "device_type": "switch",
-         "online": True, "site": "SBC", "sources": ["snmp"]},
+        {"canonical_id": "sw:1", "hostname": "example-corporate-SW", "device_type": "switch",
+         "online": True, "site": "example-corporate", "sources": ["snmp"]},
     ]
     collectors = [
         {"collector": "paloalto", "status": "healthy",
-         "site_ids": ["mlc"], "last_run": "2026-07-23T13:59:00Z"},
+         "site_ids": ["example-school"], "last_run": "2026-07-23T13:59:00Z"},
         {"collector": "mist", "status": "healthy",
-         "site_ids": ["st-brigids"], "last_run": "2026-07-23T13:59:00Z"},
+         "site_ids": ["example-corporate"], "last_run": "2026-07-23T13:59:00Z"},
         {"collector": "snmp", "status": "healthy",
-         "site_ids": ["st-brigids"], "last_run": "2026-07-23T13:59:00Z"},
+         "site_ids": ["example-corporate"], "last_run": "2026-07-23T13:59:00Z"},
         {"collector": "fortigate", "status": "healthy",
-         "site_ids": ["st-brigids"], "last_run": "2026-07-23T13:59:00Z"},
+         "site_ids": ["example-corporate"], "last_run": "2026-07-23T13:59:00Z"},
     ]
     pa_risk = {"id": "pa-license", "rule_id": "PA-LICENCE-EXPIRED",
         "title": "Palo Alto licence", "category": "Security", "severity": "High",
-        "priority": 80, "device": "MLC-PA", "site": "MLC Reference Site",
-        "summary": "MLC Palo Alto licence expired.", "evidence": {}}
+        "priority": 80, "device": "example-school-PA", "site": "example-school Reference Site",
+        "summary": "example-school Palo Alto licence expired.", "evidence": {}}
     issues = [
         {"id": "ap-down", "rule_id": "wireless.ap_offline",
          "title": "AP offline", "category": "Wireless", "severity": "High",
-         "priority": 80, "device": "SBC-AP", "site": "Northwind",
+         "priority": 80, "device": "example-corporate-AP", "site": "Northwind",
          "summary": "Northwind AP is offline.", "evidence": {}},
         {"id": "forti-down", "rule_id": "firewall.unavailable",
          "title": "FortiGate unavailable", "category": "Firewall", "severity": "Critical",
-         "priority": 95, "device": "SBC-FGT", "site": "SBC",
+         "priority": 95, "device": "example-corporate-FGT", "site": "example-corporate",
          "summary": "Northwind FortiGate unavailable.",
          "evidence": {"source_collector": "fortigate"}},
     ]
@@ -275,18 +275,18 @@ def test_per_site_partitioning_aliases_collectors_and_estate_aggregate(tmp_path)
         enabled_collectors=list(caps), collector_capabilities=caps, sites_text=SITES)
     result = engine.evaluate(NOW)
     assert [value["site_id"] for value in result["sites"]] == [
-        "site:mlc", "site:st-brigids"]
-    mlc = next(value for value in result["sites"] if value["site_id"] == "site:mlc")
-    st = next(value for value in result["sites"] if value["site_id"] == "site:st-brigids")
-    assert mlc["site_name"] == "MLC Reference Site"
-    assert mlc["enabled_collectors"] == ["paloalto"]
+        "site:example-school", "site:example-corporate"]
+    example_school = next(value for value in result["sites"] if value["site_id"] == "site:example-school")
+    st = next(value for value in result["sites"] if value["site_id"] == "site:example-corporate")
+    assert example_school["site_name"] == "example-school Reference Site"
+    assert example_school["enabled_collectors"] == ["paloalto"]
     assert st["enabled_collectors"] == ["fortigate", "mist", "snmp"]
-    mlc_security = service(result, "Security", "site:mlc")
-    st_wireless = service(result, "Wireless", "site:st-brigids")
-    assert mlc_security["status"] == "Warning"
-    assert any("Palo Alto" in item.get("summary", "") for item in mlc_security["evidence"])
+    example_school_security = service(result, "Security", "site:example-school")
+    st_wireless = service(result, "Wireless", "site:example-corporate")
+    assert example_school_security["status"] == "Warning"
+    assert any("Palo Alto" in item.get("summary", "") for item in example_school_security["evidence"])
     assert not any("AP" in item.get("summary", "") or "FortiGate" in item.get("summary", "")
-                   for item in mlc_security["evidence"])
+                   for item in example_school_security["evidence"])
     assert st_wireless["status"] == "Critical"
     assert any("AP" in item.get("summary", "") for item in st_wireless["evidence"])
     assert not any("Palo Alto" in item.get("summary", "")
@@ -307,4 +307,4 @@ def test_unmapped_sites_create_diagnostics_not_site_leakage(tmp_path):
     assert {value["record_id"] for value in result["diagnostics"]} >= {
         "unknown", "unknown-finding"}
     assert all(service(result, "Switching", site_id)["status"] == "Not Enabled"
-               for site_id in ("site:mlc", "site:st-brigids"))
+               for site_id in ("site:example-school", "site:example-corporate"))

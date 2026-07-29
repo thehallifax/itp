@@ -1,4 +1,0 @@
-analysis
-collectors
-itp_profiles
-telemetry

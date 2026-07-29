@@ -14,7 +14,7 @@ def test_mist_secret_is_optional_and_collector_only():
     collector = compose["services"]["collector"]
     assert "profiles" not in collector
     assert collector["env_file"] == [
-        ".env",
+        "${ITP_ENV_FILE:-.env.example}",
         {"path": "${ITP_SECRETS_DIR:-./secrets}/influxdb.env", "required": False},
         {"path": "${ITP_SECRETS_DIR:-./secrets}/collector.env", "required": False},
         {"path": "${ITP_SECRETS_DIR:-./secrets}/mist.env", "required": False},
@@ -22,6 +22,9 @@ def test_mist_secret_is_optional_and_collector_only():
         {"path": "${ITP_SECRETS_DIR:-./secrets}/paloalto.env", "required": False},
         {"path": "${ITP_SECRETS_DIR:-./secrets}/papercut.env", "required": False},
         {"path": "${ITP_SECRETS_DIR:-./secrets}/aruba.env", "required": False},
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/snmp.env", "required": False},
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/vmware.env", "required": False},
+        {"path": "${ITP_SECRETS_DIR:-./secrets}/proxmox.env", "required": False},
     ]
     environment = "\n".join(collector["environment"])
     assert "MIST_ORG_ID" not in environment and "MIST_API_TOKEN" not in environment

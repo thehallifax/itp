@@ -54,13 +54,14 @@ def _profile_tree(tmp_path, name="test"):
 
 def test_tracked_profiles_are_discovered_and_isolated():
     profiles = {value.id: value for value in discover_profiles(ROOT)}
-    assert set(profiles) >= {"mlc", "sbc"}
-    assert profiles["mlc"].paths.runtime != profiles["sbc"].paths.runtime
-    assert profiles["mlc"].paths.secrets != profiles["sbc"].paths.secrets
-    assert profiles["mlc"].compose_project == "itp-mlc"
-    assert profiles["sbc"].grafana_port != profiles["mlc"].grafana_port
-    assert profiles["mlc"].deployment_mode == "standalone"
-    assert profiles["mlc"].customer_id == "mlc"
+    assert set(profiles) >= {"example-school", "example-corporate"}
+    assert profiles["example-school"].paths.runtime != profiles["example-corporate"].paths.runtime
+    assert profiles["example-school"].paths.secrets == ROOT / "secrets"
+    assert profiles["example-corporate"].paths.secrets == ROOT / "secrets"
+    assert profiles["example-school"].compose_project == "itp-example-school"
+    assert profiles["example-corporate"].grafana_port != profiles["example-school"].grafana_port
+    assert profiles["example-school"].deployment_mode == "standalone"
+    assert profiles["example-school"].customer_id == "example-school"
 
 
 def test_cluster_member_requires_explicit_shared_services(tmp_path):
@@ -113,16 +114,16 @@ def test_profile_rejects_mismatch_traversal_and_missing_files(tmp_path):
 
 
 def test_profile_config_and_site_aliases_do_not_cross_boundaries(monkeypatch):
-    mlc = DeploymentProfile.load("mlc", ROOT)
-    sbc = DeploymentProfile.load("sbc", ROOT)
-    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "mlc")
-    mlc_config = load_config(mlc.paths.discovery)
-    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "sbc")
-    sbc_config = load_config(sbc.paths.discovery)
-    assert mlc_config["collectors"]["paloalto"]["enabled"] is True
-    assert sbc_config["collectors"]["paloalto"]["enabled"] is False
-    assert SiteRegistry.load(mlc.paths.sites).resolver.resolve("st-brigids").status == "unknown"
-    assert SiteRegistry.load(sbc.paths.sites).resolver.resolve("MLC").status == "unknown"
+    example_school = DeploymentProfile.load("example-school", ROOT)
+    example_corporate = DeploymentProfile.load("example-corporate", ROOT)
+    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "example-school")
+    example_school_config = load_config(example_school.paths.discovery)
+    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "example-corporate")
+    example_corporate_config = load_config(example_corporate.paths.discovery)
+    assert example_school_config["collectors"]["paloalto"]["enabled"] is True
+    assert example_corporate_config["collectors"]["paloalto"]["enabled"] is False
+    assert SiteRegistry.load(example_school.paths.sites).resolver.resolve("example-corporate").status == "unknown"
+    assert SiteRegistry.load(example_corporate.paths.sites).resolver.resolve("example-school").status == "unknown"
 
 
 def test_profile_secret_loading_is_local_and_preserves_indirection(tmp_path, monkeypatch):
@@ -150,13 +151,13 @@ def test_runtime_activation_is_profile_scoped(tmp_path, monkeypatch):
 
 def test_writer_adds_deployment_tag_without_replacing_site(monkeypatch):
     captured = []
-    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "mlc")
+    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "example-school")
     writer = InfluxWriter(
         delegate=lambda points: captured.extend(points) or len(points),
-        deployment_id="mlc")
-    writer.write([{"measurement": "device", "tags": {"site_id": "site:MLC"},
+        deployment_id="example-school")
+    writer.write([{"measurement": "device", "tags": {"site_id": "site:example-school"},
                    "fields": {"online": True}}])
-    assert captured[0]["tags"] == {"site_id": "site:MLC", "deployment_id": "mlc"}
+    assert captured[0]["tags"] == {"site_id": "site:example-school", "deployment_id": "example-school"}
 
 
 def test_profile_schedulers_do_not_share_locks():
@@ -172,9 +173,9 @@ def test_profile_schedulers_do_not_share_locks():
 
 
 def test_dashboard_generation_is_profile_runtime_only(monkeypatch, tmp_path):
-    profile = DeploymentProfile.load("mlc", ROOT)
-    runtime = tmp_path / "runtime/mlc"
-    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "mlc")
+    profile = DeploymentProfile.load("example-school", ROOT)
+    runtime = tmp_path / "runtime/example-school"
+    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "example-school")
     monkeypatch.setenv("ITP_RUNTIME_DIR", str(runtime))
     config = load_config(profile.paths.discovery)
     output = runtime / "dashboard/managed"
@@ -184,9 +185,9 @@ def test_dashboard_generation_is_profile_runtime_only(monkeypatch, tmp_path):
     assert provision.exists()
     dashboards = list(output.glob("*/*.json"))
     assert dashboards
-    assert all("itp-profile:mlc" in json.loads(path.read_text())["tags"]
+    assert all("itp-profile:example-school" in json.loads(path.read_text())["tags"]
                for path in dashboards)
-    assert not str(output).startswith(str(ROOT / "runtime/sbc"))
+    assert not str(output).startswith(str(ROOT / "runtime/example-corporate"))
 
 
 def test_legacy_configuration_emits_deprecation_warning(monkeypatch, tmp_path):
@@ -205,6 +206,6 @@ def test_repository_profile_validation_is_secret_and_docker_independent():
          "--root", str(ROOT)],
         cwd=ROOT, text=True, capture_output=True)
     assert completed.returncode == 0, completed.stderr
-    assert "[PASS] mlc" in completed.stdout
-    assert "[PASS] sbc" in completed.stdout
+    assert "[PASS] example-school" in completed.stdout
+    assert "[PASS] example-corporate" in completed.stdout
     assert "Validated 2 deployment profile(s)" in completed.stdout

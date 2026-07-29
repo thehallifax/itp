@@ -14,6 +14,9 @@ secrets/**/*.env
 
 # Runtime and generated state
 runtime/
+!runtime/
+runtime/*
+!runtime/README.md
 backups/
 profiles/*/*.local.yml
 config/*.local.yml
@@ -27,14 +30,6 @@ profiles/*/.env
 # Runtime secrets
 secrets/*.env
 !secrets/*.env.example
-
-# Runtime
-runtime/
-backups/
-
-# Local backup files
-*.backup
-*.backup-*
 
 # Local Telegraf configs
 telegraf/telegraf.d/inputs/*.manual
@@ -55,6 +50,12 @@ env/
 # Coverage
 .coverage
 htmlcov/
+build/
+dist/
+*.egg-info/
+*.sqlite
+*.sqlite3
+*.db
 
 # macOS
 .DS_Store

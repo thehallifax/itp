@@ -18,14 +18,14 @@ from itp_profiles import DeploymentProfile, IdentityResolver, ProfileError
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_mlc_profile_resolves_one_stable_identity():
-    profile = DeploymentProfile.load("mlc", ROOT)
+def test_example_school_profile_resolves_one_stable_identity():
+    profile = DeploymentProfile.load("example-school", ROOT)
     resolver = IdentityResolver.from_sites_file(
         profile.deployment_id, profile.customer_id, profile.paths.sites)
-    identity = resolver.resolve_site("MLC")
+    identity = resolver.resolve_site("example-school")
     assert (identity.deployment_id, identity.customer_id, identity.site_id) == (
-        "mlc", "mlc", "site:MLC")
-    assert resolver.resolve_site(identity.site_name).site_id == "site:MLC"
+        "example-school", "example-school", "site:example-school")
+    assert resolver.resolve_site(identity.site_name).site_id == "site:example-school"
 
 
 def test_display_and_alias_changes_do_not_change_site_identity(tmp_path):
@@ -77,27 +77,27 @@ def test_profile_overlay_cannot_replace_canonical_site_id(tmp_path):
 
 def test_profile_config_normalises_legacy_alias_at_boundary(
         monkeypatch, tmp_path):
-    profile = DeploymentProfile.load("mlc", ROOT)
-    profile_root = tmp_path / "profiles/mlc"
+    profile = DeploymentProfile.load("example-school", ROOT)
+    profile_root = tmp_path / "profiles/example-school"
     profile_root.mkdir(parents=True)
     legacy = yaml.safe_load(profile.paths.discovery.read_text())
-    legacy["site"] = "mlc"
+    legacy["site"] = "example-school"
     (profile_root / "discovery.yml").write_text(
         yaml.safe_dump(legacy, sort_keys=False))
     (profile_root / "sites.yml").write_text(
         profile.paths.canonical_sites.read_text())
-    monkeypatch.setenv("ITP_PROFILE", "mlc")
-    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "mlc")
-    monkeypatch.setenv("ITP_CUSTOMER_ID", "mlc")
+    monkeypatch.setenv("ITP_PROFILE", "example-school")
+    monkeypatch.setenv("ITP_DEPLOYMENT_ID", "example-school")
+    monkeypatch.setenv("ITP_CUSTOMER_ID", "example-school")
     monkeypatch.setenv("ITP_SITES_CONFIG", str(profile_root / "sites.yml"))
     monkeypatch.setenv(
         "ITP_CONNECTORS_CONFIG",
         str(ROOT / "config/connectors.local.example.yml"))
     with pytest.warns(DeprecationWarning, match="normalized"):
         config = load_config(profile_root / "discovery.yml")
-    assert config["site_id"] == "site:MLC"
+    assert config["site_id"] == "site:example-school"
     assert config["site"] == config["site_id"]
-    assert config["collectors"]["paloalto"]["site"] == "site:MLC"
+    assert config["collectors"]["paloalto"]["site"] == "site:example-school"
 
 
 def test_writer_rejects_conflicting_compatibility_identity():
@@ -114,34 +114,34 @@ def test_asset_identity_is_stable_across_display_name_changes():
             "paloalto", 200, assets=[{
                 "source": "paloalto", "collector": "paloalto",
                 "source_asset_id": "0123456789",
-                "deployment_id": "mlc", "customer_id": "mlc",
-                "site_id": "site:MLC", "site": site_name,
+                "deployment_id": "example-school", "customer_id": "example-school",
+                "site_id": "site:example-school", "site": site_name,
                 "serial_number": "0123456789", "hostname": "FW-01",
                 "device_type": "firewall", "online": True}])])
         return assets[0]
     before = fuse("Reference Site")
     after = fuse("Renamed Site")
     assert before["canonical_id"] == after["canonical_id"]
-    assert before["site_id"] == after["site_id"] == "site:MLC"
+    assert before["site_id"] == after["site_id"] == "site:example-school"
 
 
 def test_paloalto_and_papercut_points_carry_canonical_identity():
     pa_config = PaloAltoConfig(
         "https://192.0.2.1", "test", "PALOALTO_API_KEY",
-        "mlc", "site:MLC", deployment_id="mlc",
+        "example-school", "site:example-school", deployment_id="example-school",
         site_name="Reference Site")
     _, pa_points = map_snapshot({"system": {
         "serial": "0123456789", "hostname": "FW-01",
         "management_ip": "192.0.2.1"}}, pa_config,
         "2026-01-01T00:00:00Z")
     paper_config = PaperCutConfig(
-        "https://print.example.invalid", "", "mlc", "site:MLC",
-        deployment_id="mlc", site_name="Reference Site")
+        "https://print.example.invalid", "", "example-school", "site:example-school",
+        deployment_id="example-school", site_name="Reference Site")
     fixture = json.loads(
         (ROOT / "collectors/papercut/fixtures/healthy.json").read_text())
     _, paper_points, _ = normalize(
         fixture, paper_config, "2026-01-01T00:00:00Z")
     for point in [*pa_points, *paper_points]:
-        assert point["tags"]["deployment_id"] == "mlc"
-        assert point["tags"]["customer_id"] == point["tags"]["customer"] == "mlc"
-        assert point["tags"]["site_id"] == point["tags"]["site"] == "site:MLC"
+        assert point["tags"]["deployment_id"] == "example-school"
+        assert point["tags"]["customer_id"] == point["tags"]["customer"] == "example-school"
+        assert point["tags"]["site_id"] == point["tags"]["site"] == "site:example-school"

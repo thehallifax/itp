@@ -1,54 +1,35 @@
 # Install ITP
 
-Requirements: Git, Python 3.9 or later, Docker Engine or Docker Desktop, and
+ITP requires Git, Python 3.9 or later, Docker Desktop or Docker Engine, and
 Docker Compose v2.
 
+From a clean clone:
+
 ```sh
-git clone <repository-url> itp
-cd itp
-./itp setup
+git clone https://github.com/<organisation>/<repository> infrastructure-telemetry-platform
+cd infrastructure-telemetry-platform
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+./itp deploy
 ```
 
-Setup recommends available host ports, writes a stable deployment identity and
-complete InfluxDB settings, and leaves every external collector disabled. Keep
-collectors disabled until their optional secret file is populated. For example:
+The deployment wizard validates prerequisites, creates ignored runtime
+configuration, provisions Grafana, starts the stack, and prints the dashboard
+URL. It does not enable external collectors or request vendor credentials.
+
+After deployment:
 
 ```sh
-cp secrets/mist.env.example secrets/mist.env
-cp secrets/fortigate.env.example secrets/fortigate.env
-```
-
-If setup was completed without starting services:
-
-```sh
-./itp start
 ./itp doctor
 ./itp status
+./itp collector list
 ```
 
-Grafana and InfluxDB use the URLs printed by setup. Container ports remain 3000
-and 8181 while `GRAFANA_PORT` and `INFLUXDB_PORT` select host-published ports.
-Dashboards, folders, and the FlightSQL datasource are provisioned automatically
-against the configured `INFLUXDB_BUCKET`.
-Alternatively run `./scripts/install.sh` or `./scripts/Install-ITP.ps1`.
-
-On Windows PowerShell, the self-bootstrapping path is:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-.\itp.ps1 setup
-.\itp.ps1 start
-```
-
-For one process without changing the persistent policy:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 setup
-```
-
-Use `pwsh` in place of `powershell.exe` for PowerShell 7. Organisation-enforced
-Group Policy cannot be bypassed by ITP and may require administrator approval.
-
-See [Platform prerequisites](platform-prerequisites.md) for Windows firmware
-virtualization and optional-feature checks, macOS architecture guidance, Linux
-Docker permissions, and verification commands.
+On Windows PowerShell, run `.\itp.ps1 deploy`. See
+[Platform prerequisites](platform-prerequisites.md), the
+[macOS guide](INSTALL_MACOS.md), or the [Linux guide](INSTALL_LINUX.md) for
+operating-system details.

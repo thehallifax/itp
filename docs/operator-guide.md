@@ -70,7 +70,7 @@ evidence first. Critical shared-storage or expected-running workload findings
 identify the evidence and affected canonical service; recommendations remain
 read-only operator guidance.
 
-For release evidence, run `scripts/render_wallboard_scenario.py` with `sbc`,
+For release evidence, run `scripts/render_wallboard_scenario.py` with `example-corporate`,
 `vmware`, `hyperv` or `proxmox`. Do not copy evidence output into
 `runtime/<profile>`: it is an isolated screenshot fixture, not production
 telemetry. The live dashboard is under **Operations → Operations Wallboard**

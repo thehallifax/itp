@@ -1,14 +1,14 @@
 sites:
-  - id: st-brigids-lesmurdie
+  - id: example-corporate
     display_name: "Northwind College"
     aliases:
-      - SBC
-      - st-brigids
-      - st-brigids-lesmurdie
+      - example-corporate
+      - example-corporate
+      - example-corporate
       - "Northwind College"
       - "Northwind College P2P"
 
-  - id: MLC
-    display_name: "MLC Reference Site"
+  - id: example-school
+    display_name: "example-school Reference Site"
     aliases:
-      - MLC
+      - example-school

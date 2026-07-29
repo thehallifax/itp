@@ -6,18 +6,21 @@ Prerequisites are Git, Python 3.9 or later, Docker Desktop or Docker Engine,
 and Docker Compose v2.
 
 ```sh
-git clone <repository>
-cd <repository>
-./itp setup
-./itp doctor
-./itp start
-./itp status
+git clone https://github.com/<organisation>/<repository> infrastructure-telemetry-platform
+cd infrastructure-telemetry-platform
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+./itp deploy
 ```
 
-Setup creates local configuration from tracked examples and offers to provision
-and start the stack. If declined, it prints `./itp start` as the next command.
-The `./itp` launcher creates and synchronises a repository-local `.venv`
-automatically; users do not activate it or install packages globally.
+Deploy creates ignored runtime configuration, provisions managed resources,
+starts the stack, and prints the Grafana URL. The launcher can bootstrap its
+own environment for normal operation, while the explicit environment above
+makes dependency installation and tests independently verifiable.
 
 On a clean deployment, Infrastructure Overview opens with a generated Setup
 Status checklist. **Monitoring not started** means the platform is operating
@@ -28,9 +31,8 @@ regeneration. See [Readiness and dashboard empty states](readiness.md).
 On Windows PowerShell, use the equivalent launcher:
 
 ```powershell
-.\itp.ps1 setup
+.\itp.ps1 deploy
 .\itp.ps1 doctor
-.\itp.ps1 start
 .\itp.ps1 status
 ```
 
@@ -43,7 +45,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 For a single process without a persistent policy change:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 setup
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy
 ```
 
 Use `pwsh` instead of `powershell.exe` for PowerShell 7. An execution policy
@@ -64,7 +66,7 @@ never prints environment values or credentials.
 
 ## Dashboard packs
 
-Setup and start resolve dashboard packs from enabled connector metadata.
+Deploy and start resolve dashboard packs from enabled connector metadata.
 Platform dashboards are always installed; Infrastructure Overview is the
 default Grafana landing page. The initial connector example is the SNMP pack,
 which provides device totals, availability, and canonical SNMP inventory.

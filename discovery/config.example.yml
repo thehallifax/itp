@@ -2,8 +2,8 @@ schema_version: 1
 deployment_id: example
 customer_id: example
 customer: example
-site_id: site:st-brigids-lesmurdie
-site: site:st-brigids-lesmurdie
+site_id: site:example-corporate
+site: site:example-corporate
 
 discovery:
   interval_seconds: 3600

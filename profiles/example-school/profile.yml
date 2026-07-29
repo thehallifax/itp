@@ -1,0 +1,26 @@
+profile:
+  id: example-school
+  name: Example School
+  environment: example
+  timezone: Australia/Perth
+  runtime_mode: central
+identity:
+  customer_id: example-school
+deployment:
+  mode: standalone
+paths:
+  discovery_config: profiles/example-school/discovery.yml
+  sites_config: profiles/example-school/sites.yml
+  dashboards_config: profiles/example-school/dashboards.yml
+  secrets_dir: secrets
+  runtime_dir: runtime/deployments/example-school/state
+telemetry:
+  deployment_id: example-school
+  influx_bucket: itp_example_school
+  influx_org: local_org
+grafana:
+  folder_prefix: Example School
+  provisioning_namespace: example-school
+ports:
+  grafana: 3000
+  influxdb: 8181

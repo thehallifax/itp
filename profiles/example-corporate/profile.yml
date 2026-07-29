@@ -1,0 +1,26 @@
+profile:
+  id: example-corporate
+  name: Example Corporate
+  environment: example
+  timezone: Australia/Perth
+  runtime_mode: central
+identity:
+  customer_id: example-corporate
+deployment:
+  mode: standalone
+paths:
+  discovery_config: profiles/example-corporate/discovery.yml
+  sites_config: profiles/example-corporate/sites.yml
+  dashboards_config: profiles/example-corporate/dashboards.yml
+  secrets_dir: secrets
+  runtime_dir: runtime/deployments/example-corporate/state
+telemetry:
+  deployment_id: example-corporate
+  influx_bucket: itp_example_corporate
+  influx_org: local_org
+grafana:
+  folder_prefix: Example Corporate
+  provisioning_namespace: example-corporate
+ports:
+  grafana: 3100
+  influxdb: 8281

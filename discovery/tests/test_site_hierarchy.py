@@ -151,7 +151,7 @@ def test_single_site_selector_omits_redundant_all_option(tmp_path):
 
 
 def test_existing_profiles_remain_single_site():
-    for profile in ("mlc", "sbc"):
+    for profile in ("example-school", "example-corporate"):
         value = SiteRegistry.load(ROOT / "profiles" / profile / "sites.yml")
         assert value.deployment_model == "single_site"
         assert len(value.sites) == 1

@@ -4,9 +4,9 @@ For customer-profile deployments:
 
 ```sh
 git pull --ff-only
-./itp profile validate mlc
-./itp profile restart mlc
-./itp profile status mlc
+./itp profile validate example-school
+./itp profile restart example-school
+./itp profile status example-school
 ```
 
 Repeat for each local profile. Runtime and credentials are ignored, so routine

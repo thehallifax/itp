@@ -1,0 +1,11 @@
+schema_version: 1
+deployment_id: ${DEPLOYMENT_ID}
+customer_id: ${CUSTOMER_ID}
+display_name: ${DEPLOYMENT_DISPLAY_NAME}
+timezone: ${TIMEZONE}
+deployment:
+  mode: standalone
+network:
+  listen_address: 127.0.0.1
+  grafana_port: 3000
+  influxdb_port: 8181

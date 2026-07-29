@@ -33,5 +33,11 @@ jobs:
       - name: Run deterministic test suite
         run: python -m pytest
 
+      - name: Validate repository hygiene
+        run: python -m pytest discovery/tests/test_repository_hygiene.py -q
+
+      - name: Validate generic Compose configuration
+        run: docker compose --env-file .env.example config --quiet
+
       - name: Check patch whitespace
         run: git diff --check

@@ -128,7 +128,7 @@ def test_normalized_operations_provisioning_and_runtime_mount():
     assert operations["folderUid"] == "itp-folder-operations"
     assert operations["options"]["path"].endswith("/managed/operations")
     compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
-    assert "${ITP_RUNTIME_DIR:-./runtime}/dashboard:/var/lib/grafana/runtime-dashboard:ro" in \
+    assert "${ITP_DASHBOARD_DIR:-./runtime/dashboard}:/var/lib/grafana/runtime-dashboard:ro" in \
         compose["services"]["grafana"]["volumes"]
 
 
@@ -638,7 +638,7 @@ def test_long_names_and_null_virtual_context_remain_renderable(tmp_path):
     assert row["age"] == "1h"
 
 
-@pytest.mark.parametrize("scenario", ["sbc", "vmware", "hyperv", "proxmox"])
+@pytest.mark.parametrize("scenario", ["example-corporate", "vmware", "hyperv", "proxmox"])
 def test_release_evidence_scenarios_are_isolated_and_deterministic(tmp_path, scenario):
     output = tmp_path / scenario
     dashboard_path = render_scenario(scenario, output)
@@ -649,7 +649,7 @@ def test_release_evidence_scenarios_are_isolated_and_deterministic(tmp_path, sce
     assert json.loads(source.read_text())["uid"] == "itp-operations-wallboard"
     assert json.loads(dashboard_path.read_text())["panels"]
     operations = json.loads((output / "operations/operations.json").read_text())
-    if scenario == "sbc":
+    if scenario == "example-corporate":
         assert any(value["category"] == "Wireless" for value in operations["issues"])
         assert not (output / "virtualisation").exists()
     else:
@@ -664,7 +664,7 @@ def test_release_evidence_scenarios_are_isolated_and_deterministic(tmp_path, sce
 def test_release_evidence_semantics_and_presentation(tmp_path):
     rendered = {}
     roots = {}
-    for scenario in ("sbc", "vmware", "hyperv", "proxmox"):
+    for scenario in ("example-corporate", "vmware", "hyperv", "proxmox"):
         roots[scenario] = tmp_path / scenario
         path = render_scenario(scenario, roots[scenario])
         dashboard = json.loads(path.read_text())
@@ -698,7 +698,7 @@ def test_release_evidence_semantics_and_presentation(tmp_path):
                 for service_id in value.get("affected_service_ids", [])}
     assert {"shared_storage", "virtual_machine_hosting"} <= affected
 
-    site_rows = rows(rendered["sbc"]["Issues"])
+    site_rows = rows(rendered["example-corporate"]["Issues"])
     assert {value["value"] for value in site_rows} == {"5 active issues"}
 
 

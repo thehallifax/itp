@@ -73,7 +73,8 @@ class DoctorEngine:
     def __init__(self, root, *, offline=False, platform_only=False,
                  connectors_only=False, connector=None, runner=subprocess.run,
                  which_fn=shutil.which, http_fn=None, now_fn=None,
-                 validation_adapters=None, timeout=3, registry=None):
+                 validation_adapters=None, timeout=3, registry=None,
+                 env_path=None, config_path=None, runtime_deployment=None):
         self.root = Path(root).resolve()
         self.offline = bool(offline)
         self.platform_only = bool(platform_only)
@@ -86,6 +87,10 @@ class DoctorEngine:
             lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
         self.validation_adapters = validation_adapters or {}
         self.timeout = max(0.1, float(timeout))
+        self.env_path = Path(env_path or self.root / ".env")
+        self.config_path = Path(
+            config_path or self.root / "discovery/config.yml")
+        self.runtime_deployment = runtime_deployment
         self.port_in_use = lambda port: self._port_in_use(port)
         try:
             self.registry = registry or ConnectorMetadataRegistry.load(self.root)
@@ -139,6 +144,11 @@ class DoctorEngine:
             encoding="utf-8", errors="replace",
             capture_output=True, timeout=self.timeout)
 
+    def _compose_command(self, *arguments):
+        if self.runtime_deployment is not None:
+            return self.runtime_deployment.compose_command(*arguments)
+        return ["docker", "compose", *arguments]
+
     @staticmethod
     def _read_env(path):
         values = {}
@@ -181,7 +191,7 @@ class DoctorEngine:
             detail=", ".join(templates),
             remediation="Restore tracked templates with Git.")
 
-        env_path = self.root / ".env"
+        env_path = self.env_path
         self.env_values = self._read_env(env_path)
         self._result(
             "platform.env", "Platform", ".env",
@@ -285,7 +295,7 @@ class DoctorEngine:
             detail=parser_detail,
             remediation="Restore the collector CLI parser definitions.")
 
-        config_path = self.root / "discovery/config.yml"
+        config_path = self.config_path
         if not config_path.is_file():
             self._result(
                 "platform.config", "Platform", "Discovery configuration",
@@ -362,16 +372,27 @@ class DoctorEngine:
             detail=str(demo_state) if demo_state.is_file() else "",
             command="./itp demo reset" if demo_state.is_file() else "")
         provisioning = runtime / "provisioning/state.json"
-        try:
-            state = json.loads(provisioning.read_text())
-            complete = state.get("status") == "complete"
+        if self.runtime_deployment is not None:
+            generated = self.runtime_deployment.generated
+            complete = (
+                self.runtime_deployment.env_file.is_file()
+                and (generated / "dashboard/provisioning/dashboards.yml").is_file()
+            )
             summary = (
-                "Provisioning is complete" if complete
-                else "Provisioning is incomplete")
-            detail = ", ".join(state.get("missing") or [])
-        except (OSError, json.JSONDecodeError):
-            complete, summary, detail = (
-                False, "Provisioning has not completed", str(provisioning))
+                "Runtime deployment provisioning is complete" if complete
+                else "Runtime deployment provisioning is incomplete")
+            detail = "" if complete else str(generated)
+        else:
+            try:
+                state = json.loads(provisioning.read_text())
+                complete = state.get("status") == "complete"
+                summary = (
+                    "Provisioning is complete" if complete
+                    else "Provisioning is incomplete")
+                detail = ", ".join(state.get("missing") or [])
+            except (OSError, json.JSONDecodeError):
+                complete, summary, detail = (
+                    False, "Provisioning has not completed", str(provisioning))
         self._result(
             "platform.provisioning", "Platform", "Automatic provisioning",
             "pass" if complete else "warn", summary, detail=detail,
@@ -389,8 +410,11 @@ class DoctorEngine:
                 conflicts.append(f"{key}:{port}")
         self._result(
             "platform.ports", "Platform", "Required ports",
-            "warn" if conflicts else "pass",
-            "Configured ports are already in use" if conflicts
+            "pass" if self.runtime_deployment is not None or not conflicts
+            else "warn",
+            "Configured service ports are listening"
+            if conflicts and self.runtime_deployment is not None
+            else "Configured ports are already in use" if conflicts
             else "Configured ports are available",
             detail=", ".join(conflicts),
             remediation="Stop the conflicting service or choose another port.")
@@ -409,6 +433,15 @@ class DoctorEngine:
             self._result(
                 "platform.profile", "Platform", "Deployment profile",
                 "skip", "No deployment profile is selected")
+            return
+        if self.runtime_deployment is not None:
+            valid = self.runtime_deployment.manifest.is_file()
+            self._result(
+                "platform.profile", "Platform", "Runtime deployment",
+                "pass" if valid else "fail",
+                f"Runtime deployment {profile_id} is locally valid"
+                if valid else "Runtime deployment manifest is missing",
+                detail=str(self.runtime_deployment.manifest))
             return
         try:
             from itp_profiles import DeploymentProfile
@@ -472,7 +505,7 @@ class DoctorEngine:
             return
         try:
             output = self._command(
-                ["docker", "compose", "config", "--services"]).stdout
+                self._compose_command("config", "--services")).stdout
             services = tuple(sorted(line.strip() for line in output.splitlines()
                                     if line.strip()))
             missing = sorted(set(EXPECTED_SERVICES) - set(services))
@@ -504,7 +537,7 @@ class DoctorEngine:
     def _container_checks(self):
         try:
             text = self._command(
-                ["docker", "compose", "ps", "--format", "json"]).stdout.strip()
+                self._compose_command("ps", "--format", "json")).stdout.strip()
             if not text:
                 rows = []
             else:
@@ -858,7 +891,7 @@ class DoctorEngine:
                     self._service_checks()
             if not self.platform_only:
                 if self.raw_config is None:
-                    config_path = self.root / "discovery/config.yml"
+                    config_path = self.config_path
                     if config_path.is_file():
                         try:
                             value = yaml.safe_load(config_path.read_text())

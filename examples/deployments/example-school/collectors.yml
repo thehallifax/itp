@@ -1,0 +1,13 @@
+schema_version: 1
+deployment_id: example-school
+customer_id: example-school
+site_id: site:example-school
+site: site:example-school
+networks:
+  - cidr: 192.0.2.0/24
+    purpose: example
+collectors:
+  snmp:
+    enabled: false
+inventory: {}
+writer: {}
