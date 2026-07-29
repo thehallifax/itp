@@ -165,7 +165,7 @@ def test_connector_metadata_links_dashboard_manifests():
 
 def test_snmp_example_pack_is_classic_and_flightsql_compatible():
     dashboard = json.loads(
-        (ROOT / "dashboards/Network/snmp-overview.json").read_text())
+        (ROOT / "dashboards/network/snmp-overview.json").read_text())
     assert dashboard["uid"] == "itp-snmp-overview"
     assert isinstance(dashboard["panels"], list) and dashboard["panels"]
     assert "elements" not in dashboard and "layout" not in dashboard

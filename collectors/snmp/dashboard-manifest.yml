@@ -7,7 +7,7 @@ capabilities:
 requires: []
 dashboards:
   - uid: itp-snmp-overview
-    source: dashboards/Network/snmp-overview.json
+    source: dashboards/network/snmp-overview.json
     folder: Infrastructure
     tags: [snmp, network, availability]
     requires_capabilities: [switching]
