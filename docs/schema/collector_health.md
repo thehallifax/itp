@@ -1,14 +1,38 @@
 # collector_health
 
-Purpose: one operational result per collector run. Tags: `collector`, `customer`, `site`;
-optional `diagnostic_category`. Fields: `success`, `partial` (boolean), `duration_ms`
-(milliseconds), `api_requests`, `retry_count`, `error_count`, `devices_returned`,
-`points_written` (counts). Example:
-`collector_health,collector=fortigate,customer=acme,site=hq success=true,partial=false,duration_ms=120i`.
-Collectors: Mist, FortiGate API, Palo Alto, and PaperCut MF; other collectors
-adopt this contract incrementally.
+Purpose: one framework-owned operational result per collector phase and
+execution attempt, including skipped and failed runs.
 
-Palo Alto adds `api_duration_ms_total` and `api_duration_ms_max` to the
-existing `api_requests`, `retry_count`, `partial`, `error_count`,
-`duration_ms`, and `points_written` fields. Command names and safe failure
-categories remain internal and raw URLs, XML, and error bodies are never tags.
+Required tags:
+
+- `collector`
+- `deployment_id`, `customer_id`, `site_id`
+- `runtime`
+- `execution_mode`
+- `phase`
+- `status`
+- `health_owner=framework`
+
+Compatibility tags `customer` and `site` equal their canonical ID fields.
+`diagnostic_category` temporarily mirrors status for existing dashboards.
+
+Fields:
+
+- `success`, `partial` (boolean)
+- `duration_ms`
+- `points_generated`, `points_written`
+- `api_requests`, `api_latency_ms`, `retry_count`
+- `error_count`, `devices_returned`
+- `skip_reason`, `diagnostics`
+
+Counts and durations are integers. Diagnostics are bounded categories, never
+raw exception bodies, URLs, headers, responses, or credentials.
+
+Example:
+
+```text
+collector_health,collector=fortigate,runtime=central,execution_mode=edge,status=skipped,health_owner=framework success=false,partial=false,duration_ms=0i,points_generated=0i,points_written=0i,skip_reason="configured_for_edge_runtime;current_runtime=central"
+```
+
+The scheduler produces this measurement for every registered native collector
+execution. Collectors return summaries; they do not own health persistence.

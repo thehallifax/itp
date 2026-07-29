@@ -6,9 +6,12 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 from .models import (
-    PaperCutAuthenticationError, PaperCutError,
-    PaperCutMalformedResponseError, PaperCutTLSError,
-    PaperCutTimeoutError, PaperCutUnreachableError,
+    PaperCutAuthenticationError,
+    PaperCutError,
+    PaperCutMalformedResponseError,
+    PaperCutTimeoutError,
+    PaperCutTLSError,
+    PaperCutUnreachableError,
 )
 
 
@@ -38,8 +41,11 @@ class PaperCutClient:
         if parsed.scheme != "https" or not parsed.hostname:
             raise ValueError("PaperCut endpoint must be a valid HTTPS URL")
         path = parsed.path.rstrip("/")
-        if path.endswith("/api/health"):
-            path = path[:-len("/api/health")]
+        if path == "/api/health":
+            path = ""
+        elif path:
+            raise ValueError(
+                "PaperCut endpoint must not include a path other than /api/health")
         return urlunsplit(("https", parsed.netloc, path, "", ""))
 
     async def get(self, path="/api/health/"):

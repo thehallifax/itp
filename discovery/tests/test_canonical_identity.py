@@ -100,12 +100,20 @@ def test_profile_config_normalises_legacy_alias_at_boundary(
     assert config["collectors"]["paloalto"]["site"] == "site:example-school"
 
 
-def test_writer_rejects_conflicting_compatibility_identity():
-    writer = InfluxWriter(delegate=lambda points: len(points))
-    with pytest.raises(ValueError, match="site tag conflicts"):
-        writer.write([{"measurement": "device", "tags": {
+def test_writer_rewrites_connector_identity_and_preserves_source_metadata():
+    captured = []
+    writer = InfluxWriter(
+        delegate=lambda points: captured.extend(points) or len(points),
+        deployment_id="deployment", customer_id="customer",
+        site_id="site:canonical", site_name="Canonical Site")
+    writer.write([{"measurement": "device", "tags": {
             "site_id": "site:one", "site": "site:two"},
             "fields": {"online": True}}])
+    tags = captured[0]["tags"]
+    assert tags["site_id"] == tags["site"] == "site:canonical"
+    assert tags["site_name"] == "Canonical Site"
+    assert tags["source_site_id"] == "site:one"
+    assert tags["source_site_name"] == "site:two"
 
 
 def test_asset_identity_is_stable_across_display_name_changes():

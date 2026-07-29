@@ -64,9 +64,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS \"Healthy Collectors\" FROM latest WHERE rn = 1",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS \"Healthy Collectors\" FROM latest WHERE rn = 1",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS \"Healthy Collectors\" FROM latest WHERE rn = 1",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS \"Healthy Collectors\" FROM latest WHERE rn = 1",
           "refId": "A"
         }
       ],
@@ -132,9 +132,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS \"Collectors Requiring Attention\" FROM latest WHERE rn = 1",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS \"Collectors Requiring Attention\" FROM latest WHERE rn = 1",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS \"Collectors Requiring Attention\" FROM latest WHERE rn = 1",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS \"Collectors Requiring Attention\" FROM latest WHERE rn = 1",
           "refId": "A"
         }
       ],
@@ -196,9 +196,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT duration_ms AS \"Collection Duration\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT duration_ms AS \"Collection Duration\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT duration_ms AS \"Collection Duration\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT duration_ms AS \"Collection Duration\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -260,9 +260,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT points_written AS \"Points Written\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT points_written AS \"Points Written\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT points_written AS \"Points Written\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT points_written AS \"Points Written\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -307,9 +307,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT time AS \"Time\", collector AS \"Collector\", site AS \"Site\", success AS \"Success\", partial AS \"Partial\", duration_ms AS \"Collection Duration\", api_requests AS \"API Requests\", points_written AS \"Points Written\", retry_count AS \"Retries\", error_count AS \"Errors\", diagnostic_category AS \"Result\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 200",
+          "query": "SELECT time AS \"Time\", collector AS \"Collector\", site AS \"Site\", success AS \"Success\", partial AS \"Partial\", duration_ms AS \"Collection Duration\", api_requests AS \"API Requests\", points_written AS \"Points Written\", retry_count AS \"Retries\", error_count AS \"Errors\", diagnostic_category AS \"Result\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 200",
           "rawQuery": true,
-          "rawSql": "SELECT time AS \"Time\", collector AS \"Collector\", site AS \"Site\", success AS \"Success\", partial AS \"Partial\", duration_ms AS \"Collection Duration\", api_requests AS \"API Requests\", points_written AS \"Points Written\", retry_count AS \"Retries\", error_count AS \"Errors\", diagnostic_category AS \"Result\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 200",
+          "rawSql": "SELECT time AS \"Time\", collector AS \"Collector\", site AS \"Site\", success AS \"Success\", partial AS \"Partial\", duration_ms AS \"Collection Duration\", api_requests AS \"API Requests\", points_written AS \"Points Written\", retry_count AS \"Retries\", error_count AS \"Errors\", diagnostic_category AS \"Result\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site_id LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 200",
           "refId": "A"
         }
       ],
@@ -358,12 +358,12 @@
           "type": "influxdb",
           "uid": "ffsu5ap2kr5dse"
         },
-        "definition": "SELECT DISTINCT site FROM collector_health WHERE collector LIKE ${collector:sqlstring} ORDER BY site",
+        "definition": "SELECT DISTINCT CASE WHEN site_name IS NULL OR site_name = ' THEN site_id ELSE site_name END AS __text, site_id AS __value FROM collector_health WHERE collector LIKE ${collector:sqlstring} ORDER BY __text",
         "includeAll": true,
         "label": "Site",
         "name": "site",
         "options": [],
-        "query": "SELECT DISTINCT site FROM collector_health WHERE collector LIKE ${collector:sqlstring} ORDER BY site",
+        "query": "SELECT DISTINCT CASE WHEN site_name IS NULL OR site_name = ' THEN site_id ELSE site_name END AS __text, site_id AS __value FROM collector_health WHERE collector LIKE ${collector:sqlstring} ORDER BY __text",
         "refresh": 1,
         "regex": "",
         "sort": 1,

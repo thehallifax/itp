@@ -1,11 +1,13 @@
 """Durable file output and future InfluxDB writer boundary."""
+import math
 import os
+import re
 import tempfile
 import time
-import math
-import re
-from urllib.parse import urlsplit, urlunsplit
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+
+from telemetry import DeploymentMetadata, normalize_point
 
 
 def atomic_write(path, content):
@@ -43,7 +45,7 @@ class InfluxWriter:
                  deployment_id="", customer_id="", site_id="",
                  customer_name="", site_name="",
                  batch_size=500, timeout=20, retries=2,
-                 client=None):
+                 client=None, accept_legacy_health=True):
         self.delegate = delegate
         self.url = self._normalize_url(url or "")
         self.token = token
@@ -53,27 +55,30 @@ class InfluxWriter:
         self.site_id = str(site_id or "").strip()
         self.customer_name = str(customer_name or "").strip()
         self.site_name = str(site_name or "").strip()
+        self.metadata = DeploymentMetadata(
+            self.deployment_id, self.customer_id, self.site_id,
+            self.customer_name, self.site_name)
+        self.last_diagnostics = ()
         self.batch_size = batch_size
         self.timeout = timeout
         self.retries = retries
         self.client = client
+        self.accept_legacy_health = bool(accept_legacy_health)
 
     @classmethod
     def from_config(cls, config, **kwargs):
         settings = config.get("writer") or {}
+        metadata = DeploymentMetadata.from_config(config)
         return cls(
             url=settings.get("url"),
             token=settings.get("token"),
             database=settings.get("database"),
-            deployment_id=settings.get(
-                "deployment_id", config.get("deployment_id", "")),
-            customer_id=settings.get(
-                "customer_id", config.get("customer_id", "")),
-            site_id=settings.get("site_id", config.get("site_id", "")),
-            customer_name=settings.get(
-                "customer_name",
-                (config.get("identity") or {}).get("customer_name", "")),
-            site_name=settings.get("site_name", config.get("site_name", "")),
+            deployment_id=metadata.deployment_id,
+            customer_id=metadata.customer_id,
+            site_id=metadata.site_id,
+            customer_name=metadata.customer_name,
+            site_name=metadata.site_name,
+            accept_legacy_health=False,
             **kwargs)
 
     @staticmethod
@@ -118,40 +123,14 @@ class InfluxWriter:
                 not isinstance(points, (list, tuple))
                 or any(not isinstance(point, dict) for point in points)):
             return self.delegate(points)
-        normalized = []
-        for point in points:
-            tags = dict(point.get("tags", {}))
-            deployment_id = str(
-                tags.get("deployment_id") or self.deployment_id).strip()
-            customer_id = str(
-                tags.get("customer_id") or tags.get("customer")
-                or self.customer_id).strip()
-            site_id = str(
-                tags.get("site_id") or tags.get("site")
-                or self.site_id).strip()
-            if tags.get("customer") and customer_id \
-                    and str(tags["customer"]) != customer_id:
-                raise ValueError(
-                    "compatibility customer tag conflicts with customer_id")
-            if tags.get("site") and site_id \
-                    and str(tags["site"]) != site_id:
-                raise ValueError(
-                    "compatibility site tag conflicts with site_id")
-            if deployment_id:
-                tags["deployment_id"] = deployment_id
-            if customer_id:
-                tags["customer_id"] = customer_id
-                tags["customer"] = customer_id
-            if site_id:
-                tags["site_id"] = site_id
-                if self.site_id or "site" in tags:
-                    tags["site"] = site_id
-            if self.customer_name:
-                tags.setdefault("customer_name", self.customer_name)
-            if self.site_name:
-                tags.setdefault("site_name", self.site_name)
-            normalized.append({**point, "tags": tags})
-        points = normalized
+        points = [
+            point for point in points
+            if self.accept_legacy_health
+            or point.get("measurement") != "collector_health"
+            or (point.get("tags") or {}).get("health_owner") == "framework"]
+        points = [
+            normalize_point(point, self.metadata, index)
+            for index, point in enumerate(points, 1)]
         if self.delegate:
             return self.delegate(points)
         if not self.url or not self.token or not self.database:

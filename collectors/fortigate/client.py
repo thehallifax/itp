@@ -5,9 +5,15 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-from .models import (EndpointResult, FortiGateCredentialError, FortiGateError,
-                     FortiGatePermissionError, FortiGateTLSError,
-                     FortiGateTimeoutError, FortiGateUnreachableError)
+from .models import (
+    EndpointResult,
+    FortiGateCredentialError,
+    FortiGateError,
+    FortiGatePermissionError,
+    FortiGateTimeoutError,
+    FortiGateTLSError,
+    FortiGateUnreachableError,
+)
 
 
 class FortiGateClient:
@@ -39,7 +45,10 @@ class FortiGateClient:
         parsed = urlsplit(value)
         if parsed.scheme != "https" or not parsed.hostname:
             raise ValueError("FORTIGATE_HOST must be a hostname or HTTPS URL")
-        return urlunsplit(("https", parsed.netloc, parsed.path.rstrip("/"), "", ""))
+        if parsed.path.rstrip("/"):
+            raise ValueError(
+                "FORTIGATE_HOST must not include an API path such as /api/v2")
+        return urlunsplit(("https", parsed.netloc, "", "", ""))
 
     async def request(self, path, params=None):
         transient = {429, 500, 502, 503, 504}

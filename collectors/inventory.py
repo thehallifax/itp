@@ -894,6 +894,27 @@ class InventoryManager:
     def update_source(self, records, source, customer, site, now, retention_days=7, source_run_id=None,
                       partial=False):
         """Replace one source's observations without disturbing other sources."""
+        normalized_records = []
+        for record in records:
+            item = dict(record)
+            source_site_id = (
+                item.get("source_site_id")
+                or item.get("external_site_id") or item.get("site_id"))
+            source_site_name = (
+                item.get("source_site_name") or item.get("site_name")
+                or item.get("site"))
+            if source_site_id and source_site_id != site:
+                item["source_site_id"] = source_site_id
+            if source_site_name and source_site_name != site:
+                item["source_site_name"] = source_site_name
+            if customer:
+                item["customer_id"] = customer
+                item["customer"] = customer
+            if site:
+                item["site_id"] = site
+                item["site"] = site
+            normalized_records.append(item)
+        records = normalized_records
         with self.locked():
             current = self.read()
             prior = {d.get("id"): d for d in current.get("devices", [])

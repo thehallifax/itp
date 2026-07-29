@@ -10,6 +10,11 @@ Copy `secrets/papercut.env.example` to the ignored
 `secrets/papercut.env`. Set `PAPERCUT_AUTHORIZATION_KEY` only when the API is
 configured to require an Authorization header.
 
+Runtime onboarding accepts a hostname with an optional port or an HTTPS origin.
+It normalizes hostnames to HTTPS and removes a trailing `/api/health`; other
+paths and HTTP URLs are rejected. No fixed port is required. The optional
+authorization key uses hidden input.
+
 Add the endpoint and canonical site to `discovery/config.yml`:
 
 ```yaml

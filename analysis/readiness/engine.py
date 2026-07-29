@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from collectors.writer import atomic_write
-from .models import ReadinessState
 
+from .models import ReadinessState
 
 READINESS_PRECEDENCE = {
     "healthy": 0,
@@ -69,7 +69,7 @@ def evaluate_readiness(*, enabled_collectors=(), collector_records=(),
                        stale_seconds=900):
     """Return one deterministic readiness document without sensitive input."""
     now = now or datetime.now(timezone.utc)
-    enabled = tuple(sorted(set(str(value) for value in enabled_collectors)))
+    enabled = tuple(sorted({str(value) for value in enabled_collectors}))
     if capability_manifest:
         manifest_records = []
         for name in enabled:
@@ -92,6 +92,8 @@ def evaluate_readiness(*, enabled_collectors=(), collector_records=(),
                 "collector": name, "status": status,
                 "last_run": collection.get("observed_at"),
                 "last_successful_run": collection.get("last_success"),
+                "points_written": collection.get("points_written"),
+                "skip_reason": collection.get("skip_reason"),
             })
         collector_records = manifest_records
     records = {
@@ -112,6 +114,7 @@ def evaluate_readiness(*, enabled_collectors=(), collector_records=(),
             stale = bool(observed and
                          (now - observed).total_seconds() > stale_seconds)
             status = str(record.get("status") or "unknown").casefold()
+            points_written = record.get("points_written")
             if status == "failed":
                 value = _state(
                     "unavailable", "collection_failed",
@@ -126,6 +129,15 @@ def evaluate_readiness(*, enabled_collectors=(), collector_records=(),
                     first_run=bool(last_run), last_success=last_success,
                     stale=True, label="Collection stale",
                     action="Check daemon health and collector connectivity.")
+            elif status == "skipped":
+                value = _state(
+                    "unavailable", "runtime_or_scheduler_skip",
+                    configured=True, enabled=True,
+                    first_run=bool(last_run), last_success=last_success,
+                    label="Collector skipped",
+                    action=(
+                        "Review runtime placement and Collector Health: "
+                        f"{record.get('skip_reason') or 'skip reason unavailable'}."))
             elif status == "warning":
                 value = _state(
                     "warning", "collection_partial",
@@ -133,7 +145,17 @@ def evaluate_readiness(*, enabled_collectors=(), collector_records=(),
                     first_run=bool(last_run), last_success=last_success,
                     label="Collection warning",
                     action="Review Collector Health for partial results.")
-            elif status == "healthy" or last_success:
+            elif (status in {"healthy", "success"} or last_success) \
+                    and points_written == 0:
+                value = _state(
+                    "waiting_first_collection", "healthy_no_telemetry",
+                    configured=True, enabled=True, first_run=True,
+                    last_success=last_success or last_run,
+                    label="No telemetry received",
+                    action=(
+                        "Collector healthy; waiting for supported data. "
+                        "Review points written and capability availability."))
+            elif status in {"healthy", "success"} or last_success:
                 value = _state(
                     "healthy", "collection_current",
                     configured=True, enabled=True, first_run=True,

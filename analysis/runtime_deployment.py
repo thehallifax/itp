@@ -10,15 +10,18 @@ import secrets
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
+from collectors.configuration import ConfigurationResolver
 from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.writer import atomic_write
 
@@ -43,6 +46,35 @@ def _port_available(address: str, port: int) -> bool:
 
 def _secret() -> str:
     return secrets.token_urlsafe(36)
+
+
+def normalize_onboarding_value(value: str, normalizer: str = "") -> str:
+    """Normalize a registry-described prompt without network side effects."""
+    value = str(value or "").strip()
+    if not value or not normalizer:
+        return value
+    if normalizer == "https-origin" and "://" not in value:
+        raise RuntimeDeploymentError("enter a complete HTTPS URL, including https://")
+    if "://" not in value:
+        value = "https://" + value
+    parsed = urlsplit(value)
+    if parsed.scheme.casefold() != "https" or not parsed.hostname:
+        raise RuntimeDeploymentError("the endpoint must use HTTPS and include a hostname")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise RuntimeDeploymentError(
+            "the endpoint contains an invalid port") from exc
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise RuntimeDeploymentError(
+            "the endpoint must not contain credentials, a query, or a fragment")
+    path = parsed.path.rstrip("/")
+    if normalizer == "papercut-health-origin" and path == "/api/health":
+        path = ""
+    elif path:
+        raise RuntimeDeploymentError(
+            "enter the service origin only; do not include an API path")
+    return urlunsplit(("https", parsed.netloc, "", "", ""))
 
 
 @dataclass(frozen=True)
@@ -103,10 +135,27 @@ class RuntimeDeployment:
         ]
 
     def run_compose(self, *arguments: str, check=True, capture=False):
+        command = self.compose_command(*arguments)
+        if capture:
+            with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as output:
+                completed = subprocess.run(
+                    command, cwd=self.root, check=False, text=True,
+                    encoding="utf-8", errors="replace",
+                    stdout=output, stderr=subprocess.STDOUT)
+                output.seek(0, os.SEEK_END)
+                size = output.tell()
+                output.seek(max(0, size - 65536))
+                captured = output.read()
+            result = subprocess.CompletedProcess(
+                command, completed.returncode, captured, "")
+            if check and result.returncode:
+                raise subprocess.CalledProcessError(
+                    result.returncode, command, output=captured, stderr="")
+            return result
         return subprocess.run(
-            self.compose_command(*arguments), cwd=self.root, check=check,
+            command, cwd=self.root, check=check,
             text=True, encoding="utf-8", errors="replace",
-            capture_output=capture)
+            capture_output=False)
 
 
 class RuntimeDeploymentManager:
@@ -210,8 +259,12 @@ class RuntimeDeploymentManager:
         display_name = name or (
             "ITP Deployment" if non_interactive
             else self._prompt("Deployment display name", "ITP Deployment"))
-        identifier = slugify(deployment_id or display_name)
+        derived_id = slugify(deployment_id or display_name)
+        identifier = derived_id if non_interactive or deployment_id else slugify(
+            self._prompt("Deployment ID", derived_id))
         deployment = RuntimeDeployment(self.root, identifier)
+        existing_manifest = (
+            deployment.load() if deployment.manifest.is_file() else {})
         existing_environment = self._read_env(deployment.env_file)
         if deployment.manifest.exists() and not force:
             self.output(f"Deployment {identifier} already exists; preserving configuration.")
@@ -224,6 +277,10 @@ class RuntimeDeploymentManager:
         except (ValueError, ZoneInfoNotFoundError) as exc:
             raise RuntimeDeploymentError("timezone must be a valid IANA name") from exc
         if not non_interactive:
+            self.output("Dashboard access:")
+            self.output("127.0.0.1 = available only on this machine")
+            self.output(
+                "0.0.0.0   = available to other devices, subject to firewall rules")
             listen_address = self._prompt(
                 "Listening address", listen_address)
             grafana_port = int(self._prompt("Grafana port", str(grafana_port)))
@@ -233,7 +290,13 @@ class RuntimeDeploymentManager:
         for label, port in (("Grafana", grafana_port), ("InfluxDB", influxdb_port)):
             if not 1 <= int(port) <= 65535:
                 raise RuntimeDeploymentError(f"{label} port is invalid")
-            if not self.port_available(listen_address, port):
+            existing_network = existing_manifest.get("network", {})
+            owns_port = (
+                force
+                and existing_network.get("listen_address") == listen_address
+                and int(existing_network.get(
+                    f"{label.casefold()}_port", -1)) == int(port))
+            if not owns_port and not self.port_available(listen_address, port):
                 raise RuntimeDeploymentError(
                     f"{label} port {port} is already in use")
         enabled = sorted(collectors if collectors is not None else (
@@ -252,6 +315,8 @@ class RuntimeDeploymentManager:
             "customer_id": identifier,
             "display_name": display_name,
             "timezone": timezone,
+            "region": "",
+            "currency": "",
             "platform": platform.system().casefold(),
             "deployment": {"mode": "standalone"},
             "network": {
@@ -267,6 +332,11 @@ class RuntimeDeploymentManager:
             "customer": identifier,
             "site_id": f"site:{identifier}",
             "site": f"site:{identifier}",
+            "site_name": display_name,
+            "identity": {
+                "customer_name": display_name,
+                "site_name": display_name,
+            },
             "discovery": {
                 "interval_seconds": 3600,
                 "concurrency": 1,
@@ -303,9 +373,9 @@ class RuntimeDeploymentManager:
         sites = {
             "deployment_model": "standalone",
             "sites": [{
-                "id": identifier,
+                "id": f"site:{identifier}",
                 "display_name": display_name,
-                "aliases": [],
+                "aliases": [identifier],
                 "enabled": True,
             }],
         }
@@ -369,10 +439,11 @@ class RuntimeDeploymentManager:
                 values[key] = value
         return values
 
-    def bootstrap_influx(self, deployment, timeout=90):
+    def bootstrap_influx(self, deployment, timeout=90, capture=False):
         """Provision the real InfluxDB token and deployment database."""
         environment = self._read_env(deployment.env_file)
-        deployment.run_compose("up", "-d", "influxdb3-core")
+        deployment.run_compose(
+            "up", "-d", "influxdb3-core", capture=capture)
         port = int(environment["INFLUXDB_PORT"])
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -425,40 +496,136 @@ class RuntimeDeploymentManager:
             connector.id, {})
         settings["enabled"] = True
         prefix = f"collectors.{connector.id}."
+        prompt_by_field = {
+            item["field"]: item
+            for item in getattr(connector, "configuration_prompts", ())
+        }
+        canonical_values = {}
         for field_name in connector.configuration_fields:
             if not field_name.startswith(prefix):
                 continue
             key = field_name[len(prefix):]
             if settings.get(key) not in (None, ""):
                 continue
-            entered = self.input(
-                f"{connector.display_name} {key} "
-                "(blank to configure later): ").strip()
+            prompt = prompt_by_field.get(field_name, {})
+            label = prompt.get("label") or f"{connector.display_name} {key}"
+            default = prompt.get("default", "")
+            if prompt.get("help"):
+                self.output(prompt["help"])
+            suffix = f" [{default}]" if default else " (blank to configure later)"
+            entered = self.input(f"{label}{suffix}: ").strip() or default
             if entered:
+                entered = normalize_onboarding_value(
+                    entered, prompt.get("normalizer", ""))
                 if key.endswith(("verify_tls", "enabled")):
                     settings[key] = entered.casefold() in {
                         "1", "true", "yes", "on"}
                 else:
                     settings[key] = entered
+                canonical_values[field_name] = entered
         atomic_write(deployment.collectors, yaml.safe_dump(
             value, sort_keys=False))
         secret_path = deployment.secrets_dir / f"{connector.id}.env"
         if not secret_path.exists():
             lines = []
             for field in connector.credential_fields:
-                if field.get("secret"):
-                    entered = self.secret_input(
-                        f"{connector.display_name} {field['id']} "
-                        "(blank to configure later): ")
+                canonical = field.get("configuration_field", "")
+                if canonical and (
+                        canonical in canonical_values
+                        or settings.get(canonical.rsplit(".", 1)[-1])):
+                    entered = canonical_values.get(
+                        canonical, settings[canonical.rsplit(".", 1)[-1]])
                 else:
-                    entered = self.input(
-                        f"{connector.display_name} {field['id']} "
-                        "(blank to configure later): ")
+                    prompt = field.get("prompt", {})
+                    label = prompt.get("label") or (
+                        f"{connector.display_name} {field['id']}")
+                    default = prompt.get("default", "")
+                    if prompt.get("help"):
+                        self.output(prompt["help"])
+                    suffix = (
+                        f" [{default}]" if default
+                        else " (blank to configure later)")
+                    reader = self.secret_input if (
+                        field.get("secret") or prompt.get("sensitive")
+                    ) else self.input
+                    entered = reader(f"{label}{suffix}: ").strip() or default
+                    if (entered and prompt.get("value_type") == "uuid"
+                            and not re.fullmatch(
+                                r"[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}",
+                                entered)):
+                        self.output(
+                            f"Advisory: {label} does not look like a UUID; "
+                            "verify it before collection.")
                 if entered:
                     lines.append(f"{field['env']}={entered}")
             atomic_write(secret_path, "\n".join(lines) + ("\n" if lines else ""))
             os.chmod(secret_path, 0o600)
         return connector
+
+    def grafana_credentials(self, deployment):
+        environment = self._read_env(deployment.env_file)
+        required = ("GRAFANA_ADMIN_USER", "GRAFANA_ADMIN_PASSWORD")
+        missing = [key for key in required if not environment.get(key)]
+        if missing:
+            raise RuntimeDeploymentError(
+                "Grafana credentials are unavailable; rerun ./itp deploy "
+                f"--deployment-id {deployment.deployment_id} --force")
+        network = deployment.load().get("network", {})
+        address = network.get("listen_address", "127.0.0.1")
+        if address in {"0.0.0.0", "::"}:
+            address = "127.0.0.1"
+        return {
+            "deployment_id": deployment.deployment_id,
+            "url": f"http://{address}:{network.get('grafana_port', 3000)}",
+            "username": environment["GRAFANA_ADMIN_USER"],
+            "password": environment["GRAFANA_ADMIN_PASSWORD"],
+            "source": str(deployment.env_file),
+        }
+
+    def collector_readiness(self, deployment):
+        config = yaml.safe_load(deployment.collectors.read_text()) or {}
+        environment = {}
+        for path in sorted(deployment.secrets_dir.glob("*.env")):
+            environment.update(self._read_env(path))
+        resolution = ConfigurationResolver(
+            self.registry, config, root_environment=environment).evaluate()
+        resolved = {
+            item["connector"]: item for item in resolution["connectors"]}
+        result = []
+        for connector in self.registry.all():
+            item = resolved[connector.id]
+            if not item["enabled"]:
+                state, missing = "disabled", []
+            else:
+                settings = {
+                    field["name"]: field for field in item["settings"]}
+                missing_config = [
+                    field.rsplit(".", 1)[-1]
+                    for field in connector.configuration_fields
+                    if field.startswith(f"collectors.{connector.id}.")
+                    and settings[field]["status"] != "configured"
+                ]
+                missing_credentials = [
+                    field["id"] for field in connector.credential_fields
+                    if field.get("required")
+                    and settings[
+                        f"{connector.id}.{field['id']}"]["status"]
+                    != "configured"
+                ]
+                if missing_config:
+                    state, missing = "pending configuration", missing_config
+                elif missing_credentials:
+                    state, missing = "pending credentials", missing_credentials
+                else:
+                    state, missing = "configured", []
+            result.append({
+                "id": connector.id, "display_name": connector.display_name,
+                "state": state, "missing": missing,
+                "next_action": (
+                    f"./itp collector --deployment {deployment.deployment_id} "
+                    f"add {connector.id}" if state.startswith("pending") else ""),
+            })
+        return result
 
     def remove_collector(self, deployment, name):
         connector = self.registry.get(name)

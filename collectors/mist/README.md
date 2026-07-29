@@ -12,6 +12,10 @@ role. Configure the regional Mist API URL when the tenant is not hosted at
 `https://api.mist.com`.
 The API hostname follows the tenant region; for example,
 `manage.ac2.mist.com` maps to `api.ac2.mist.com`.
+Enter a complete HTTPS origin with no `/api/v1` path. Runtime onboarding
+defaults to `https://api.mist.com`; an Australian-region example is
+`https://api.ac2.mist.com`. Organisation IDs are UUID-like values.
+`MIST_API_TOKEN` is always requested using hidden input.
 
 Create the local secret file without putting vendor credentials in the root
 `.env`:

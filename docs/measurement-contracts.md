@@ -10,6 +10,11 @@ All profile-scoped points require `deployment_id`, `customer_id`, `site_id` and
 `site == site_id`; conflicting values are rejected. See
 [Canonical identity](canonical-identity.md).
 
+The framework writer applies these tags; connector payloads are not trusted as
+deployment identity. Vendor site and group data use `source_site_id`,
+`source_site_name`, and `source_device_group`. See
+[Telemetry hardening](telemetry-hardening.md).
+
 Schema version 1 uses shared canonical measurements. Every native point carries
 `deployment_id`; device telemetry also carries `collector`, `customer`, `site`,
 `device_id`, `hostname`, `vendor`, `platform`, and `device_role` where the
@@ -45,14 +50,19 @@ not be represented as a successful SNMP measurement write.
 - `license`: status/validity, expiry state/date/days, user utilisation and
   Upgrade Assurance remaining days.
 - `content_package`: package name, version, release timestamp and age in days.
-- `collector_health`: success, partial, duration, API request/latency, retry,
-  error, returned-device and written-point counts.
+- `collector_health`: framework-owned runtime, execution mode, status,
+  success, duration, generated/written points, API request/latency, retries,
+  skip reason, bounded diagnostics, error and returned-device counts.
 
 The detailed tag and field definitions remain under [`docs/schema/`](schema/).
 Dashboard SQL may reference only these current measurements and documented
 fields. Missing optional telemetry must render **Not collected**, **Not
 Enabled**, or another deliberate canonical state rather than generic
 **No data**.
+
+Canonical fields are coerced and validated before line protocol is generated.
+Validation failures name the measurement, field, expected/received type,
+connector, and point number without exposing raw responses.
 
 ## Validation
 

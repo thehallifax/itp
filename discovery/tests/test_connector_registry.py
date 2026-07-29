@@ -8,13 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from collectors.connector_registry import (
-    ConnectorMetadataRegistry,
-    DOMAINS,
-)
 from analysis.dashboards import DashboardRegistry
+from collectors.connector_registry import (
+    DOMAINS,
+    ConnectorMetadataRegistry,
+)
 from itp_profiles.setup import BootstrapWizard, SetupOptions
-
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED = {
@@ -77,6 +76,28 @@ def test_invalid_domain_and_documentation_rejection(registry):
     with pytest.raises(ValueError, match="documentation does not exist"):
         ConnectorMetadataRegistry(
             ROOT, [replace(values[0], documentation="docs/missing.md"), *values[1:]])
+
+
+def test_prompt_metadata_is_optional_validated_and_deterministic(registry):
+    fortigate = registry.get("fortigate")
+    assert fortigate.configuration_prompts[0]["value_type"] == "host"
+    assert fortigate.credential_fields[0]["configuration_field"] == (
+        "collectors.fortigate.host")
+    values = list(registry.all())
+    target = values.index(fortigate)
+    invalid = replace(
+        fortigate,
+        configuration_prompts=({
+            "field": "collectors.fortigate.host",
+            "value_type": "password-ish",
+        },))
+    with pytest.raises(ValueError, match="invalid prompt value type"):
+        ConnectorMetadataRegistry(
+            ROOT, [*values[:target], invalid, *values[target + 1:]])
+    legacy = replace(fortigate, configuration_prompts=())
+    loaded = ConnectorMetadataRegistry(
+        ROOT, [*values[:target], legacy, *values[target + 1:]])
+    assert loaded.get("fortigate").configuration_prompts == ()
 
 
 def test_runtime_mode_skips_only_repository_artifact_references(registry):

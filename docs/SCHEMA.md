@@ -10,8 +10,10 @@ not be used as joins. See [Canonical identity](canonical-identity.md).
 
 Current platform schema version: **1**. Canonical measurements are `device`,
 `availability`, `performance`, `interface`, `wireless`, `firewall`, and
-`collector_health`. Vendor-specific and earlier normalized measurements remain during
-the compatibility period. No migration is required.
+`collector_health`. Vendor-specific and earlier normalized measurements remain
+during the compatibility period. New writes are normalized before persistence;
+historical identity/type conflicts require a clean database or an explicit
+migration rather than silent merging.
 
 Specifications:
 

@@ -1,5 +1,11 @@
 # Dashboard navigation
 
+Managed dashboards filter with `customer_id`, `site_id`, and stable device
+identity. Variables may display `customer_name` or `site_name`, but their values
+remain canonical IDs. Vendor `source_site_name` is diagnostic, not an
+aggregation key. Readiness comes from deployment state and framework-owned
+`collector_health`, not from a missing telemetry query.
+
 Managed dashboards use the
 [collector capability manifest](collector-capabilities.md) for implemented,
 conditional, disabled, unavailable, failed and unsupported states. Dashboard

@@ -21,14 +21,16 @@ site ID set from tracked `sites.yml`.
 
 ## Ingestion and compatibility
 
-The profile resolver normalises a recognised legacy site alias as configuration
+The profile resolver normalises a recognised source alias as configuration
 is loaded. Profile-scoped telemetry carries `deployment_id`, `customer_id`,
 `site_id` and `collector`; device measurements also carry `device_id` and
 `hostname`.
 
 The temporary `customer` and `site` tags contain the corresponding canonical ID,
-not a display name. The writer rejects conflicting canonical and compatibility
-tags. These compatibility tags remain queryable during the Alpha period and may
+not a display name. The writer replaces connector identity with deployment
+identity and retains differing vendor values as `source_customer_id`,
+`source_site_id`, and `source_site_name`. Compatibility tags remain queryable
+during the Alpha period and may
 be removed after existing deployments have regenerated telemetry and dashboards.
 
 Historical points written with display names or slugs remain queryable directly,

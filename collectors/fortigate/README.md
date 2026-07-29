@@ -5,6 +5,11 @@ resource usage, interfaces, and HA when supported. System status is required; op
 endpoint failures produce a partial health record instead of discarding valid data. TLS
 verification is enabled by default.
 
+The runtime onboarding prompt accepts a hostname with an optional port
+(`firewall.example.invalid:8443`) or an HTTPS origin. It stores the canonical
+`collectors.fortigate.host` value and matching `FORTIGATE_HOST` once. HTTP and
+API paths such as `/api/v2` are rejected. The API token prompt is hidden.
+
 ```sh
 cp secrets/fortigate.env.example secrets/fortigate.env
 # Set host, token, customer and site; retain FORTIGATE_VERIFY_TLS=true in production.

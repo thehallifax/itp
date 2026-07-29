@@ -22,34 +22,51 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from analysis.dashboards import DashboardRegistry
+from analysis.demo import DemoEngine
+from analysis.deployment import (
+    DeploymentError,
+    DockerCompose,
+    Provisioner,
+    StackLifecycle,
+)
+from analysis.doctor import (
+    DoctorEngine,
+    DoctorFatalError,
+    DoctorUsageError,
+    render_human,
+    render_json,
+)
+from analysis.notifications import (
+    NotificationChannelRegistry,
+    NotificationEngine,
+    NotificationStore,
+)
+from analysis.operator import (
+    DaemonAlreadyRunningError,
+    OperatorCollectEngine,
+    OperatorDaemon,
+    OperatorStatusEngine,
+    render_collect,
+    render_status,
+    start_background,
+)
+from analysis.runtime_deployment import RuntimeDeploymentError, RuntimeDeploymentManager
 from analysis.sites import SiteRegistry
 from analysis.virtualisation import VirtualisationEngine
 from analysis.virtualisation.config import validate_virtualisation
 from analysis.virtualisation.renderer import render as render_virtualisation
 from analysis.virtualisation.telemetry import points as virtualisation_points
-from collectors.vmware.client import VMwareClient
-from collectors.proxmox.client import ProxmoxClient
-from collectors.hyperv.runner import LocalPowerShellRunner
-from collectors.writer import InfluxWriter
-from collectors.file_permissions import restrict_owner_access
 from collectors.config import load_config
 from collectors.configuration import ConfigurationResolver
 from collectors.connector_registry import ConnectorMetadataRegistry
+from collectors.file_permissions import restrict_owner_access
+from collectors.hyperv.runner import LocalPowerShellRunner
+from collectors.proxmox.client import ProxmoxClient
+from collectors.vmware.client import VMwareClient
+from collectors.writer import InfluxWriter
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
 from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
 from itp_profiles.setup import BootstrapWizard, SetupError, SetupOptions
-from analysis.doctor import (
-    DoctorEngine, DoctorFatalError, DoctorUsageError, render_human, render_json)
-from analysis.operator import (
-    DaemonAlreadyRunningError, OperatorCollectEngine, OperatorDaemon,
-    OperatorStatusEngine, render_collect, render_status, start_background)
-from analysis.notifications import (
-    NotificationChannelRegistry, NotificationEngine, NotificationStore)
-from analysis.deployment import (
-    DeploymentError, DockerCompose, Provisioner, StackLifecycle)
-from analysis.demo import DemoEngine
-from analysis.runtime_deployment import (
-    RuntimeDeploymentError, RuntimeDeploymentManager)
 
 
 def load_root_env():
@@ -73,6 +90,23 @@ def load_runtime_env(path):
             continue
         key, value = line.split("=", 1)
         os.environ[key] = value
+
+
+def deployment_verbose(explicit=False, environment=None):
+    environment = os.environ if environment is None else environment
+    return bool(explicit) or str(environment.get(
+        "ITP_VERBOSE", "")).casefold() in {"1", "true", "yes", "on"}
+
+
+def deployment_doctor_requested(
+        *, non_interactive, explicit=False, input_fn=input):
+    if explicit:
+        return True
+    if non_interactive:
+        return False
+    return input_fn(
+        "Run deployment health checks now? [Y/n]: "
+    ).strip().casefold() not in {"n", "no"}
 
 
 def profile(value, *, secrets=True):
@@ -618,6 +652,8 @@ def main():
         runtime_setup.add_argument("--non-interactive", action="store_true")
         runtime_setup.add_argument("--force", action="store_true")
         runtime_setup.add_argument("--no-start", action="store_true")
+        runtime_setup.add_argument("--verbose", action="store_true")
+        runtime_setup.add_argument("--doctor", action="store_true")
     deployment_parser = commands.add_parser(
         "deployment", help="inspect runtime deployments")
     deployment_actions = deployment_parser.add_subparsers(
@@ -627,6 +663,14 @@ def main():
     deployment_show = deployment_actions.add_parser("show")
     deployment_show.add_argument("deployment_id", nargs="?")
     deployment_show.add_argument("--json", action="store_true")
+    credentials = commands.add_parser(
+        "credentials", help="show how to retrieve deployment credentials")
+    credentials.add_argument("--deployment")
+    credential_actions = credentials.add_subparsers(dest="credential_action")
+    grafana_credentials = credential_actions.add_parser(
+        "grafana", help="display generated Grafana administrator credentials")
+    grafana_credentials.add_argument(
+        "--deployment", default=argparse.SUPPRESS)
     collector_runtime = commands.add_parser(
         "collector", help="manage collectors in a runtime deployment")
     collector_runtime.add_argument("--deployment")
@@ -746,19 +790,55 @@ def main():
             Path(__file__).resolve().parents[1])
     runtime_manager = RuntimeDeploymentManager(
         ROOT, registry=runtime_registry)
+    if args.group == "credentials":
+        if not args.credential_action:
+            print("Credential targets: grafana")
+            print("Usage: ./itp credentials grafana [--deployment ID]")
+            return
+        deployment = runtime_manager.select(args.deployment)
+        result = runtime_manager.grafana_credentials(deployment)
+        print(f"Deployment: {result['deployment_id']}")
+        print(f"Grafana URL: {result['url']}")
+        print(f"Username: {result['username']}")
+        print(f"Password: {result['password']}")
+        print(f"Source: {result['source']}")
+        return
     if args.group in {"deploy", "init"}:
+        verbose = deployment_verbose(args.verbose)
+        def phase(number, label, operation, retry):
+            print(f"[{number}/6] {label}")
+            try:
+                return operation()
+            except subprocess.CalledProcessError as exc:
+                captured = ((exc.stderr or "") + "\n" + (
+                    exc.stdout or "")).strip()
+                if captured:
+                    print(captured[-4000:], file=sys.stderr)
+                print(
+                    f"ERROR: {label} failed. Retry with: {retry}",
+                    file=sys.stderr)
+                raise SystemExit(exc.returncode)
+            except RuntimeDeploymentError as exc:
+                raise RuntimeDeploymentError(
+                    f"{label} failed: {exc}. Retry with: {retry}") from exc
+
         if args.group == "deploy" and not args.no_start:
-            runtime_manager.verify_docker()
-        deployment = runtime_manager.create(
-            name=args.deployment_name,
-            deployment_id=args.deployment_id,
-            timezone=args.timezone,
-            grafana_port=args.grafana_port,
-            influxdb_port=args.influxdb_port,
-            listen_address=args.listen_address,
-            collectors=args.collector,
-            non_interactive=args.non_interactive,
-            force=args.force)
+            phase(
+                1, "Checking Docker", runtime_manager.verify_docker,
+                "./itp deploy --verbose")
+        deployment = phase(
+            2, "Creating deployment configuration",
+            lambda: runtime_manager.create(
+                name=args.deployment_name,
+                deployment_id=args.deployment_id,
+                timezone=args.timezone,
+                grafana_port=args.grafana_port,
+                influxdb_port=args.influxdb_port,
+                listen_address=args.listen_address,
+                collectors=args.collector,
+                non_interactive=args.non_interactive,
+                force=args.force),
+            "./itp deploy --verbose")
         load_runtime_env(deployment.env_file)
         deployment_config = load_config(deployment.collectors)
         enabled_collectors = sorted(
@@ -768,15 +848,31 @@ def main():
         if not args.non_interactive:
             for name in enabled_collectors:
                 runtime_manager.add_collector(deployment, name)
-        dashboard_result = DashboardRegistry(
+        DashboardRegistry(
             ROOT, deployment_config,
             deployment.generated / "dashboard/managed",
             deployment.generated / "dashboard/provisioning/dashboards.yml",
             registry_validation_mode="runtime").generate()
         if args.group == "deploy" and not args.no_start:
-            deployment.run_compose("config", "--quiet")
-            runtime_manager.bootstrap_influx(deployment)
-            deployment.run_compose("up", "-d", "--build", "--remove-orphans")
+            deployment.run_compose(
+                "config", "--quiet", capture=not verbose)
+            phase(
+                3, "Preparing InfluxDB",
+                lambda: runtime_manager.bootstrap_influx(
+                    deployment, capture=not verbose),
+                "./itp deploy --force --verbose")
+            phase(
+                4, "Building ITP collectors",
+                lambda: deployment.run_compose(
+                    "build", capture=not verbose),
+                "./itp deploy --force --verbose")
+            phase(
+                5, "Starting platform services",
+                lambda: deployment.run_compose(
+                    "up", "-d", "--remove-orphans",
+                    capture=not verbose),
+                "./itp deploy --force --verbose")
+            print("[6/6] Verifying service health")
             deadline = time.monotonic() + 180
             healthy = False
             while time.monotonic() < deadline:
@@ -793,21 +889,60 @@ def main():
                 print("[WARN] Containers did not all report healthy within 180 seconds.")
         value = deployment.load()
         network = value["network"]
+        print("Deployment complete")
         print(f"Deployment: {deployment.deployment_id} ({value['display_name']})")
-        print(f"Runtime: {deployment.path}")
-        print(f"Managed dashboards: {len(dashboard_result['dashboards'])}")
-        print("Enabled collectors: " + (
-            ", ".join(enabled_collectors) or "none"))
-        print(f"Grafana: http://{network['listen_address']}:{network['grafana_port']}")
-        print(f"InfluxDB: http://{network['listen_address']}:{network['influxdb_port']}")
+        try:
+            runtime_display = deployment.path.relative_to(ROOT)
+        except ValueError:
+            runtime_display = deployment.path
+        print(f"Runtime: {runtime_display}")
+        display_host = (
+            "127.0.0.1" if network["listen_address"] in {"0.0.0.0", "::"}
+            else network["listen_address"])
+        access_note = (
+            "local only" if network["listen_address"] == "127.0.0.1"
+            else f"listening on {network['listen_address']}")
+        print("Services:")
+        print(
+            f"  Grafana  http://{display_host}:{network['grafana_port']} "
+            f"({access_note})")
+        print(
+            f"  InfluxDB http://{network['listen_address']}:"
+            f"{network['influxdb_port']}")
+        print("Grafana:")
+        print("Grafana username: admin")
+        print("Grafana password: ./itp credentials grafana")
+        readiness = runtime_manager.collector_readiness(deployment)
+        print("Collectors:")
+        for item in readiness:
+            if item["state"] != "disabled" or item["id"] in enabled_collectors:
+                print(f"  {item['display_name']}: {item['state']}")
+                if item["next_action"]:
+                    print(f"    Next: {item['next_action']}")
+        if not enabled_collectors:
+            print("  none enabled")
         if args.group == "deploy" and not args.no_start:
-            print("Next: ./itp doctor")
-            for name in enabled_collectors:
-                secret_file = deployment.secrets_dir / f"{name}.env"
-                if not secret_file.is_file() or not secret_file.read_text().strip():
+            print("Next:")
+            print("  ./itp doctor")
+            print("  ./itp status")
+            run_doctor = deployment_doctor_requested(
+                non_interactive=args.non_interactive,
+                explicit=args.doctor)
+            if run_doctor:
+                report = DoctorEngine(
+                    ROOT, runtime_deployment=deployment,
+                    env_path=deployment.env_file,
+                    config_path=deployment.collectors).run()
+                summary = report.summary
+                print(
+                    "Doctor: "
+                    f"{report.overall_status} "
+                    f"({summary['pass']} passed, {summary['warn']} warnings, "
+                    f"{summary['fail']} failed)")
+                if report.exit_code(False):
                     print(
-                        f"Action required: ./itp collector add {name} "
-                        "to complete credentials.")
+                        "Deployment completed; Doctor found issues. "
+                        "Run ./itp doctor for details.")
         else:
             print("Next: ./itp deploy")
         return
@@ -868,6 +1003,7 @@ def main():
         return
     if args.group == "dashboard":
         deployment = runtime_manager.select(args.deployment)
+        load_runtime_env(deployment.env_file)
         config = load_config(deployment.collectors)
         result = DashboardRegistry(
             ROOT, config, deployment.generated / "dashboard/managed",

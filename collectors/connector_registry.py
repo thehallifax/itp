@@ -7,7 +7,6 @@ from pathlib import Path
 
 import yaml
 
-
 DOMAINS = frozenset({
     "wireless", "switching", "firewall", "virtualisation", "printing",
     "internet", "servers", "power", "environmental", "identity", "operations",
@@ -19,6 +18,11 @@ IMPLEMENTATION_STATUSES = frozenset(
 CONFIGURATION_MODES = frozenset(
     {"manual", "profile-manual", "guided", "internal"})
 CAPABILITIES = ("validation", "doctor", "status", "demo_fixture")
+PROMPT_VALUE_TYPES = frozenset({"host", "url", "uuid", "text", "secret"})
+PROMPT_NORMALIZERS = frozenset({
+    "", "https-host", "https-origin", "papercut-health-origin",
+})
+RUNTIME_MODES = frozenset({"central", "edge", "cloud"})
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,8 @@ class ConnectorMetadata:
     health_adapter: str = ""
     remediation_command: str = ""
     dashboard_manifest: str = ""
+    configuration_prompts: tuple[dict, ...] = ()
+    runtime_modes: tuple[str, ...] = ("central", "edge")
 
     @property
     def configuration_namespace(self):
@@ -68,6 +74,8 @@ class ConnectorMetadata:
         value["deployment_types"] = list(self.deployment_types)
         value["credential_fields"] = list(self.credential_fields)
         value["configuration_fields"] = list(self.configuration_fields)
+        value["configuration_prompts"] = list(self.configuration_prompts)
+        value["runtime_modes"] = list(self.runtime_modes)
         value["aliases"] = list(self.aliases)
         value["manual_only"] = self.manual_only
         value["configuration_namespace"] = self.configuration_namespace
@@ -137,6 +145,8 @@ class ConnectorMetadataRegistry:
                     credential_fields=tuple(raw.get("credential_fields") or []),
                     configuration_fields=tuple(sorted(set(
                         raw.get("configuration_fields") or []))),
+                    configuration_prompts=tuple(
+                        raw.get("configuration_prompts") or []),
                     secret_handling=dict(raw.get("secret_handling") or {}),
                     capabilities=dict(raw.get("capabilities") or {}),
                     documentation=str(raw["documentation"]),
@@ -154,6 +164,8 @@ class ConnectorMetadataRegistry:
                         + str(raw["id"])),
                     dashboard_manifest=str(
                         raw.get("dashboard_manifest") or ""),
+                    runtime_modes=tuple(sorted(set(
+                        raw.get("runtime_modes") or ("central", "edge")))),
                 ))
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("invalid connector registry entry") from exc
@@ -219,6 +231,10 @@ class ConnectorMetadataRegistry:
             if connector.configuration_mode not in CONFIGURATION_MODES:
                 raise ValueError(
                     f"connector {connector.id} has invalid configuration mode")
+            if (not connector.runtime_modes
+                    or set(connector.runtime_modes) - RUNTIME_MODES):
+                raise ValueError(
+                    f"connector {connector.id} has invalid runtime modes")
             if set(connector.capabilities) != set(CAPABILITIES) or any(
                     not isinstance(value, bool)
                     for value in connector.capabilities.values()):
@@ -235,10 +251,29 @@ class ConnectorMetadataRegistry:
                                for alias in field.get("env_aliases", []))):
                     raise ValueError(
                         f"connector {connector.id} has invalid credential metadata")
+                self._validate_prompt(
+                    connector.id, field.get("prompt", {}))
+                canonical = field.get("configuration_field", "")
+                if canonical and canonical not in connector.configuration_fields:
+                    raise ValueError(
+                        f"connector {connector.id} credential references an "
+                        f"unknown configuration field: {canonical}")
                 credential_ids.append(field["id"])
             if len(credential_ids) != len(set(credential_ids)):
                 raise ValueError(
                     f"connector {connector.id} has duplicate credential fields")
+            prompt_fields = []
+            for field in connector.configuration_prompts:
+                if not isinstance(field, dict) or (
+                        field.get("field") not in connector.configuration_fields):
+                    raise ValueError(
+                        f"connector {connector.id} has invalid configuration "
+                        "prompt metadata")
+                self._validate_prompt(connector.id, field)
+                prompt_fields.append(field["field"])
+            if len(prompt_fields) != len(set(prompt_fields)):
+                raise ValueError(
+                    f"connector {connector.id} has duplicate configuration prompts")
             if connector.guided_setup != (
                     connector.configuration_mode == "guided"):
                 raise ValueError(
@@ -264,6 +299,29 @@ class ConnectorMetadataRegistry:
                             f"connector {connector.id} secret template does not "
                             f"exist: {template}")
             self._validate_reference(connector)
+
+    @staticmethod
+    def _validate_prompt(connector_id, prompt):
+        if not prompt:
+            return
+        if not isinstance(prompt, dict):
+            raise ValueError(
+                f"connector {connector_id} has invalid prompt metadata")
+        for key in ("label", "example", "help", "default"):
+            if key in prompt and not isinstance(prompt[key], str):
+                raise ValueError(
+                    f"connector {connector_id} has invalid prompt metadata")
+        value_type = prompt.get("value_type", "text")
+        if value_type not in PROMPT_VALUE_TYPES:
+            raise ValueError(
+                f"connector {connector_id} has invalid prompt value type")
+        if "sensitive" in prompt and not isinstance(
+                prompt["sensitive"], bool):
+            raise ValueError(
+                f"connector {connector_id} has invalid prompt sensitivity")
+        if prompt.get("normalizer", "") not in PROMPT_NORMALIZERS:
+            raise ValueError(
+                f"connector {connector_id} has invalid prompt normalizer")
 
     def all(self):
         return self._connectors

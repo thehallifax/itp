@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import CollectorRegistry
+from .base import RuntimePlacementCollector
 from .connector_registry import ConnectorMetadataRegistry
 from .capabilities import CapabilityManifestEngine, MANIFESTS
 from .config import load_config
@@ -50,7 +51,7 @@ def _since_timestamp(value):
         raise ValueError("--since must be ISO-8601 or a duration such as 7d") from exc
 
 
-def _enabled_collectors(config):
+def _enabled_collectors(config, *, include_ineligible=False):
     result = []
     settings = config.get("collectors", {})
     runtime_mode = os.getenv("ITP_RUNTIME_MODE", "central").strip().lower()
@@ -65,6 +66,9 @@ def _enabled_collectors(config):
         if not eligible:
             logging.info("collector=%s result=skipped execution=%s runtime_mode=%s",
                          name, execution, runtime_mode)
+            if include_ineligible:
+                result.append(RuntimePlacementCollector(
+                    name, execution, runtime_mode))
             continue
         result.append(CollectorRegistry.create(name, config, inventory_path))
     return result
@@ -531,7 +535,8 @@ async def _run(args):
         else:
             print(json.dumps(result, indent=2, sort_keys=True))
         return
-    collectors = _enabled_collectors(config)
+    collectors = _enabled_collectors(
+        config, include_ineligible=args.command == "run")
     if args.command in ("discover", "collect", "inspect"):
         if args.name not in CollectorRegistry.names(): raise ValueError(f"unknown collector: {args.name}")
         collector = next((item for item in collectors if item.name == args.name), None)
@@ -616,6 +621,7 @@ async def _run(args):
         output_dir=services_settings.get("output_path", "/app/runtime/services"),
         sites_config=services_settings.get("sites_config", "/app/config/sites.yml")) \
         if services_settings.get("enabled", True) else None
+    health_writer = InfluxWriter.from_config(config)
     await Scheduler(collectors, os.getenv(
         "COLLECTOR_HEALTH_PATH", _default_health_path()),
                     inventory_engine=engine,
@@ -629,6 +635,8 @@ async def _run(args):
                     capability_engine=capability_engine,
                     state_history_capture=state_history,
                     operations_interval=operations_settings.get("interval_seconds", 300),
+                    health_writer=health_writer,
+                    runtime_mode=os.getenv("ITP_RUNTIME_MODE", "central"),
                     state_path=Path(os.getenv(
                         "ITP_RUNTIME_DIR", "/app/runtime"))
                     / "scheduler/state.json").run()

@@ -18,9 +18,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.configuration import ConfigurationResolver
+from collectors.connector_registry import ConnectorMetadataRegistry
 from itp_profiles.settings import SettingsError, resolve_settings
+
 from .models import DiagnosticCheck, DoctorReport
 
 
@@ -883,6 +884,76 @@ class DoctorEngine:
             if value is None or isinstance(value, dict)
             else "Operations configuration must be a mapping")
 
+    def _telemetry_contract_checks(self):
+        config = self.raw_config or {}
+        deployment_id = str(
+            config.get("deployment_id")
+            or self.env_values.get("ITP_DEPLOYMENT_ID") or "").strip()
+        customer_id = str(config.get("customer_id") or "").strip()
+        site_id = str(config.get("site_id") or "").strip()
+        missing = [
+            name for name, value in (
+                ("deployment_id", deployment_id),
+                ("customer_id", customer_id),
+                ("site_id", site_id)) if not value]
+        self._result(
+            "telemetry.deployment_identity", "Telemetry",
+            "Canonical deployment identity",
+            "pass" if not missing else "warn",
+            "Canonical deployment identity is configured"
+            if not missing else "Canonical deployment identity is incomplete",
+            detail="missing=" + (",".join(missing) or "none"),
+            remediation=(
+                "Regenerate deployment configuration with ./itp deploy."
+                if missing else ""))
+        canonical_site = bool(site_id.startswith("site:"))
+        self._result(
+            "telemetry.site_identity", "Telemetry", "Canonical site ID",
+            "pass" if canonical_site else "warn",
+            f"Canonical site ID is {site_id}" if canonical_site
+            else "Canonical site ID is unavailable or legacy",
+            remediation=(
+                "Configure a stable site_id using the site:<id> format."
+                if not canonical_site else ""))
+
+        runtime = str(
+            self.env_values.get("ITP_RUNTIME_MODE")
+            or os.getenv("ITP_RUNTIME_MODE", "central")).casefold()
+        mismatches = []
+        for connector in self.registry.all():
+            settings = (config.get("collectors") or {}).get(
+                connector.id) or {}
+            if not settings.get("enabled"):
+                continue
+            execution = str(settings.get("execution") or runtime).casefold()
+            if execution not in connector.runtime_modes:
+                mismatches.append(
+                    f"{connector.id}:{execution} not in "
+                    f"{','.join(connector.runtime_modes)}")
+        self._result(
+            "telemetry.runtime_capabilities", "Telemetry",
+            "Collector runtime capabilities",
+            "pass" if not mismatches else "warn",
+            "Enabled collectors match declared runtime capabilities"
+            if not mismatches else "Collector runtime capability mismatch",
+            detail="; ".join(mismatches),
+            remediation=(
+                "Move the collector to a supported runtime or update its "
+                "explicit execution placement." if mismatches else ""))
+        try:
+            from telemetry.schema import MEASUREMENTS, SCHEMA_VERSION
+            schema_ok = SCHEMA_VERSION == 1 and "collector_health" in MEASUREMENTS
+        except (ImportError, AttributeError):
+            schema_ok = False
+        self._result(
+            "telemetry.schema", "Telemetry", "Canonical schema",
+            "pass" if schema_ok else "fail",
+            "Canonical telemetry schema is available" if schema_ok
+            else "Canonical telemetry schema is unavailable",
+            remediation=(
+                "Restore the tracked telemetry schema modules."
+                if not schema_ok else ""))
+
     def run(self):
         try:
             if not self.connectors_only:
@@ -903,6 +974,7 @@ class DoctorEngine:
                     self._state_history_checks()
                     self._scheduler_checks()
                     self._operations_checks()
+                    self._telemetry_contract_checks()
             checks = tuple(sorted(self.checks, key=lambda value: value.check_id))
             identity = str(
                 (self.raw_config or {}).get("deployment", {}).get("name")

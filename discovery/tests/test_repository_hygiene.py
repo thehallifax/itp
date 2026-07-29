@@ -91,7 +91,10 @@ def test_release_documentation_uses_public_placeholders():
         relative = path.relative_to(ROOT).as_posix()
         text = path.read_text(encoding="utf-8")
         for match in github_pattern.finditer(text):
-            if match.groups() != ("<organisation>", "<repository>"):
+            if match.groups() not in {
+                    ("<organisation>", "<repository>"),
+                        ("thehallifax",
+                         "infrastructure-telemetry-platform.git")}:
                 findings.append(f"concrete GitHub repository URL in {relative}")
         for match in email_pattern.finditer(text):
             domain = match.group(1).casefold()

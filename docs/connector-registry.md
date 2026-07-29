@@ -16,6 +16,7 @@ For each connector it records:
 - canonical infrastructure domains and supported deployment types;
 - implementation maturity and configuration mode;
 - required credential and configuration fields;
+- supported central, edge, or future cloud runtime modes;
 - secret templates and scope without secret values;
 - setup, validation, doctor, status, and fixture maturity;
 - documentation and an implementation source reference;
@@ -76,6 +77,9 @@ A contributor adding a connector must:
 7. Define site/domain state-history scope and explicit completeness semantics
    where the connector participates in canonical capture.
 8. Add dashboard metadata separately only when a tested dashboard exists.
+9. Emit only vendor source identity; never replace deployment-owned identity.
+10. Return collection summaries to the scheduler and never make collector
+    health a vendor-owned measurement contract.
 
 A connector is not fully integrated merely because collection code exists.
 Unsupported capabilities remain `false`; they must not be inferred from other

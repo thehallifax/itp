@@ -55,9 +55,9 @@
       },
       "targets": [
         {
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring}",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS devices FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring}",
           "refId": "A",
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring}",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS devices FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring}",
           "rawQuery": true,
           "format": "table"
         }
@@ -115,9 +115,9 @@
       },
       "targets": [
         {
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS online_devices FROM latest WHERE rn = 1 AND online = true AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS online_devices FROM latest WHERE rn = 1 AND online = true AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
           "refId": "A",
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS online_devices FROM latest WHERE rn = 1 AND online = true AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS online_devices FROM latest WHERE rn = 1 AND online = true AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
           "rawQuery": true,
           "format": "table"
         }
@@ -175,9 +175,9 @@
       },
       "targets": [
         {
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS offline_devices FROM latest WHERE rn = 1 AND online = false AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS offline_devices FROM latest WHERE rn = 1 AND online = false AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
           "refId": "A",
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS offline_devices FROM latest WHERE rn = 1 AND online = false AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT COUNT(*) AS offline_devices FROM latest WHERE rn = 1 AND online = false AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring}",
           "rawQuery": true,
           "format": "table"
         }
@@ -321,9 +321,9 @@
       },
       "targets": [
         {
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT platform, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY platform ORDER BY devices DESC",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT platform, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY platform ORDER BY devices DESC",
           "refId": "A",
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT platform, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY platform ORDER BY devices DESC",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT platform, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY platform ORDER BY devices DESC",
           "rawQuery": true,
           "format": "table"
         }
@@ -388,9 +388,9 @@
       },
       "targets": [
         {
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT site, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY site ORDER BY devices DESC",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT site, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY site ORDER BY devices DESC",
           "refId": "A",
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT site, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY site ORDER BY devices DESC",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT site, COUNT(*) AS devices FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} GROUP BY site ORDER BY devices DESC",
           "rawQuery": true,
           "format": "table"
         }
@@ -452,9 +452,9 @@
       },
       "targets": [
         {
-          "query": "WITH latest AS (SELECT time, device_id, hostname, model, platform, site, online, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, device_id, platform AS device_type, site, 'offline' AS status, time AS last_seen, uptime_seconds FROM latest WHERE rn = 1 AND online = false AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY time DESC",
+          "query": "WITH latest AS (SELECT time, device_id, hostname, model, platform, site, online, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, device_id, platform AS device_type, site, 'offline' AS status, time AS last_seen, uptime_seconds FROM latest WHERE rn = 1 AND online = false AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY time DESC",
           "refId": "A",
-          "rawSql": "WITH latest AS (SELECT time, device_id, hostname, model, platform, site, online, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, device_id, platform AS device_type, site, 'offline' AS status, time AS last_seen, uptime_seconds FROM latest WHERE rn = 1 AND online = false AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY time DESC",
+          "rawSql": "WITH latest AS (SELECT time, device_id, hostname, model, platform, site, online, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, device_id, platform AS device_type, site, 'offline' AS status, time AS last_seen, uptime_seconds FROM latest WHERE rn = 1 AND online = false AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY time DESC",
           "rawQuery": true,
           "format": "table"
         }
@@ -504,9 +504,9 @@
       },
       "targets": [
         {
-          "query": "WITH latest AS (SELECT time, device_id, hostname, model, site, online, client_count, rx_bps, tx_bps, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM wireless_access_point WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS access_point, model, site, client_count, rx_bps, tx_bps, online, time AS last_seen FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} ORDER BY client_count DESC",
+          "query": "WITH latest AS (SELECT time, device_id, hostname, model, site, online, client_count, rx_bps, tx_bps, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM wireless_access_point WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS access_point, model, site, client_count, rx_bps, tx_bps, online, time AS last_seen FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} ORDER BY client_count DESC",
           "refId": "A",
-          "rawSql": "WITH latest AS (SELECT time, device_id, hostname, model, site, online, client_count, rx_bps, tx_bps, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM wireless_access_point WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS access_point, model, site, client_count, rx_bps, tx_bps, online, time AS last_seen FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} ORDER BY client_count DESC",
+          "rawSql": "WITH latest AS (SELECT time, device_id, hostname, model, site, online, client_count, rx_bps, tx_bps, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM wireless_access_point WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS access_point, model, site, client_count, rx_bps, tx_bps, online, time AS last_seen FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND hostname LIKE ${device:sqlstring} AND (CASE WHEN online THEN 'online' ELSE 'offline' END) LIKE ${status:sqlstring} ORDER BY client_count DESC",
           "rawQuery": true,
           "format": "table"
         }
@@ -556,9 +556,9 @@
       },
       "targets": [
         {
-          "query": "WITH latest AS (SELECT time, hostname, model, platform, site, cpu_percent, memory_used_percent, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, platform AS device_type, site, cpu_percent, memory_used_percent, uptime_seconds, time AS last_seen FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY hostname",
+          "query": "WITH latest AS (SELECT time, hostname, model, platform, site, cpu_percent, memory_used_percent, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, platform AS device_type, site, cpu_percent, memory_used_percent, uptime_seconds, time AS last_seen FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY hostname",
           "refId": "A",
-          "rawSql": "WITH latest AS (SELECT time, hostname, model, platform, site, cpu_percent, memory_used_percent, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, platform AS device_type, site, cpu_percent, memory_used_percent, uptime_seconds, time AS last_seen FROM latest WHERE rn = 1 AND site LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY hostname",
+          "rawSql": "WITH latest AS (SELECT time, hostname, model, platform, site, cpu_percent, memory_used_percent, uptime_seconds, ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY time DESC) AS rn FROM infrastructure_device WHERE collector = 'mist' AND time >= $__timeFrom AND time <= $__timeTo) SELECT hostname AS device_name, model, platform AS device_type, site, cpu_percent, memory_used_percent, uptime_seconds, time AS last_seen FROM latest WHERE rn = 1 AND site_id LIKE ${site:sqlstring} AND platform LIKE ${device_type:sqlstring} AND hostname LIKE ${device:sqlstring} ORDER BY hostname",
           "rawQuery": true,
           "format": "table"
         }
@@ -637,14 +637,14 @@
           "type": "influxdb",
           "uid": "ffsu5ap2kr5dse"
         },
-        "definition": "SELECT DISTINCT site FROM infrastructure_device WHERE collector = 'mist' ORDER BY site",
+        "definition": "SELECT DISTINCT CASE WHEN site_name IS NULL OR site_name = ' THEN site_id ELSE site_name END AS __text, site_id AS __value FROM infrastructure_device WHERE collector = 'mist' ORDER BY __text",
         "hide": 0,
         "includeAll": true,
         "label": "Site",
         "multi": false,
         "name": "site",
         "options": [],
-        "query": "SELECT DISTINCT site FROM infrastructure_device WHERE collector = 'mist' ORDER BY site",
+        "query": "SELECT DISTINCT CASE WHEN site_name IS NULL OR site_name = ' THEN site_id ELSE site_name END AS __text, site_id AS __value FROM infrastructure_device WHERE collector = 'mist' ORDER BY __text",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -685,14 +685,14 @@
           "type": "influxdb",
           "uid": "ffsu5ap2kr5dse"
         },
-        "definition": "SELECT DISTINCT hostname FROM infrastructure_device WHERE collector = 'mist' AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "definition": "SELECT DISTINCT hostname FROM infrastructure_device WHERE collector = 'mist' AND site_id LIKE ${site:sqlstring} ORDER BY hostname",
         "hide": 0,
         "includeAll": true,
         "label": "Device",
         "multi": false,
         "name": "device",
         "options": [],
-        "query": "SELECT DISTINCT hostname FROM infrastructure_device WHERE collector = 'mist' AND site LIKE ${site:sqlstring} ORDER BY hostname",
+        "query": "SELECT DISTINCT hostname FROM infrastructure_device WHERE collector = 'mist' AND site_id LIKE ${site:sqlstring} ORDER BY hostname",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

@@ -1,6 +1,7 @@
 schema_version: 1
 connectors:
   - id: aruba
+    runtime_modes: [central]
     display_name: HPE Aruba Networking Central
     vendor: HPE Aruba Networking
     domains:
@@ -52,6 +53,7 @@ connectors:
       - hpe-aruba-central
     notes: Read-only Aruba Central REST collector with OAuth renewal; guided setup is unavailable.
   - id: fortigate
+    runtime_modes: [edge]
     display_name: FortiGate
     vendor: Fortinet
     domains: [firewall, internet, switching]
@@ -60,9 +62,19 @@ connectors:
     guided_setup: false
     configuration_mode: manual
     credential_fields:
-      - {id: host, env: FORTIGATE_HOST, required: true, secret: false}
-      - {id: api_token, env: FORTIGATE_API_TOKEN, required: true, secret: true}
+      - id: host
+        env: FORTIGATE_HOST
+        required: true
+        secret: false
+        configuration_field: collectors.fortigate.host
+      - id: api_token
+        env: FORTIGATE_API_TOKEN
+        required: true
+        secret: true
+        prompt: {label: API token, example: read-only API token, help: FortiGate REST API administrator token, default: '', value_type: secret, sensitive: true}
     configuration_fields: [collectors.fortigate.host, collectors.fortigate.site]
+    configuration_prompts:
+      - {field: collectors.fortigate.host, label: FortiGate host, example: firewall.example.invalid, help: FortiGate hostname or HTTPS URL; a non-default port may be included; do not include /api/v2, default: '', value_type: host, sensitive: false, normalizer: https-host}
     secret_handling:
       templates: [secrets/fortigate.env.example]
       scope: root-or-profile
@@ -74,6 +86,7 @@ connectors:
     notes: Native read-only API collector; credential onboarding remains manual.
 
   - id: hyperv
+    runtime_modes: [central]
     display_name: Microsoft Hyper-V
     vendor: Microsoft
     domains: [servers, virtualisation]
@@ -93,6 +106,7 @@ connectors:
     notes: Profile-scoped read-only PowerShell collection; guided setup is unavailable.
 
   - id: mist
+    runtime_modes: [central]
     display_name: Juniper Mist
     vendor: Juniper Networks
     domains: [switching, wireless]
@@ -101,9 +115,19 @@ connectors:
     guided_setup: false
     configuration_mode: manual
     credential_fields:
-      - {id: organization_id, env: MIST_ORG_ID, required: true, secret: false}
-      - {id: api_token, env: MIST_API_TOKEN, required: true, secret: true}
+      - id: organization_id
+        env: MIST_ORG_ID
+        required: true
+        secret: false
+        prompt: {label: Organisation ID, example: 00000000-0000-0000-0000-000000000000, help: Mist organisation UUID, default: '', value_type: uuid, sensitive: false}
+      - id: api_token
+        env: MIST_API_TOKEN
+        required: true
+        secret: true
+        prompt: {label: API token, example: Mist API token, help: Read-only Mist API token, default: '', value_type: secret, sensitive: true}
     configuration_fields: [collectors.mist.base_url]
+    configuration_prompts:
+      - {field: collectors.mist.base_url, label: Juniper Mist API base URL, example: 'https://api.ac2.mist.com', help: Enter the regional API origin only; do not include /api/v1, default: 'https://api.mist.com', value_type: url, sensitive: false, normalizer: https-origin}
     secret_handling:
       templates: [secrets/mist.env.example]
       scope: root-or-profile
@@ -115,6 +139,7 @@ connectors:
     notes: Native read-only cloud API collector; regional endpoint selection is manual.
 
   - id: paloalto
+    runtime_modes: [edge]
     display_name: Palo Alto PAN-OS
     vendor: Palo Alto Networks
     domains: [firewall, internet]
@@ -136,6 +161,7 @@ connectors:
     notes: Native read-only PAN-OS XML API collector; guided setup is unavailable.
 
   - id: papercut
+    runtime_modes: [central]
     display_name: PaperCut MF
     vendor: PaperCut
     domains: [printing, servers]
@@ -144,8 +170,15 @@ connectors:
     guided_setup: false
     configuration_mode: manual
     credential_fields:
-      - {id: authorization_key, env: PAPERCUT_AUTHORIZATION_KEY, env_aliases: [PAPERCUT_AUTHORIZATION], required: false, secret: true}
+      - id: authorization_key
+        env: PAPERCUT_AUTHORIZATION_KEY
+        env_aliases: [PAPERCUT_AUTHORIZATION]
+        required: false
+        secret: true
+        prompt: {label: Authorization key, example: optional System Health authorization key, help: Leave blank when the endpoint does not require authorization, default: '', value_type: secret, sensitive: true}
     configuration_fields: [collectors.papercut.base_url, collectors.papercut.site]
+    configuration_prompts:
+      - {field: collectors.papercut.base_url, label: PaperCut MF HTTPS base URL, example: 'https://papercut.example.invalid', help: Include the HTTPS port when required; /api/health is removed automatically, default: '', value_type: host, sensitive: false, normalizer: papercut-health-origin}
     secret_handling:
       templates: [secrets/papercut.env.example]
       scope: root-or-profile
@@ -157,6 +190,7 @@ connectors:
     notes: Read-only PaperCut MF System Health JSON API collector; guided setup remains manual.
 
   - id: proxmox
+    runtime_modes: [central]
     display_name: Proxmox VE
     vendor: Proxmox Server Solutions
     domains: [servers, virtualisation]
@@ -178,6 +212,7 @@ connectors:
     notes: Profile-scoped read-only API provider; guided setup is unavailable.
 
   - id: snmp
+    runtime_modes: [edge]
     display_name: SNMP Infrastructure
     vendor: Multi-vendor
     domains: [environmental, power, printing, servers, switching, wireless]
@@ -199,6 +234,7 @@ connectors:
     notes: Generic discovery and Telegraf generation; device-specific setup remains manual.
 
   - id: vmware
+    runtime_modes: [central]
     display_name: VMware vSphere
     vendor: VMware
     domains: [servers, virtualisation]

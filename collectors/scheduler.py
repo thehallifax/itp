@@ -2,13 +2,16 @@
 import asyncio
 import inspect
 import json
-import time
 import logging
+import time
 import uuid
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from datetime import datetime, timezone
 
+from telemetry import CollectorHealth
+
+from .base import CollectorSkipped
 from .writer import atomic_write
 
 
@@ -86,7 +89,8 @@ class Scheduler:
                  wallboard_engine=None, dashboard_registry=None,
                  state_history_capture=None,
                  operations_interval=300, state_path=None, now_fn=None,
-                 monotonic_fn=None, capability_engine=None):
+                 monotonic_fn=None, capability_engine=None,
+                 health_writer=None, runtime_mode="central"):
         self.collectors = list(collectors)
         self.health_path = Path(health_path) if health_path else None
         # Locks are created lazily inside the active event loop. Python 3.9
@@ -112,6 +116,8 @@ class Scheduler:
         self._shutdown = False
         self._initial_discovery_success = set()
         self.logger = logging.getLogger("collector.scheduler")
+        self.health_writer = health_writer
+        self.runtime_mode = runtime_mode
 
     def _log(self, event, **fields):
         suffix = " ".join(
@@ -256,6 +262,7 @@ class Scheduler:
                        "exception_type": "", "reason": reason,
                        "run_id": run_id}
             self._phase_state(phase, outcome, attempted_at)
+            await self._record_health(collector, phase, outcome)
             return outcome
         async with lock:
             self._active[collector] = phase
@@ -274,6 +281,12 @@ class Scheduler:
                     "duration_ms": int((self.monotonic() - started) * 1000),
                     "value": result, "exception_type": "", "reason": "",
                     "run_id": run_id}
+            except CollectorSkipped as exc:
+                outcome = {
+                    "connector": collector.name, "status": "skipped",
+                    "duration_ms": int((self.monotonic() - started) * 1000),
+                    "value": None, "exception_type": "",
+                    "reason": exc.reason, "run_id": run_id}
             except Exception as exc:
                 if log_exception:
                     self.logger.exception(
@@ -294,6 +307,7 @@ class Scheduler:
                     active_phase=None, current_run_id=None,
                     updated_at=_utc(self.now()))
             self._phase_state(phase, outcome, attempted_at)
+            await self._record_health(collector, phase, outcome)
             if phase == "discover" and outcome["status"] == "success":
                 self._initial_discovery_success.add(collector.name)
             self._log(
@@ -302,6 +316,21 @@ class Scheduler:
                 outcome=outcome["status"],
                 error_class=outcome["exception_type"])
             return outcome
+
+    async def _record_health(self, collector, phase, outcome):
+        if self.health_writer is None:
+            return
+        health = CollectorHealth.from_outcome(
+            outcome, runtime=self.runtime_mode,
+            execution_mode=getattr(collector, "execution", "either"),
+            phase=phase)
+        try:
+            await asyncio.to_thread(self.health_writer.write, [health.point()])
+        except Exception as exc:
+            self.logger.error(
+                "collector=%s phase=health result=write_failed "
+                "exception_type=%s",
+                collector.name, type(exc).__name__)
 
     async def execute_once(self, phase="collect"):
         """Execute a phase once for every configured scheduler collector."""
@@ -429,7 +458,7 @@ class Scheduler:
             execute_initial(collector, "collect")
             for collector in eligible)), key=lambda item: item["connector"]))
         unavailable = sorted(
-            set(collector.name for collector in self.collectors)
+            {collector.name for collector in self.collectors}
             - self._initial_discovery_success)
         collection_outcome = (
             "skipped_prerequisite" if unavailable and not eligible

@@ -3,10 +3,16 @@ import asyncio
 import email.utils
 import logging
 from datetime import datetime, timezone
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-from .models import MistAuthenticationError, MistAuthorizationError, MistError, MistPaginationError
+from .models import (
+    MistAuthenticationError,
+    MistAuthorizationError,
+    MistError,
+    MistPaginationError,
+)
 
 LOG = logging.getLogger("collector.mist")
 
@@ -17,7 +23,7 @@ class MistClient:
                  client=None, sleep=asyncio.sleep):
         if not organization_id or not api_token:
             raise ValueError("Mist organization ID and API token are required")
-        self.base_url = base_url.rstrip("/")
+        self.base_url = self.normalize_url(base_url)
         self.organization_id = organization_id
         self.max_pages = max_pages
         self.page_limit = page_limit
@@ -35,6 +41,15 @@ class MistClient:
             timeout=httpx.Timeout(timeout, connect=timeout),
             headers=self._headers,
         )
+
+    @staticmethod
+    def normalize_url(value):
+        parsed = urlsplit(str(value or "").strip())
+        if (parsed.scheme != "https" or not parsed.hostname
+                or parsed.path.rstrip("/") or parsed.query or parsed.fragment):
+            raise ValueError(
+                "Mist base URL must be a complete HTTPS origin without /api/v1")
+        return urlunsplit(("https", parsed.netloc, "", "", ""))
 
     @staticmethod
     def _retry_after(response):
