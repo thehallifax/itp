@@ -62,12 +62,16 @@ def engine_fixture(tmp_path):
 
 def test_four_existing_output_adapters_register_and_clean_bootstrap(tmp_path):
     assert [adapter.name for adapter in SignalAdapter.registered(tmp_path)] == [
-        "fortigate", "inventory", "mist", "paloalto", "snmp", "virtualisation"]
+        "aruba", "fortigate", "inventory", "mist", "paloalto", "papercut", "snmp",
+        "virtualisation"]
     state = InfrastructureStateEngine(tmp_path / "missing", tmp_path / "operations",
                                       tmp_path / "state", tmp_path / "dashboard",
                                       sites_output=tmp_path / "sites").run(NOW)
     assert state["summary"]["devices"] == 0 and state["collectors"] == []
-    assert state["summary"]["infrastructure_health"] == "Unknown"
+    assert state["summary"]["infrastructure_health"] == \
+        "Discovery not configured"
+    assert state["summary"]["observability_health"] == \
+        "Monitoring not started"
     assert json.loads((tmp_path / "state/state.json").read_text()) == state
 
 

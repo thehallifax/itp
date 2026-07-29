@@ -16,6 +16,7 @@ secrets/**/*.env
 runtime/
 backups/
 profiles/*/*.local.yml
+config/*.local.yml
 profiles/*/.env
 *.compose.override.yml
 

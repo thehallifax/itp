@@ -1,0 +1,15 @@
+{
+  "health": {
+    "applicationServer": {
+      "systemInfo": {"version": "24.0.3"},
+      "systemMetrics": {"uptimeHours": 48}
+    },
+    "database": {"status": "OK"},
+    "printers": {"count": 5, "inErrorCount": 0, "heldJobsCountTotal": 0},
+    "devices": {"count": 0, "inErrorCount": 0},
+    "printProviders": {"count": 2, "offlineCount": 1, "status": "ERROR"},
+    "license": {"valid": true}
+  },
+  "devices": {"devices": []},
+  "partial": false
+}

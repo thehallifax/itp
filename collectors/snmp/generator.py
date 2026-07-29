@@ -12,6 +12,17 @@ GENERATED_FILES = {
     "synology": "discovered-synology.conf",
 }
 
+IDENTITY_PROCESSOR = '''
+[[processors.starlark]]
+  source = """
+def apply(metric):
+    address = metric.tags.get("device_ip")
+    if address:
+        metric.tags["device_id"] = "snmp:" + address
+    return metric
+"""
+'''
+
 
 def generate_configs(inventory, communities, output_dir):
     rendered = {platform: [] for platform in GENERATED_FILES}
@@ -20,6 +31,8 @@ def generate_configs(inventory, communities, output_dir):
     for platform, filename in GENERATED_FILES.items():
         path = Path(output_dir) / filename
         content = "\n".join(rendered[platform])
+        if content:
+            content += IDENTITY_PROCESSOR
         if platform == "wireless-access-point" and not content:
             atomic_remove(path)
         else:

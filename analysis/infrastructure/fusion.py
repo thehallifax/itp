@@ -13,7 +13,8 @@ CONFIDENCE_RANK = {"unmerged": 0, "low": 1, "medium": 2, "high": 3, "exact": 4}
 FUSION_FIELDS = ("hostname", "serial_number", "management_ip", "site", "site_id",
     "site_display_name", "device_type",
     "device_role", "vendor", "model", "firmware_version", "lifecycle_state", "managed",
-    "customer", "location", "last_seen_at", "extensions")
+    "deployment_id", "customer_id", "customer",
+    "location", "last_seen_at", "extensions")
 
 
 def _source(record): return str(record.get("source") or record.get("collector") or "unknown").lower()
@@ -55,10 +56,14 @@ def classify_match(left, right):
         return "exact", ["management_mac"], ""
     site_match = a["site"] and a["site"] == b["site"]
     vendor_discovery = "snmp" in sources and bool(sources & VENDOR_SOURCES)
-    if hostname_match and (site_match or (vendor_discovery and _site_alias(left.get("site"), right.get("site")))):
+    if hostname_match and (site_match or (
+            vendor_discovery and _site_alias(
+                left.get("site_id"), right.get("site_id")))):
         evidence = ["hostname"] + (["site"] if site_match else ["collector_pair"])
         return "high", evidence, ""
-    if ip_match and (site_match or (vendor_discovery and _site_alias(left.get("site"), right.get("site")))):
+    if ip_match and (site_match or (
+            vendor_discovery and _site_alias(
+                left.get("site_id"), right.get("site_id")))):
         return "medium", ["management_ip"] + (["site"] if site_match else ["collector_pair"]), ""
     if hostname_match or ip_match:
         return "low", ["hostname" if hostname_match else "management_ip"], "site identity is incompatible"
@@ -192,6 +197,8 @@ class FusionEngine:
         if status_provenance: provenance["status"] = status_provenance
         conflicts.extend(status_conflicts)
         checks = (("serial_number", normalize_serial, "Critical"), ("management_ip", normalize_ip, "Medium"),
+                  ("deployment_id", lambda value: str(value or "").casefold() or None, "Critical"),
+                  ("customer_id", lambda value: str(value or "").casefold() or None, "Critical"),
                   ("site_id", lambda value: str(value or "").lower() or None, "High"),
                   ("site", normalize_site, "Medium"), ("device_type", normalize_device_type, "High"),
                   ("vendor", lambda value: str(value or "").lower() or None, "Low"),

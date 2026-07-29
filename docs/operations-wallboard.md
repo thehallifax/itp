@@ -1,5 +1,12 @@
 # Operations Wallboard
 
+Service descriptions inherit collected, unavailable, failed and deliberately
+unsupported evidence from canonical Service Health. Visible stats stay concise.
+
+Wallboard scope values are canonical site IDs; labels come from resolved site
+metadata. Certificate attention text and printer empty states are deliberately
+compact for wallboard-distance reading.
+
 Operations Wallboard is a single-screen, exception-driven Grafana view for a
 16:9 IT office, NOC, school technology office, or MSP display. It complements,
 but does not replace, Infrastructure Overview and vendor drill-down dashboards.
@@ -20,19 +27,30 @@ vertical scrolling at standard 1920 × 1080 browser zoom.
 
 The wallboard displays:
 
-- site name and canonical overall service state;
-- service-health generation time and stale-data state;
-- compact status cards for enabled canonical services;
-- healthy/offline/unknown cards for enabled wireless, switching, compute and
-  firewall capabilities;
-- authoritative WAN uplinks and RX/TX only where classified telemetry exists;
-- actionable printer exceptions;
-- compact enabled-collector state;
-- one priority-ordered **Action Required** table.
+- eight operator-facing cards: Issues, Overall Health, Monitoring, Security,
+  Internet, Firewall, Printing, and Certificates;
+- optional cards for enabled future and virtualisation services;
+- one readable Download/Upload graph per authoritative WAN interface;
+- operational changes observed during the last 24 hours;
+- one fleet-specific **Printers Requiring Attention** table;
+- one priority-ordered, action-oriented **Action Required** table.
 
 Longer-term governance risks and recommendations remain in detailed operational
 dashboards. Collection duration, points, retries, and errors remain in Collector
-Health.
+Health. The landing page does not expose a collector-state table.
+
+The Monitoring card displays the canonical Monitoring status. Its description
+records how many enabled collectors require attention, the latest successful
+collection, and services with stale coverage. It links to Collector Health;
+connector internals remain there and in `./itp doctor`.
+
+Overall Health and Security display concise canonical states. Their descriptions
+retain the Service Health explanation and evidence. Firewall may promote the
+highest-priority certificate/subscription cue while retaining the canonical
+Security severity and firewall drill-down.
+Certificates is a focused projection of the same Operations evidence, including
+certificate and subscription expiry findings; it cannot report Healthy while a
+matching action remains active.
 
 ## Service-health dependency
 
@@ -54,6 +72,13 @@ Not Enabled services never degrade overall status. Their large cards are
 omitted and their names appear in a compact neutral header list. Unknown and
 Not Enabled are always grey.
 
+Before canonical service evidence exists, the wallboard consumes
+`runtime/dashboard/readiness.json`. A clean deployment displays **Monitoring
+not started**; an enabled collector without a successful run displays
+**Awaiting first collection**; failed or stale collection displays
+**Collectors unavailable**. These onboarding states never replace a real
+Warning or Critical service result.
+
 ## Printer exception policy
 
 Included conditions are printer offline, paper jam, waste-toner full or
@@ -72,9 +97,17 @@ drill-down links. The wallboard does not check vendor names to decide whether a
 domain exists. Links are added only for dashboard UIDs selected by the registry,
 so optional packs may be absent safely.
 
-Unclassified interfaces never become WAN uplinks. Without authoritative
-classification or traffic history, compact unavailable text replaces WAN
-graphs. Latency and packet loss remain absent until reliable telemetry exists.
+Unclassified interfaces never become WAN uplinks. The Internet card is derived
+directly from authoritative WAN signals and uses evidence-based wording such as
+**2 / 2 WANs Healthy**, **1 / 2 WANs Healthy**, and **Not Yet Collected**. It
+does not create a second Internet calculation.
+
+Each classified interface receives its own responsive graph named with both its
+friendly role and interface name. Download and Upload use bits per second,
+Grafana auto-scaling, and a table legend with the latest value. One WAN uses the
+full row; two WANs use equal columns; an odd final WAN uses the full following
+row. An interface without traffic samples displays an explicit waiting state
+instead of generic No data.
 
 ## Data binding and filtering
 
@@ -91,12 +124,9 @@ uses canonical `site_id` values; All Sites uses the explicit `all` scope.
 
 Every service card contains an explicit row for `all` and every canonical
 `site_id`; the renderer never filters an estate row as though it were site
-data. Collector State is partitioned by collector coverage, and All Sites
-includes site context when a collector covers multiple sites. A site with no
-current technician actions displays **No action required** rather than No data.
-
-Freshness uses only the canonical service-health generation timestamp. The
-default stale threshold is 900 seconds.
+data. Monitoring collector coverage is deduplicated per canonical scope. A site
+with no current technician actions displays **No action required** rather than
+No data.
 
 ## Regeneration
 
@@ -130,19 +160,23 @@ SQL-free because generated frames use exact `site_id` scopes.
 
 The renderer packs the grid after capability filtering:
 
-1. Site/estate summary, Overall State, service-health age, freshness and Monitoring.
-2. Equal-height core and capability-gated virtualisation service cards.
-3. Infrastructure state and a wide Collector State table.
-4. Optional printing exceptions.
-5. Balanced WAN state and traffic panels.
-6. A full-width, seven-row-high Action Required queue.
+1. Eight equal operator-facing status cards.
+2. Responsive, eight-row-high per-interface WAN traffic graphs.
+3. Equal-width Action Required and Changes Since Yesterday tables.
+4. A full-width Printers Requiring Attention table.
+5. Capability-gated service and compact infrastructure detail.
 
 Action Required sorts by severity, evidence age and priority. Compact columns
-show human-readable Severity, Service, Domain, Provider, Object Type, Asset,
-Issue and Age headings. Provider and object values are presentation labels
-(`VMware`, `Hyper-V`, `Proxmox`, `Virtual Machine`, and so on); canonical
-runtime values remain unchanged. Relative freshness uses `Just now`, minutes,
-hours and days. Legacy records may leave provider and object kind blank.
+show Severity, Service, Asset, Action, and Age. Findings are rendered as
+operator actions—for example, **Renew DNS Security certificate today** and
+**7 printers require attention**. Provider and object diagnostics remain in
+linked detail dashboards. Relative freshness uses `Just now`, minutes, hours
+and days.
+
+Changes Since Yesterday consumes persisted state-history change sets and
+canonical Service Health `last_change` evidence. It reports recoveries and
+material operational transitions from the previous 24 hours without creating a
+second event engine.
 
 Site Operational Status is the selected scope's active issue count. A service
 in Warning or Critical state must have a matching actionable row; Medium

@@ -1,9 +1,13 @@
 profile:
   id: mlc
-  name: Methodist Ladies' College
+  name: MLC Reference Deployment
   environment: production
   timezone: Australia/Perth
-  runtime_mode: edge
+  runtime_mode: central
+identity:
+  customer_id: mlc
+deployment:
+  mode: standalone
 paths:
   discovery_config: profiles/mlc/discovery.yml
   sites_config: profiles/mlc/sites.yml

@@ -33,10 +33,16 @@ def _scope_value(state, scope, display_name, assets):
                              or scope in value.get("site_ids", [])]
     collector_failed = sum(value.get("status") == "failed" for value in scoped_collectors)
     collector_healthy = sum(value.get("status") == "healthy" for value in scoped_collectors)
+    readiness = state.get("readiness") or {}
+    readiness_infrastructure = readiness.get("infrastructure") or {}
+    readiness_observability = readiness.get("observability") or {}
     observability = ("Warning" if collector_failed else
         "Healthy" if scoped_collectors and collector_healthy == len(scoped_collectors)
-        else "Warning" if scoped_collectors else "Unknown")
-    scope_health = summary["infrastructure_health"] if scope == "all" else site_state.get("infrastructure_health", "Unknown")
+        else "Warning" if scoped_collectors else
+        readiness_observability.get("display_label", "Unknown"))
+    scope_health = summary["infrastructure_health"] if scope == "all" else \
+        site_state.get("infrastructure_health",
+                       readiness_infrastructure.get("display_label", "Unknown"))
     return {"scope": scope, "display_name": display_name,
         "sites": len(state["sites"]) if scope == "all" else 1,
         "healthy_sites": summary["healthy_sites"] if scope == "all" else int(scope_health == "Healthy"),
@@ -63,10 +69,16 @@ def _scope_value(state, scope, display_name, assets):
 
 def flat_summary(state):
     summary = state["summary"]
+    readiness = state.get("readiness") or {}
+    infrastructure = readiness.get("infrastructure") or {}
+    observability = readiness.get("observability") or {}
     value = {
         "generated_at": state["generated_at"],
-        "infrastructure_health": summary["infrastructure_health"],
-        "observability_health": summary["observability_health"],
+        "infrastructure_health": infrastructure.get(
+            "display_label", summary["infrastructure_health"]),
+        "observability_health": observability.get(
+            "display_label", summary["observability_health"]),
+        "readiness": readiness,
         "sites": summary["sites"], "healthy_sites": summary["healthy_sites"],
         "warning_sites": summary["warning_sites"], "critical_sites": summary["critical_sites"],
         "site_options": [{"site_id": value["site_id"], "display_name": value["display_name"]}
@@ -124,4 +136,8 @@ def write_state(output_dir, dashboard_dir, state):
     summary = flat_summary(state)
     atomic_write(Path(dashboard_dir) / "infrastructure-summary.json",
                  json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    if state.get("readiness"):
+        atomic_write(Path(dashboard_dir) / "readiness.json",
+                     json.dumps(state["readiness"], indent=2,
+                                sort_keys=True) + "\n")
     return summary

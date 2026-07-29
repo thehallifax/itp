@@ -43,6 +43,19 @@ class ConnectorMetadata:
     configuration_checker: str = ""
     health_adapter: str = ""
     remediation_command: str = ""
+    dashboard_manifest: str = ""
+
+    @property
+    def configuration_namespace(self):
+        if self.id in {"vmware", "hyperv", "proxmox"}:
+            return "virtualisation.endpoints"
+        return f"collectors.{self.id}"
+
+    @property
+    def validation_requirements(self):
+        return tuple(
+            field["id"] for field in self.credential_fields
+            if field["required"])
 
     @property
     def manual_only(self):
@@ -57,13 +70,16 @@ class ConnectorMetadata:
         value["configuration_fields"] = list(self.configuration_fields)
         value["aliases"] = list(self.aliases)
         value["manual_only"] = self.manual_only
+        value["configuration_namespace"] = self.configuration_namespace
+        value["validation_requirements"] = list(
+            self.validation_requirements)
         return value
 
 
 class ConnectorMetadataRegistry:
     """Validated connector catalogue; loading performs no runtime imports."""
 
-    def __init__(self, root, connectors=None):
+    def __init__(self, root, connectors=None, *, validation_mode="strict"):
         if connectors is None:
             if isinstance(root, (str, Path)):
                 # Compatibility with the original root-only constructor.
@@ -81,6 +97,11 @@ class ConnectorMetadataRegistry:
                 # metadata and relied on the package repository as the root.
                 connectors, root = root, Path(__file__).resolve().parents[1]
         self.root = Path(root).resolve()
+        if validation_mode not in {"strict", "runtime"}:
+            raise ValueError(
+                f"unsupported connector registry validation mode: "
+                f"{validation_mode}")
+        self.validation_mode = validation_mode
         self._connectors = tuple(sorted(connectors, key=lambda value: value.id))
         self._validate()
         self._lookup = {
@@ -131,16 +152,20 @@ class ConnectorMetadataRegistry:
                         raw.get("remediation_command")
                         or "python -m collectors connectors inspect "
                         + str(raw["id"])),
+                    dashboard_manifest=str(
+                        raw.get("dashboard_manifest") or ""),
                 ))
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("invalid connector registry entry") from exc
         return connectors
 
     @classmethod
-    def load(cls, root=None, path=None):
+    def load(cls, root=None, path=None, *, validation_mode="strict"):
         root = Path(root or Path(__file__).resolve().parents[1]).resolve()
         path = Path(path or root / "collectors/connector-registry.yml")
-        return cls(root, cls._read_connectors(path))
+        return cls(
+            root, cls._read_connectors(path),
+            validation_mode=validation_mode)
 
     def _validate_reference(self, connector):
         if not connector.implementation or ":" not in connector.implementation:
@@ -204,7 +229,10 @@ class ConnectorMetadataRegistry:
                 if (not isinstance(field, dict) or not field.get("id")
                         or not field.get("env")
                         or not isinstance(field.get("required"), bool)
-                        or not isinstance(field.get("secret"), bool)):
+                        or not isinstance(field.get("secret"), bool)
+                        or not isinstance(field.get("env_aliases", []), list)
+                        or any(not isinstance(alias, str) or not alias
+                               for alias in field.get("env_aliases", []))):
                     raise ValueError(
                         f"connector {connector.id} has invalid credential metadata")
                 credential_ids.append(field["id"])
@@ -219,15 +247,22 @@ class ConnectorMetadataRegistry:
                     "root", "profile", "root-or-profile", "none"}:
                 raise ValueError(
                     f"connector {connector.id} has invalid secret handling scope")
-            if not (self.root / connector.documentation).is_file():
-                raise ValueError(
-                    f"connector {connector.id} documentation does not exist: "
-                    f"{connector.documentation}")
-            for template in connector.secret_handling.get("templates", []):
-                if not (self.root / template).is_file():
+            if self.validation_mode == "strict":
+                if not (self.root / connector.documentation).is_file():
                     raise ValueError(
-                        f"connector {connector.id} secret template does not exist: "
-                        f"{template}")
+                        f"connector {connector.id} documentation does not exist: "
+                        f"{connector.documentation}")
+                if connector.dashboard_manifest and not (
+                        self.root / connector.dashboard_manifest).is_file():
+                    raise ValueError(
+                        f"connector {connector.id} dashboard manifest does not "
+                        f"exist: {connector.dashboard_manifest}")
+                for template in connector.secret_handling.get(
+                        "templates", []):
+                    if not (self.root / template).is_file():
+                        raise ValueError(
+                            f"connector {connector.id} secret template does not "
+                            f"exist: {template}")
             self._validate_reference(connector)
 
     def all(self):

@@ -1,9 +1,13 @@
 profile:
   id: sbc
-  name: St Brigid's College, Lesmurdie
+  name: Northwind College
   environment: production
   timezone: Australia/Perth
   runtime_mode: central
+identity:
+  customer_id: sbc
+deployment:
+  mode: standalone
 paths:
   discovery_config: profiles/sbc/discovery.yml
   sites_config: profiles/sbc/sites.yml

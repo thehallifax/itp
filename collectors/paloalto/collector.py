@@ -10,6 +10,7 @@ from collectors.base import BaseCollector
 from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
+from collectors.configuration import parse_bool_default, parse_int
 from .api import PaloAltoClient
 from .mapper import map_snapshot
 from .models import PaloAltoConfig, PaloAltoError, Snapshot, WanInterface
@@ -66,27 +67,20 @@ def _add_wan_rate_samples(record, previous):
     return record
 
 
-def _bool(value, default=True):
-    if isinstance(value, bool): return value
-    if value in (None, ""): return default
-    lowered = str(value).strip().lower()
-    if lowered in {"true", "1", "yes", "on"}: return True
-    if lowered in {"false", "0", "no", "off"}: return False
-    raise ValueError("Palo Alto boolean configuration must be true or false")
-
-
 def validate_settings(config, *, require_key=True):
     raw = config.get("collectors", {}).get("paloalto", config)
     base_url = str(raw.get("base_url") or "").strip()
     site = str(raw.get("site") or "").strip()
     api_key_env = str(raw.get("api_key_env") or "PALOALTO_API_KEY").strip()
-    api_key = os.getenv(api_key_env, "")
-    allow_http = _bool(raw.get("allow_insecure_http", False), False)
+    api_key = str(raw.get("api_key") or "")
+    allow_http = parse_bool_default(
+        raw.get("allow_insecure_http"), False)
     if not base_url: raise ValueError("collectors.paloalto.base_url is required")
     if not site: raise ValueError("collectors.paloalto.site must reference a canonical site ID")
     if not api_key_env: raise ValueError("collectors.paloalto.api_key_env is required")
     if require_key and not api_key:
-        raise ValueError(f"Palo Alto API key environment variable {api_key_env} is required")
+        raise ValueError(
+            f"Palo Alto API key {api_key_env} is required in resolved configuration")
     PaloAltoClient.normalize_url(base_url, allow_http=allow_http)
     timeout = float(raw.get("timeout_seconds", 20))
     if timeout <= 0 or timeout > 120: raise ValueError("Palo Alto timeout_seconds must be between 1 and 120")
@@ -115,21 +109,33 @@ def validate_settings(config, *, require_key=True):
         raise ValueError("Palo Alto wan_interfaces supports only one primary interface")
     return PaloAltoConfig(base_url=base_url, api_key=api_key, api_key_env=api_key_env,
         customer=str(raw.get("customer") or config.get("customer", "unknown")),
-        site=site, verify_tls=_bool(raw.get("verify_tls", True)),
+        site=site, verify_tls=parse_bool_default(raw.get("verify_tls"), True),
         ca_bundle=ca_bundle, timeout_seconds=timeout,
-        discovery_interval_seconds=int(raw.get("discovery_interval_seconds", 21600)),
-        collection_interval_seconds=int(raw.get("collection_interval_seconds", 60)),
-        max_retries=int(raw.get("max_retries", 2)),
+        discovery_interval_seconds=parse_int(
+            raw.get("discovery_interval_seconds", 21600), minimum=1),
+        collection_interval_seconds=parse_int(
+            raw.get("collection_interval_seconds", 60), minimum=1),
+        max_retries=parse_int(raw.get("max_retries", 2), minimum=0, maximum=10),
         expected_interfaces=tuple(sorted(set(raw.get("expected_interfaces") or []))),
-        collect_interfaces=_bool(raw.get("collect_interfaces", True)),
-        collect_ha=_bool(raw.get("collect_ha", True)),
-        collect_system_resources=_bool(raw.get("collect_system_resources", True)),
-        collect_licenses=_bool(raw.get("collect_licenses", True)),
-        collect_content_versions=_bool(raw.get("collect_content_versions", True)),
-        licence_expiry_days=int(raw.get("licence_expiry_days", 30)),
+        collect_interfaces=parse_bool_default(raw.get("collect_interfaces"), True),
+        collect_ha=parse_bool_default(raw.get("collect_ha"), True),
+        collect_system_resources=parse_bool_default(
+            raw.get("collect_system_resources"), True),
+        collect_licenses=parse_bool_default(raw.get("collect_licenses"), True),
+        collect_content_versions=parse_bool_default(
+            raw.get("collect_content_versions"), True),
+        licence_expiry_days=parse_int(
+            raw.get("licence_expiry_days", 30), minimum=0),
         wan_interfaces=tuple(wan),
-        content_warning_days=int(raw.get("content_warning_days", 30)),
-        content_critical_days=int(raw.get("content_critical_days", 90)))
+        content_warning_days=parse_int(
+            raw.get("content_warning_days", 30), minimum=0),
+        content_critical_days=parse_int(
+            raw.get("content_critical_days", 90), minimum=0),
+        customer_name=str(raw.get("customer_name") or
+                          (config.get("identity") or {}).get(
+                              "customer_name") or ""),
+        site_name=str(raw.get("site_name") or config.get("site_name") or ""),
+        deployment_id=str(config.get("deployment_id") or ""))
 
 
 @CollectorRegistry.register
@@ -147,9 +153,10 @@ class PaloAltoCollector(BaseCollector):
         self.client = client or PaloAltoClient(self.settings.base_url, self.settings.api_key,
             self.settings.timeout_seconds, verify_tls=self.settings.verify_tls,
             ca_bundle=self.settings.ca_bundle,
-            allow_http=_bool(raw.get("allow_insecure_http", False), False),
+            allow_http=parse_bool_default(
+                raw.get("allow_insecure_http"), False),
             max_retries=self.settings.max_retries)
-        self.writer = writer or InfluxWriter()
+        self.writer = writer or InfluxWriter.from_config(config)
 
     async def _snapshot(self):
         system_result = await self.client.op("system")
@@ -245,8 +252,15 @@ class PaloAltoCollector(BaseCollector):
                 locals().get("diagnostics_before", len(self.client.command_diagnostics)):]
             durations = [value["duration_ms"] for value in command_diagnostics]
             health = {"measurement": "collector_health",
-                "tags": {"collector": "paloalto", "customer": self.settings.customer,
-                         "site": self.settings.site, "diagnostic_category": category},
+                "tags": {"collector": "paloalto",
+                         "deployment_id": self.settings.deployment_id,
+                         "customer": self.settings.customer,
+                         "customer_id": self.settings.customer,
+                         "site": self.settings.site,
+                         "site_id": self.settings.site,
+                         "customer_name": self.settings.customer_name,
+                         "site_name": self.settings.site_name,
+                         "diagnostic_category": category},
                 "fields": {"success": success, "partial": partial,
                     "duration_ms": int((time.monotonic() - started) * 1000),
                     "api_requests": self.client.api_requests - requests,

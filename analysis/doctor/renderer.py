@@ -12,7 +12,7 @@ def render_human(report, strict=False):
     lines = ["Infrastructure Telemetry Platform Doctor"]
     categories = (
         "Platform", "Services", "Connectors", "State History",
-        "Operations Engine")
+        "Scheduler", "Operations Engine")
     for category in categories:
         checks = [value for value in report.checks if value.category == category]
         if not checks:

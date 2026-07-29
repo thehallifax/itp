@@ -71,9 +71,9 @@ def fixture(tmp_path):
 
 def test_rules_are_auto_registered_and_stable():
     rules = Rule.registered()
-    assert len(rules) == 19
+    assert len(rules) == 20
     assert [rule.id for rule in rules] == sorted(rule.id for rule in rules)
-    assert len({rule.id for rule in rules}) == 19
+    assert len({rule.id for rule in rules}) == 20
 
 
 def test_engine_is_deterministic_explainable_and_sorted(tmp_path):
@@ -121,28 +121,28 @@ def test_infrastructure_overview_findings_are_canonical_site_scoped(tmp_path):
             "site": site}
     result = {"generated_at": "2026-07-23T14:00:00Z",
         "issues": [
-            finding("mlc-pa", "site:mlc", "Methodist Ladies College",
+            finding("mlc-pa", "site:mlc", "MLC Reference Site",
                     "MLC-PA licence expired"),
             finding("sbc-ap", "site:st-brigids",
-                    "St Brigid's College, Lesmurdie", "SBC-AP offline"),
+                    "Northwind College", "SBC-AP offline"),
             finding("sbc-forti", "site:st-brigids",
-                    "St Brigid's College, Lesmurdie", "SBC-Forti unavailable")],
+                    "Northwind College", "SBC-Forti unavailable")],
         "risks": [
-            finding("mlc-risk", "site:mlc", "Methodist Ladies College",
+            finding("mlc-risk", "site:mlc", "MLC Reference Site",
                     "MLC-PA security risk"),
             finding("sbc-risk", "site:st-brigids",
-                    "St Brigid's College, Lesmurdie", "SBC-AP capacity risk")],
+                    "Northwind College", "SBC-AP capacity risk")],
         "recommendations": [
-            finding("mlc-rec", "site:mlc", "Methodist Ladies College",
+            finding("mlc-rec", "site:mlc", "MLC Reference Site",
                     "MLC-PA renew licence"),
             finding("sbc-rec", "site:st-brigids",
-                    "St Brigid's College, Lesmurdie", "SBC-AP investigate")]}
+                    "Northwind College", "SBC-AP investigate")]}
     scopes = [{"scope": "all"}, {"scope": "site:mlc"},
               {"scope": "site:st-brigids"}]
     summary = {"site_options": [
-        {"site_id": "site:mlc", "display_name": "Methodist Ladies College"},
+        {"site_id": "site:mlc", "display_name": "MLC Reference Site"},
         {"site_id": "site:st-brigids",
-         "display_name": "St Brigid's College, Lesmurdie"}],
+         "display_name": "Northwind College"}],
         "scopes": scopes}
     output = tmp_path / "infrastructure-overview.json"
     render_dashboard(ROOT / "dashboards/Infrastructure Overview/infrastructure-overview.json",

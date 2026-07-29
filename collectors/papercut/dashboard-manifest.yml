@@ -1,0 +1,13 @@
+collector: papercut
+version: 1
+capabilities:
+  - inventory
+  - printing
+  - telemetry
+requires: []
+dashboards:
+  - uid: papercut-operational-overview
+    source: dashboards/Printing/papercut-overview.json
+    folder: Printing
+    tags: [papercut, printing]
+    requires_capabilities: [printing]

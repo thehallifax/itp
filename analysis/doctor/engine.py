@@ -14,10 +14,13 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
 from collectors.connector_registry import ConnectorMetadataRegistry
+from collectors.configuration import ConfigurationResolver
+from itp_profiles.settings import SettingsError, resolve_settings
 from .models import DiagnosticCheck, DoctorReport
 
 
@@ -43,9 +46,11 @@ class DoctorFatalError(RuntimeError):
 class Redactor:
     def __init__(self, registry):
         names = {
-            field["env"] for connector in registry.all()
+            name for connector in registry.all()
             for field in connector.credential_fields
-            if field.get("secret") and field.get("env")}
+            if field.get("secret")
+            for name in (field.get("env"), *field.get("env_aliases", []))
+            if name}
         names.update(name for name in os.environ if any(
             word in name.upper() for word in
             ("TOKEN", "PASSWORD", "SECRET", "COMMUNITY", "PRIVATE_KEY")))
@@ -131,6 +136,7 @@ class DoctorEngine:
     def _command(self, command):
         return self.runner(
             command, cwd=self.root, check=True, text=True,
+            encoding="utf-8", errors="replace",
             capture_output=True, timeout=self.timeout)
 
     @staticmethod
@@ -183,6 +189,101 @@ class DoctorEngine:
             "Root environment file is readable" if env_path.is_file()
             else "Root environment file is absent",
             remediation="Run ./itp setup" if not env_path.is_file() else "")
+        settings = None
+        settings_warnings = []
+        if env_path.is_file():
+            try:
+                settings = resolve_settings(
+                    self.env_values, warnings=settings_warnings)
+                self._result(
+                    "platform.settings", "Platform",
+                    "Required deployment settings", "pass",
+                    "Required deployment settings are complete",
+                    metadata={
+                        "database": settings.database,
+                        "organization": settings.organization,
+                    })
+            except SettingsError as exc:
+                self._result(
+                    "platform.settings", "Platform",
+                    "Required deployment settings", "fail",
+                    "Required deployment settings are invalid",
+                    detail=str(exc),
+                    remediation="Rerun setup to repair blank or conflicting values.",
+                    command="./itp setup --force")
+        else:
+            self._result(
+                "platform.settings", "Platform",
+                "Required deployment settings", "warn",
+                "Deployment settings have not been generated",
+                remediation="Run setup.", command="./itp setup")
+        for index, warning in enumerate(settings_warnings):
+            self._result(
+                f"platform.settings.warning.{index}", "Platform",
+                "Deprecated deployment setting", "warn", warning,
+                command="./itp setup --force")
+
+        deployment_id = (
+            settings.deployment_id if settings else
+            self.env_values.get("ITP_DEPLOYMENT_ID", "").strip())
+        self._result(
+            "platform.deployment_identity", "Platform", "Deployment identity",
+            "pass" if deployment_id else "fail",
+            "Stable deployment identity is configured" if deployment_id
+            else "Deployment identity is missing",
+            detail=deployment_id,
+            command="./itp setup --force")
+
+        timezone_name = self.env_values.get("TZ", "").strip()
+        try:
+            if not timezone_name:
+                raise ValueError("TZ is blank")
+            ZoneInfo(timezone_name)
+            timezone_status, timezone_summary = (
+                "pass", f"Timezone {timezone_name} is valid")
+        except (ZoneInfoNotFoundError, ValueError):
+            timezone_status, timezone_summary = (
+                "fail", "Timezone is missing or invalid")
+        self._result(
+            "platform.timezone", "Platform", "Timezone",
+            timezone_status, timezone_summary,
+            remediation="Set TZ to an IANA timezone with ./itp setup --force.")
+
+        datasource_path = (
+            self.root / "grafana/provisioning/datasources/influxdb.yml")
+        try:
+            datasource = yaml.safe_load(datasource_path.read_text())
+            influx = next(
+                item for item in datasource["datasources"]
+                if item.get("uid") == "ffsu5ap2kr5dse")
+            configured = influx["jsonData"]["dbName"]
+            datasource_ok = configured == "${INFLUXDB_BUCKET}"
+            datasource_detail = str(configured)
+        except (OSError, KeyError, StopIteration, TypeError, yaml.YAMLError) as exc:
+            datasource_ok = False
+            datasource_detail = str(exc)
+        self._result(
+            "platform.grafana_datasource", "Platform",
+            "Grafana InfluxDB datasource",
+            "pass" if datasource_ok else "fail",
+            "Grafana datasource follows the configured database"
+            if datasource_ok else "Grafana datasource database may disagree",
+            detail=datasource_detail,
+            remediation="Restore the managed datasource template.")
+
+        try:
+            from collectors.__main__ import build_parser
+            build_parser()
+            parser_ok, parser_detail = True, ""
+        except Exception as exc:
+            parser_ok, parser_detail = False, str(exc)
+        self._result(
+            "platform.collector_parser", "Platform", "Collector CLI parser",
+            "pass" if parser_ok else "fail",
+            "Collector CLI parser constructs successfully" if parser_ok
+            else "Collector CLI parser cannot start",
+            detail=parser_detail,
+            remediation="Restore the collector CLI parser definitions.")
 
         config_path = self.root / "discovery/config.yml"
         if not config_path.is_file():
@@ -243,6 +344,38 @@ class DoctorEngine:
             "Required directories are readable" if not writable
             else "Required directories are inaccessible",
             detail=", ".join(writable))
+
+        runtime = Path(os.getenv("ITP_RUNTIME_DIR", self.root / "runtime"))
+        runtime_ok = runtime.is_dir() and os.access(runtime, os.W_OK)
+        self._result(
+            "platform.runtime", "Platform", "Runtime directories",
+            "pass" if runtime_ok else "warn",
+            "Runtime directory is writable" if runtime_ok
+            else "Runtime directory is missing or not writable",
+            detail=str(runtime), remediation="Run ./itp setup")
+        demo_state = self.root / "runtime/demo/demo.json"
+        self._result(
+            "platform.demo", "Platform", "Demonstration environment",
+            "warn" if demo_state.is_file() else "pass",
+            "Demonstration environment is present"
+            if demo_state.is_file() else "Demonstration environment is not loaded",
+            detail=str(demo_state) if demo_state.is_file() else "",
+            command="./itp demo reset" if demo_state.is_file() else "")
+        provisioning = runtime / "provisioning/state.json"
+        try:
+            state = json.loads(provisioning.read_text())
+            complete = state.get("status") == "complete"
+            summary = (
+                "Provisioning is complete" if complete
+                else "Provisioning is incomplete")
+            detail = ", ".join(state.get("missing") or [])
+        except (OSError, json.JSONDecodeError):
+            complete, summary, detail = (
+                False, "Provisioning has not completed", str(provisioning))
+        self._result(
+            "platform.provisioning", "Platform", "Automatic provisioning",
+            "pass" if complete else "warn", summary, detail=detail,
+            remediation="Run ./itp start", command="./itp start")
 
         ports = []
         for key, default in (("GRAFANA_PORT", 3000), ("INFLUXDB_PORT", 8181)):
@@ -413,9 +546,13 @@ class DoctorEngine:
             return response.status
 
     def _http_checks(self):
+        influx_port = int(self.env_values.get(
+            "INFLUXDB_PORT", os.getenv("INFLUXDB_PORT", 8181)))
+        grafana_port = int(self.env_values.get(
+            "GRAFANA_PORT", os.getenv("GRAFANA_PORT", 3000)))
         endpoints = (
-            ("influxdb", "http://127.0.0.1:8181/health"),
-            ("grafana", "http://127.0.0.1:3000/api/health"))
+            ("influxdb", f"http://127.0.0.1:{influx_port}/health"),
+            ("grafana", f"http://127.0.0.1:{grafana_port}/api/health"))
         for name, url in endpoints:
             try:
                 status = self.http(url, self.timeout)
@@ -439,22 +576,32 @@ class DoctorEngine:
             current = current[part]
         return current
 
-    def _secret_present(self, connector, field):
-        if os.getenv(field["env"], "").strip():
-            return True
-        roots = [self.root / "secrets"]
+    def _connector_resolution(self):
+        profile_values = {}
         profile = os.getenv("ITP_PROFILE", "").strip()
         if profile:
-            roots.insert(0, self.root / "secrets" / profile)
-        for root in roots:
-            for path in sorted(root.glob("*.env")) if root.exists() else ():
-                values = self._read_env(path)
-                if values.get(field["env"], "").strip():
-                    return True
-        return False
+            profile_env = self.root / "profiles" / profile / ".env"
+            profile_values.update(self._read_env(profile_env))
+            secret_root = self.root / "secrets" / profile
+            for path in sorted(secret_root.glob("*.env")) \
+                    if secret_root.exists() else ():
+                profile_values.update(self._read_env(path))
+        root_values = dict(self.env_values)
+        secret_root = self.root / "secrets"
+        for path in sorted(secret_root.glob("*.env")) \
+                if secret_root.exists() else ():
+            root_values.update(self._read_env(path))
+        return ConfigurationResolver(
+            self.registry, self.raw_config or {},
+            process_environment=os.environ,
+            profile_environment=profile_values,
+            root_environment=root_values).evaluate()
 
     def _connector_checks(self):
         configured = (self.raw_config or {}).get("collectors", {})
+        resolved = {
+            item["connector"]: item
+            for item in self._connector_resolution()["connectors"]}
         if self.selected_connector:
             connectors = (self.selected_connector,)
         else:
@@ -494,9 +641,13 @@ class DoctorEngine:
                 detail=", ".join(missing_config),
                 remediation="Complete the documented connector configuration.",
                 command=connector.remediation_command)
+            resolved_settings = {
+                item["name"].rsplit(".", 1)[-1]: item
+                for item in resolved[connector.id]["settings"]}
             missing_credentials = [
                 field["env"] for field in connector.credential_fields
-                if field.get("required") and not self._secret_present(connector, field)]
+                if field.get("required") and resolved_settings[
+                    field["id"]]["status"] == "missing"]
             self._result(
                 f"connector.{connector.id}.credentials", "Connectors",
                 connector.display_name,
@@ -617,6 +768,66 @@ class DoctorEngine:
             else "Existing latest pointers are consistent",
             detail=", ".join(invalid))
 
+    def _scheduler_checks(self):
+        runtime = Path(os.getenv("ITP_RUNTIME_DIR", self.root / "runtime"))
+        path = runtime / "scheduler/state.json"
+        if not path.is_file():
+            self._result(
+                "scheduler.state", "Scheduler", "Runtime state", "skip",
+                "Scheduler has not written runtime state")
+            return
+        try:
+            state = json.loads(path.read_text())
+            if not isinstance(state, dict):
+                raise ValueError("state is not a mapping")
+            updated = datetime.fromisoformat(
+                str(state.get("updated_at") or "").replace("Z", "+00:00")) \
+                if state.get("updated_at") else None
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            self._result(
+                "scheduler.state", "Scheduler", "Runtime state", "fail",
+                "Scheduler runtime state is invalid",
+                exception_type=type(exc).__name__)
+            return
+        lifecycle = state.get("lifecycle_state", "unknown")
+        generated = datetime.fromisoformat(
+            str(self.now()).replace("Z", "+00:00"))
+        age = (
+            generated.astimezone(timezone.utc)
+            - updated.astimezone(timezone.utc)
+        ).total_seconds() if updated else None
+        stale = lifecycle in {
+            "ready", "degraded", "starting",
+            "initial_discovery", "initial_collection",
+        } and (age is None or age > 900)
+        status = (
+            "warn" if stale or lifecycle == "degraded"
+            else "pass" if lifecycle == "ready"
+            else "skip" if lifecycle == "stopped"
+            else "warn")
+        self._result(
+            "scheduler.state", "Scheduler", "Runtime state", status,
+            "Scheduler runtime state is stale" if stale
+            else f"Scheduler lifecycle is {lifecycle}",
+            detail=(
+                "initial_discovery="
+                f"{(state.get('initial_discovery') or {}).get('outcome', 'unknown')} "
+                "initial_collection="
+                f"{(state.get('initial_collection') or {}).get('outcome', 'unknown')} "
+                "discovery_failures="
+                f"{state.get('consecutive_discovery_failures', 0)} "
+                "collection_failures="
+                f"{state.get('consecutive_collection_failures', 0)} "
+                f"last_skip_reason={state.get('last_skip_reason') or 'none'}"),
+            metadata={
+                "lifecycle_state": lifecycle,
+                "last_successful_discovery":
+                    state.get("last_successful_discovery"),
+                "last_successful_collection":
+                    state.get("last_successful_collection"),
+                "last_skip_reason": state.get("last_skip_reason"),
+            })
+
     def _operations_checks(self):
         module = importlib.util.find_spec("analysis.operations.engine") is not None
         definitions = importlib.util.find_spec(
@@ -657,6 +868,7 @@ class DoctorEngine:
                 self._connector_checks()
                 if not self.connectors_only:
                     self._state_history_checks()
+                    self._scheduler_checks()
                     self._operations_checks()
             checks = tuple(sorted(self.checks, key=lambda value: value.check_id))
             identity = str(

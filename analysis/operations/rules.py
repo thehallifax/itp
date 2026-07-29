@@ -347,3 +347,70 @@ class PaloAltoLicenceExpiredRule(PaloAltoLicenceRule):
 
 class PaloAltoLicenceExpiringRule(PaloAltoLicenceRule):
     id = "PA-LICENCE-EXPIRING"; expired = False
+
+
+class PaperCutHealthRule(Rule):
+    """Promote deterministic PaperCut conditions into canonical findings."""
+    id = "printing.papercut_health"; category = "Printing"
+    CONDITIONS = {
+        "database_not_ok": (
+            "issue", "PaperCut database is not healthy",
+            "Database status is not OK.",
+            "Restore database connectivity and review the connection pool."),
+        "print_provider_offline": (
+            "issue", "PaperCut Print Provider offline",
+            "At least one Print Provider is offline.",
+            "Restore the affected Print Provider service."),
+        "embedded_device_errors": (
+            "issue", "PaperCut embedded devices reporting errors",
+            "One or more embedded devices report an error.",
+            "Review the device status descriptions in PaperCut."),
+        "disk_utilisation": (
+            "risk", "PaperCut disk utilisation is high",
+            "Application Server disk utilisation exceeded its threshold.",
+            "Free disk space or increase the allocated capacity."),
+        "jvm_memory": (
+            "risk", "PaperCut JVM memory utilisation is high",
+            "JVM memory utilisation exceeded its threshold.",
+            "Review application load and JVM memory allocation."),
+        "upgrade_assurance": (
+            "recommendation", "Review PaperCut Upgrade Assurance",
+            "Upgrade Assurance remaining days are below threshold.",
+            "Review renewal with the authorised PaperCut partner."),
+        "held_jobs": (
+            "recommendation", "Review held PaperCut jobs",
+            "Held print jobs exceeded the configured threshold.",
+            "Review stalled queues and long-held jobs."),
+        "long_uptime": (
+            "recommendation", "Review PaperCut maintenance restart",
+            "Application uptime exceeded the informational threshold.",
+            "Review maintenance and patching cadence; restart only if planned."),
+    }
+
+    def evaluate(self, context):
+        result = []
+        for asset in context.assets:
+            papercut = (asset.get("extensions") or {}).get("papercut")
+            if not isinstance(papercut, dict):
+                continue
+            for condition in sorted(
+                    papercut.get("conditions") or [],
+                    key=lambda value: value.get("code", "")):
+                definition = self.CONDITIONS.get(condition.get("code"))
+                if not definition:
+                    continue
+                kind, title, summary, action = definition
+                severity = condition.get("severity", "Info")
+                result.append(item(
+                    self, kind, title, severity,
+                    canonical_id=asset.get("canonical_id", ""),
+                    device=_name(asset), site=_site(asset),
+                    site_id=_site_id(asset), summary=summary,
+                    reason=(
+                        f"Condition {condition['code']} was produced from "
+                        "the latest PaperCut System Health response."),
+                    impact="Printing availability or capacity may be affected.",
+                    action=action,
+                    evidence={"source_collector": "papercut",
+                              **condition}))
+        return result

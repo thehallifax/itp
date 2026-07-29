@@ -1,5 +1,14 @@
 # Dashboard navigation
 
+Managed dashboards use the
+[collector capability manifest](collector-capabilities.md) for implemented,
+conditional, disabled, unavailable, failed and unsupported states. Dashboard
+authors must not infer support from a null query result.
+
+Managed dashboard variables show friendly labels but filter on canonical
+`customer_id`, `site_id` and `device_id` values. Display names must never be
+used as SQL joins. `All` uses a quoted SQL wildcard with `LIKE`.
+
 Dashboard selection and folder provisioning are capability-aware. See
 [Dashboard Platform](dashboard-platform.md) for manifest and ownership details.
 
@@ -14,6 +23,12 @@ uses canonical service health for overall and domain status. Inventory is used
 only for vendor-neutral counts, not service-state calculation. Links lead only
 to applicable provisioned detail dashboards. See
 [Operations Wallboard](operations-wallboard.md).
+
+Its top row is service-first and glanceable: cards show concise canonical
+states, while descriptions retain evidence and drill-down destinations.
+Monitoring derives from canonical collector health, Internet reports classified
+WAN evidence, and Firewall can surface the highest-priority Security cue.
+Collector execution fields remain on the Collector Health drill-down.
 
 Canonical summary panels use the supported generated-dashboard projection
 described in [Dashboard Data Binding](dashboard-data-binding.md). Runtime JSON is
@@ -79,9 +94,11 @@ docker compose exec collector python -m collectors dashboards generate
 docker compose restart grafana
 ```
 
-It queries only confirmed canonical `device`, `firewall`, `interface`, and
-`collector_health` fields. Panels explicitly say “not collected” where the
-current telemetry contract has no safe query.
+It queries confirmed canonical `device`, `firewall`, `performance`, `interface`,
+`license`, `content_package`, and `collector_health` fields. Implemented panels
+use **Not Yet Collected** when a current row is absent. Configuration commits
+and certificate expiry explicitly show **Feature Not Enabled** because the
+current measurement contract does not expose those fields.
 
 ## Upgrade note
 
@@ -92,7 +109,13 @@ can remain in an upgraded Grafana database; they contain no managed dashboards
 and may be removed after confirming they contain no user dashboards.
 The Palo Alto operational dashboard uses canonical resource, session,
 interface-counter, subscription, content-package, certificate, and collector
-diagnostic telemetry. Run `python -m collectors dashboards generate` after
+diagnostic telemetry. Classified WAN interfaces are discovered by a hidden
+FlightSQL variable and rendered as independently scaled repeated panels; the
+friendly WAN label is display text and the interface name remains the query
+value. Collector diagnostic Stat panels display values without internal field
+aliases, and Last Successful Collection uses the latest successful
+collector-health row.
+Run `python -m collectors dashboards generate` after
 collector or dashboard upgrades; managed files remain replaceable and preserve
 the stable `paloalto-operational-overview` UID.
 

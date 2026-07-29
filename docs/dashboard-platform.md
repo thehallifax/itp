@@ -60,3 +60,16 @@ The capability registry is written to
 `runtime/dashboard/managed/registry.json`. The Operations Wallboard reads this
 registry to distinguish enabled domains from unavailable telemetry without
 checking vendor names.
+
+## Empty states and onboarding
+
+Managed dashboard generation also writes the canonical readiness contract to
+`runtime/dashboard/readiness.json`. Infrastructure Overview, Operations
+Wallboard and Collector Health use it to distinguish not configured, awaiting
+first collection, unavailable, healthy, warning and critical states.
+
+Infrastructure Overview includes a generated Setup Status table. Empty
+Collector Health tables contain an explanatory row, while string Stat panels
+retain their values directly instead of relying on Grafana's numeric reducer or
+generic `No data` rendering. See [Readiness and dashboard empty
+states](readiness.md).

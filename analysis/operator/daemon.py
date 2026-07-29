@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import inspect
 import signal
 import subprocess
 import sys
@@ -13,6 +15,8 @@ from pathlib import Path
 from collectors.scheduler import Scheduler
 from collectors.writer import atomic_write
 from .engine import OperatorCollectEngine, _parse, _utc
+from .engine import OperatorStatusEngine
+from analysis.notifications import NotificationEngine
 
 
 def _pid_running(pid):
@@ -150,6 +154,9 @@ class OperatorDaemon:
         self.stop_event = None
         self._current = set()
         self._configured = ()
+        self._notification_task = None
+        self.notifications = NotificationEngine(
+            self.runtime_dir, config.get("notifications"))
 
     def request_stop(self):
         if self.stop_event:
@@ -163,7 +170,11 @@ class OperatorDaemon:
             try:
                 loop.add_signal_handler(selected, self.request_stop)
             except (NotImplementedError, RuntimeError):
-                signal.signal(selected, lambda *_: self.request_stop())
+                try:
+                    signal.signal(selected, lambda *_: self.request_stop())
+                except (OSError, RuntimeError, ValueError):
+                    logging.getLogger("operator.daemon").debug(
+                        "signal_handler=unavailable signal=%s", name)
 
     async def _heartbeat(self):
         while not self.stop_event.is_set():
@@ -203,6 +214,28 @@ class OperatorDaemon:
         if outcome["status"] == "success":
             changes["last_successful_collection"] = now
         self.state.write(**changes)
+        self._schedule_notification_evaluation()
+
+    def _schedule_notification_evaluation(self):
+        if not self.notifications.enabled:
+            return
+        if self._notification_task and not self._notification_task.done():
+            return
+        self._notification_task = asyncio.create_task(
+            self._evaluate_notifications())
+
+    async def _evaluate_notifications(self):
+        # Coalesce connector completions from the same scheduler tick.
+        await asyncio.sleep(0.05)
+        try:
+            status = OperatorStatusEngine(
+                self.root, self.config, registry=self.collect_engine.registry,
+                runtime_dir=self.runtime_dir, now_fn=self.now).run()
+            await asyncio.to_thread(self.notifications.evaluate, status)
+        except Exception as exc:
+            logging.getLogger("operator.daemon").error(
+                "notification_evaluation=failed exception_type=%s",
+                type(exc).__name__)
 
     async def _run(self, once):
         started = _utc(self.now())
@@ -212,8 +245,19 @@ class OperatorDaemon:
             status="Starting", pid=os.getpid(), started_at=started,
             last_heartbeat=started, current_collection=[])
         self._configured, initialization = self.collect_engine._configured()
+        if any(value["status"] == "failed" for value in initialization):
+            raise RuntimeError(
+                "daemon startup failed: connector initialization is invalid")
+        scheduler_options = {}
+        if "state_path" in inspect.signature(
+                self.scheduler_factory).parameters:
+            scheduler_options["state_path"] = (
+                self.runtime_dir / "scheduler/state.json")
+        if "now_fn" in inspect.signature(
+                self.scheduler_factory).parameters:
+            scheduler_options["now_fn"] = self.now
         scheduler = self.scheduler_factory(
-            [value[1] for value in self._configured])
+            [value[1] for value in self._configured], **scheduler_options)
         self.state.write(status="Running", pid=os.getpid())
         if once:
             outcomes = await scheduler.execute_once("collect") \
@@ -230,6 +274,16 @@ class OperatorDaemon:
                     result["pipeline_run"]["completed_at"]
                     if successful else self.state.read().get(
                         "last_successful_collection")))
+            try:
+                status = OperatorStatusEngine(
+                    self.root, self.config,
+                    registry=self.collect_engine.registry,
+                    runtime_dir=self.runtime_dir, now_fn=self.now).run()
+                self.notifications.evaluate(status)
+            except Exception as exc:
+                logging.getLogger("operator.daemon").error(
+                    "notification_evaluation=failed exception_type=%s",
+                    type(exc).__name__)
             return result
         heartbeat = asyncio.create_task(self._heartbeat())
         try:
@@ -239,6 +293,8 @@ class OperatorDaemon:
         finally:
             self.stop_event.set()
             await heartbeat
+            if self._notification_task:
+                await self._notification_task
         return None
 
     def run(self, *, once=False):

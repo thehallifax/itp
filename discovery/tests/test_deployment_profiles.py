@@ -15,6 +15,7 @@ from collectors.config import load_config
 from collectors.scheduler import Scheduler
 from collectors.writer import InfluxWriter
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
+from scripts import itp as itp_cli
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +34,8 @@ def _profile_tree(tmp_path, name="test"):
     manifest = {
         "profile": {"id": name, "name": "Test", "environment": "test",
                     "timezone": "Australia/Perth", "runtime_mode": "central"},
+        "identity": {"customer_id": name},
+        "deployment": {"mode": "standalone"},
         "paths": {
             "discovery_config": f"profiles/{name}/discovery.yml",
             "sites_config": f"profiles/{name}/sites.yml",
@@ -56,6 +59,39 @@ def test_tracked_profiles_are_discovered_and_isolated():
     assert profiles["mlc"].paths.secrets != profiles["sbc"].paths.secrets
     assert profiles["mlc"].compose_project == "itp-mlc"
     assert profiles["sbc"].grafana_port != profiles["mlc"].grafana_port
+    assert profiles["mlc"].deployment_mode == "standalone"
+    assert profiles["mlc"].customer_id == "mlc"
+
+
+def test_cluster_member_requires_explicit_shared_services(tmp_path):
+    profile, manifest = _profile_tree(tmp_path)
+    manifest["deployment"] = {
+        "mode": "cluster_member", "cluster_id": "managed-cluster"}
+    (profile / "profile.yml").write_text(yaml.safe_dump(manifest))
+    with pytest.raises(ProfileError, match="shared Grafana and InfluxDB"):
+        DeploymentProfile.load("test", tmp_path)
+    manifest["deployment"]["shared_services"] = {
+        "grafana_url": "https://grafana.example.invalid",
+        "influxdb_url": "https://influx.example.invalid"}
+    (profile / "profile.yml").write_text(yaml.safe_dump(manifest))
+    value = DeploymentProfile.load("test", tmp_path)
+    assert value.deployment_mode == "cluster_member"
+    assert value.cluster_id == "managed-cluster"
+    assert value.env()["INFLUXDB_HOST"] == \
+        "https://influx.example.invalid"
+
+
+def test_standalone_port_conflict_is_actionable(tmp_path, monkeypatch):
+    _profile_tree(tmp_path)
+    value = DeploymentProfile.load("test", tmp_path)
+    monkeypatch.setattr(itp_cli, "_project_running", lambda profile: False)
+    monkeypatch.setattr(itp_cli, "port_available", lambda port: False)
+    monkeypatch.setattr(
+        itp_cli, "_port_owner",
+        lambda port: {"project": "another-project", "container": "grafana"})
+    with pytest.raises(ProfileError, match=(
+            "Grafana port 3900.*another-project.*cluster-member")):
+        itp_cli.preflight_start(value)
 
 
 def test_profile_rejects_mismatch_traversal_and_missing_files(tmp_path):
@@ -115,7 +151,9 @@ def test_runtime_activation_is_profile_scoped(tmp_path, monkeypatch):
 def test_writer_adds_deployment_tag_without_replacing_site(monkeypatch):
     captured = []
     monkeypatch.setenv("ITP_DEPLOYMENT_ID", "mlc")
-    writer = InfluxWriter(delegate=lambda points: captured.extend(points) or len(points))
+    writer = InfluxWriter(
+        delegate=lambda points: captured.extend(points) or len(points),
+        deployment_id="mlc")
     writer.write([{"measurement": "device", "tags": {"site_id": "site:MLC"},
                    "fields": {"online": True}}])
     assert captured[0]["tags"] == {"site_id": "site:MLC", "deployment_id": "mlc"}

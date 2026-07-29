@@ -5,12 +5,14 @@ import json
 import logging
 import os
 import re
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import CollectorRegistry
 from .connector_registry import ConnectorMetadataRegistry
+from .capabilities import CapabilityManifestEngine, MANIFESTS
 from .config import load_config
 from .inventory import InventoryManager
 from .scheduler import Scheduler
@@ -32,6 +34,10 @@ from analysis.doctor import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _default_health_path():
+    return str(Path(tempfile.gettempdir()) / "itp-collector-health")
+
+
 def _since_timestamp(value):
     if not value: return None
     match = re.fullmatch(r"(\d+)([mhdw])", value)
@@ -51,7 +57,7 @@ def _enabled_collectors(config):
     if runtime_mode not in ("central", "edge"):
         raise ValueError(f"unsupported ITP_RUNTIME_MODE: {runtime_mode}")
     inventory_path = os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json")
-    for name in ("mist", "fortigate", "paloalto"):
+    for name in ("mist", "fortigate", "paloalto", "papercut", "aruba"):
         collector_settings = settings.get(name, {})
         if not collector_settings.get("enabled", False): continue
         eligible, execution = CollectorRegistry.execution_eligible(
@@ -69,6 +75,21 @@ def inspection_lines(name, result):
         f"API hostname: {result['api_hostname']}", f"Organisation ID: {result['organization_id']}",
         f"Sites: {result['site_count']}", f"Devices: {result['device_count']}",
         "Device types: " + ", ".join(f"{key}={value}" for key, value in result["device_types"].items())]
+    if name == "aruba":
+        lines.extend((
+            f"API base URL: {result['api_base_url']}",
+            f"Authentication: {result['authentication_result']}",
+            f"Account discovery: {result['account_discovery']}",
+            f"Groups: {result['group_count']}",
+            f"Access points: {result['access_point_count']}",
+            f"Switches: {result['switch_count']}",
+            f"Gateways: {result['gateway_count']}",
+            f"Readiness: {result['diagnostics']['category']}",
+            "Capabilities: " + ", ".join(
+                f"{key}={value}"
+                for key, value in sorted(result["capability_states"].items())
+            ),
+        ))
     for measurement, shape in result["measurements"].items():
         lines.extend((f"Measurement: {measurement}", "  tags: " + ", ".join(shape["tags"]),
             "  fields: " + ", ".join(f"{key} ({shape['field_counts'][key]}/{shape['points']})" for key in shape["fields"])))
@@ -81,7 +102,8 @@ def inspection_lines(name, result):
 
 async def _run_idle():
     """Keep the framework healthy when all native collectors are disabled."""
-    health_path = Path(os.getenv("COLLECTOR_HEALTH_PATH", "/tmp/collector-health"))
+    health_path = Path(os.getenv(
+        "COLLECTOR_HEALTH_PATH", _default_health_path()))
     health_path.parent.mkdir(parents=True, exist_ok=True)
     health_path.touch()
     logging.info("collector=framework phase=run result=idle enabled_collectors=0")
@@ -99,8 +121,14 @@ async def _validate(config):
     check("schema version", config.get("schema_version") == 1,
           f"configured={config.get('schema_version')!r} supported=1")
     registered = set(CollectorRegistry.names())
-    check("collector registration", {"mist", "fortigate", "paloalto", "snmp"} <= registered,
+    check("collector registration",
+          {"mist", "fortigate", "paloalto", "papercut", "aruba", "snmp"}
+          <= registered,
           ", ".join(sorted(registered)))
+    declared = set(MANIFESTS) - {"framework"}
+    check("collector capability manifests",
+          {"paloalto", "papercut", "aruba", "snmp"} <= declared,
+          ", ".join(sorted(declared)))
     for name, settings in config.get("collectors", {}).items():
         if not settings.get("enabled") or name not in registered: continue
         if name == "mist":
@@ -117,6 +145,14 @@ async def _validate(config):
             except ValueError as exc:
                 ok = False; detail = str(exc)
             check("Palo Alto configuration", ok, detail)
+        if name == "aruba":
+            from .aruba.collector import validate_settings
+            try:
+                validate_settings(config)
+                ok = True; detail = "configured"
+            except ValueError as exc:
+                ok = False; detail = str(exc)
+            check("Aruba Central configuration", ok, detail)
     provision = ROOT / "grafana/provisioning/dashboards/dashboards.yml"
     try:
         import yaml
@@ -178,7 +214,8 @@ async def _run(args):
               else render_human(report, args.strict))
         raise SystemExit(report.exit_code(args.strict))
     if args.command == "connectors":
-        registry = ConnectorMetadataRegistry.load(ROOT)
+        registry = ConnectorMetadataRegistry.load(
+            ROOT, validation_mode="runtime")
         if args.action == "list":
             if args.json:
                 print(json.dumps(registry.to_dict(), indent=2, sort_keys=True))
@@ -252,6 +289,21 @@ async def _run(args):
                   f"detected {output['change_count']} change(s)")
         return
     config = load_config(args.config)
+    if args.command == "capabilities":
+        runtime = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
+        engine = CapabilityManifestEngine(config, runtime)
+        result = engine.generate() if args.action == "generate" else engine.build()
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            for name, value in result["collectors"].items():
+                counts = value["capability_counts"]
+                print(
+                    f"{name}\t{value['execution']['state']}\t"
+                    f"collected={counts['collected']} failed={counts['failed']} "
+                    f"unavailable={counts['unavailable']} "
+                    f"not_applicable={counts['not_applicable']}")
+        return
     if args.command == "validate":
         await _validate(config)
         return
@@ -259,7 +311,8 @@ async def _run(args):
         registry = DashboardRegistry(ROOT, config,
             os.getenv("DASHBOARD_MANAGED_OUTPUT", str(ROOT / "runtime/dashboard/managed")),
             os.getenv("DASHBOARD_PROVISIONING",
-                      str(ROOT / "grafana/provisioning/dashboards/dashboards.yml")))
+                      str(ROOT / "grafana/provisioning/dashboards/dashboards.yml")),
+            registry_validation_mode="runtime")
         result = registry.generate() if args.action == "generate" else registry.resolve()
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True))
@@ -319,6 +372,8 @@ async def _run(args):
                 "operations_state", "/app/runtime/operations/operations.json"),
             capability_registry=settings.get(
                 "capability_registry", "/app/runtime/dashboard/managed/registry.json"),
+            capability_manifest=settings.get(
+                "capability_manifest", "/app/runtime/capabilities/collectors.json"),
             output_dir=settings.get("output_path", "/app/runtime/services"),
             sites_config=settings.get("sites_config", "/app/config/sites.yml"))
         if args.action == "evaluators":
@@ -348,6 +403,8 @@ async def _run(args):
             dashboard_template=settings.get("dashboard_template", "/app/dashboards/Operations/operations-wallboard.json"),
             summary_output=settings.get("summary_output", "/app/runtime/dashboard/wallboard-summary.json"),
             dashboard_output=settings.get("dashboard_output", "/app/runtime/dashboard/operations/operations-wallboard.json"),
+            capability_registry=settings.get(
+                "capability_registry", "/app/runtime/dashboard/managed/registry.json"),
             service_health=settings.get(
                 "service_health", "/app/runtime/services/service-health.json"),
             freshness_seconds=settings.get("freshness_seconds", 900)).run()
@@ -362,7 +419,9 @@ async def _run(args):
             dashboard_dir=settings.get("dashboard_path", "/app/runtime/dashboard"),
             status_freshness_seconds=settings.get("status_freshness_seconds", 300),
             sites_config=settings.get("sites_config", "/app/config/sites.yml"),
-            sites_output=settings.get("sites_output", "/app/runtime/sites"))
+            sites_output=settings.get("sites_output", "/app/runtime/sites"),
+            readiness_config=config,
+            registry_validation_mode="runtime")
         if args.action == "adapters":
             for adapter in SignalAdapter.registered(engine.inventory_dir):
                 print(f"{adapter.name}\t{adapter.priority}")
@@ -480,7 +539,10 @@ async def _run(args):
         try:
             result = await getattr(collector, args.command)()
             if args.command == "inspect":
-                print("\n".join(inspection_lines(args.name, result)))
+                if args.json:
+                    print(json.dumps(result, indent=2, sort_keys=True))
+                else:
+                    print("\n".join(inspection_lines(args.name, result)))
         finally:
             close = getattr(collector, "close", None)
             if close: await close()
@@ -497,10 +559,14 @@ async def _run(args):
     wallboard_settings = config.get("wallboard", {})
     services_settings = config.get("services", {})
     state_history = PipelineStateCapture(config.get("state_history", {}))
+    capability_engine = CapabilityManifestEngine(
+        config, Path(os.getenv("ITP_RUNTIME_DIR", "/app/runtime")))
+    capability_engine.generate()
     dashboard_registry = DashboardRegistry(ROOT, config,
         os.getenv("DASHBOARD_MANAGED_OUTPUT", str(ROOT / "runtime/dashboard/managed")),
         os.getenv("DASHBOARD_PROVISIONING",
-                  str(ROOT / "grafana/provisioning/dashboards/dashboards.yml")))
+                  str(ROOT / "grafana/provisioning/dashboards/dashboards.yml")),
+        registry_validation_mode="runtime")
     dashboard_registry.generate()
     infrastructure = InfrastructureStateEngine(
         inventory_dir=infrastructure_settings.get("inventory_path", "/app/runtime/inventory"),
@@ -509,7 +575,9 @@ async def _run(args):
         dashboard_dir=infrastructure_settings.get("dashboard_path", "/app/runtime/dashboard"),
         status_freshness_seconds=infrastructure_settings.get("status_freshness_seconds", 300),
         sites_config=infrastructure_settings.get("sites_config", "/app/config/sites.yml"),
-        sites_output=infrastructure_settings.get("sites_output", "/app/runtime/sites")) \
+        sites_output=infrastructure_settings.get("sites_output", "/app/runtime/sites"),
+        readiness_config=config,
+        registry_validation_mode="runtime") \
         if infrastructure_settings.get("enabled", True) else None
     operations = OperationsEngine(
         inventory_dir=operations_settings.get("inventory_path", "/app/runtime/inventory"),
@@ -548,7 +616,8 @@ async def _run(args):
         output_dir=services_settings.get("output_path", "/app/runtime/services"),
         sites_config=services_settings.get("sites_config", "/app/config/sites.yml")) \
         if services_settings.get("enabled", True) else None
-    await Scheduler(collectors, os.getenv("COLLECTOR_HEALTH_PATH", "/tmp/collector-health"),
+    await Scheduler(collectors, os.getenv(
+        "COLLECTOR_HEALTH_PATH", _default_health_path()),
                     inventory_engine=engine,
                     lifecycle_interval=inventory_settings.get(
                         "lifecycle_evaluation_interval_seconds", 3600),
@@ -557,11 +626,16 @@ async def _run(args):
                     service_health_engine=service_health,
                     wallboard_engine=wallboard,
                     dashboard_registry=dashboard_registry,
+                    capability_engine=capability_engine,
                     state_history_capture=state_history,
-                    operations_interval=operations_settings.get("interval_seconds", 300)).run()
+                    operations_interval=operations_settings.get("interval_seconds", 300),
+                    state_path=Path(os.getenv(
+                        "ITP_RUNTIME_DIR", "/app/runtime"))
+                    / "scheduler/state.json").run()
 
 
-def main():
+def build_parser():
+    """Build the collector CLI parser without executing any collector code."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", default=os.getenv("ITP_PROFILE"))
     parser.add_argument("--config", default=None)
@@ -573,6 +647,8 @@ def main():
     connectors.add_argument("--json", action="store_true")
     for command in ("discover", "collect", "inspect"):
         item = sub.add_parser(command); item.add_argument("name")
+        if command == "inspect":
+            item.add_argument("--json", action="store_true")
     inventory = sub.add_parser("inventory")
     inventory.add_argument("action", choices=("list", "show", "summary", "reconcile", "lifecycle",
                                                "retire", "restore", "history", "sources", "changes",
@@ -588,10 +664,6 @@ def main():
     inventory.add_argument("--json", action="store_true")
     sub.add_parser("run")
     sub.add_parser("validate")
-    connectors = sub.add_parser("connectors")
-    connectors.add_argument("action", choices=("list", "inspect"))
-    connectors.add_argument("connector", nargs="?")
-    connectors.add_argument("--json", action="store_true")
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
     doctor_scope = doctor.add_mutually_exclusive_group()
@@ -615,6 +687,10 @@ def main():
     dashboards = sub.add_parser("dashboards")
     dashboards.add_argument("action", choices=("generate", "status"), default="generate", nargs="?")
     dashboards.add_argument("--json", action="store_true")
+    capabilities = sub.add_parser("capabilities")
+    capabilities.add_argument("action", choices=("generate", "inspect"),
+                              default="inspect", nargs="?")
+    capabilities.add_argument("--json", action="store_true")
     history = sub.add_parser("state-history")
     history.add_argument("action", choices=("process", "capture-run", "inspect-run"),
                          default="process", nargs="?")
@@ -628,6 +704,11 @@ def main():
     history.add_argument("--json", action="store_true")
     paloalto = sub.add_parser("paloalto")
     paloalto.add_argument("action", choices=("validate", "discover", "run"))
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
     if (args.command == "connectors" and args.action == "inspect"
             and not args.connector):
@@ -643,14 +724,16 @@ def main():
         # Canonical fixture/history processing is deliberately independent of
         # deployment configuration and any inherited ITP_PROFILE value.
         logging_context = ""
-    elif args.profile:
+    elif args.profile and not (args.config or os.getenv("COLLECTOR_CONFIG")):
         from itp_profiles import DeploymentProfile
         profile = DeploymentProfile.load(args.profile, ROOT).activate()
         args.config = args.config or str(profile.paths.discovery)
         logging_context = f" deployment_id={profile.deployment_id}"
     else:
         args.config = args.config or os.getenv("COLLECTOR_CONFIG", "/app/config.yml")
-        logging_context = ""
+        deployment_id = os.getenv("ITP_DEPLOYMENT_ID", "")
+        logging_context = (
+            f" deployment_id={deployment_id}" if deployment_id else "")
     if args.command == "inventory" and args.action in ("show", "retire", "restore") and not args.asset_id:
         parser.error(f"inventory {args.action} requires asset_id")
     if args.command == "inventory" and args.action in ("retire", "restore") and not args.reason:

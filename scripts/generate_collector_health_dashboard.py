@@ -11,38 +11,47 @@ def target(sql):
             "rawQuery": True, "refId": "A"}
 
 
-def stat(panel_id, title, x, sql, unit="short"):
+def stat(panel_id, title, x, sql, unit="short", color="blue",
+         warning_at=None):
+    steps = [{"color": color, "value": None}]
+    if warning_at is not None:
+        steps.append({"color": "orange", "value": warning_at})
     return {"id": panel_id, "type": "stat", "title": title,
         "gridPos": {"x": x, "y": 0, "w": 6, "h": 5}, "datasource": DS,
         "targets": [target(sql)], "fieldConfig": {"defaults": {
             "unit": unit, "color": {"mode": "thresholds"}, "mappings": [],
-            "thresholds": {"mode": "absolute", "steps": [
-                {"color": "green", "value": None}]}}, "overrides": []},
+            "thresholds": {"mode": "absolute", "steps": steps},
+            "noValue": "No run in selected range"}, "overrides": []},
         "options": {"colorMode": "background", "graphMode": "none",
             "justifyMode": "center", "orientation": "auto",
             "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
-            "showPercentChange": False, "textMode": "value_and_name", "wideLayout": True}}
+            "showPercentChange": False, "textMode": "value", "wideLayout": True}}
 
 
 def build():
     selected = ("FROM collector_health WHERE collector LIKE ${collector:sqlstring} "
                 "AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo")
     latest = ("WITH latest AS (SELECT *, ROW_NUMBER() OVER "
-              "(PARTITION BY collector, site ORDER BY time DESC) AS rn " + selected + ") ")
+              "(PARTITION BY collector ORDER BY time DESC) AS rn " + selected + ") ")
     panels = [
         stat(1, "Collectors Healthy", 0, latest +
-             "SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS healthy FROM latest WHERE rn = 1"),
-        stat(2, "Collectors Failed", 6, latest +
-             "SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS failed FROM latest WHERE rn = 1"),
+             "SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS "
+             "\"Healthy Collectors\" FROM latest WHERE rn = 1", color="green"),
+        stat(2, "Collectors Requiring Attention", 6, latest +
+             "SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS "
+             "\"Collectors Requiring Attention\" FROM latest WHERE rn = 1",
+             color="green", warning_at=1),
         stat(3, "Latest Duration", 12,
-             "SELECT duration_ms AS duration " + selected + " ORDER BY time DESC LIMIT 1", "ms"),
+             "SELECT duration_ms AS \"Collection Duration\" " + selected +
+             " ORDER BY time DESC LIMIT 1", "ms"),
         stat(4, "Latest Points Written", 18,
-             "SELECT points_written AS points_written " + selected + " ORDER BY time DESC LIMIT 1"),
+             "SELECT points_written AS \"Points Written\" " + selected +
+             " ORDER BY time DESC LIMIT 1"),
         {"id": 5, "type": "table", "title": "Collector Runs",
          "gridPos": {"x": 0, "y": 5, "w": 24, "h": 12}, "datasource": DS,
          "targets": [target("SELECT time AS \"Time\", collector AS \"Collector\", "
             "site AS \"Site\", success AS \"Success\", partial AS \"Partial\", "
-            "duration_ms AS \"Duration ms\", api_requests AS \"API Requests\", "
+            "duration_ms AS \"Collection Duration\", api_requests AS \"API Requests\", "
             "points_written AS \"Points Written\", retry_count AS \"Retries\", "
             "error_count AS \"Errors\", diagnostic_category AS \"Result\" "
             + selected + " ORDER BY time DESC LIMIT 200")],

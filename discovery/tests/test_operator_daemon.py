@@ -107,6 +107,23 @@ def test_daemon_once_records_pipeline_and_stops_cleanly(tmp_path):
     assert not (tmp_path / "runtime/daemon/daemon.pid").exists()
 
 
+def test_daemon_construction_failure_exits_before_scheduler(tmp_path):
+    def invalid_factory(*_):
+        raise ValueError("api_token=must-not-leak")
+
+    daemon = OperatorDaemon(
+        tmp_path, config(), registry=Registry(),
+        collector_factory=invalid_factory,
+        scheduler_factory=OnceScheduler,
+        runtime_dir=tmp_path / "runtime", now_fn=lambda: NOW)
+    with pytest.raises(RuntimeError, match="initialization is invalid") as error:
+        daemon.run()
+    assert "must-not-leak" not in str(error.value)
+    state = DaemonStateStore(tmp_path / "runtime").read()
+    assert state["status"] == "Stopped"
+    assert not (tmp_path / "runtime/daemon/daemon.pid").exists()
+
+
 def test_foreground_daemon_updates_heartbeat_and_handles_shutdown(tmp_path):
     daemon = OperatorDaemon(
         tmp_path, config(), registry=Registry(), collector_factory=factory,
@@ -216,3 +233,28 @@ def test_background_start_uses_foreground_child_and_persists_starting(
     assert state["status"] == "Starting"
     assert state["pid"] == 4321
     assert "4321" in messages[0]
+
+
+def test_daemon_coalesces_notification_evaluation(tmp_path, monkeypatch):
+    evaluations = []
+
+    class Notifications:
+        enabled = True
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def evaluate(self, value):
+            evaluations.append(value)
+
+    monkeypatch.setattr(
+        "analysis.operator.daemon.NotificationEngine", Notifications)
+    value = config()
+    value["notifications"] = {"enabled": True}
+    daemon = OperatorDaemon(
+        tmp_path, value, registry=Registry(), collector_factory=factory,
+        scheduler_factory=ContinuousScheduler,
+        runtime_dir=tmp_path / "runtime", now_fn=lambda: NOW)
+    daemon.run()
+    assert len(evaluations) == 1
+    assert evaluations[0]["latest_pipeline_run"]["status"] == "success"

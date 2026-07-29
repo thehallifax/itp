@@ -16,7 +16,7 @@ from analysis.state_history import (
 )
 from collectors import CollectorRegistry
 from collectors.connector_registry import ConnectorMetadataRegistry
-from collectors.scheduler import Scheduler
+from collectors.scheduler import Scheduler, SchedulerStateStore
 from collectors.writer import atomic_write
 
 
@@ -339,6 +339,7 @@ class OperatorStatusEngine:
             service_health = []
         service_health.sort(key=lambda value: value["service"])
         from .daemon import DaemonStateStore
+        from analysis.notifications import NotificationEngine
         return {
             "schema_version": 1,
             "generated_at": _utc(self.now()),
@@ -347,9 +348,26 @@ class OperatorStatusEngine:
             "connectors": connectors,
             "service_health": service_health,
             "daemon": DaemonStateStore(self.runtime_dir).snapshot(self.now()),
+            "scheduler": SchedulerStateStore(
+                self.runtime_dir / "scheduler/state.json").value
+            if not (self.runtime_dir / "scheduler/state.json").is_file()
+            else self._read_scheduler_state(),
+            "notifications": NotificationEngine(
+                self.runtime_dir, self.config.get("notifications")).summary(),
             "latest_pipeline_run": (
                 latest.get("pipeline_run") if latest else None),
+            "latest_connector_results": (
+                latest.get("connectors", []) if latest else []),
         }
+
+    def _read_scheduler_state(self):
+        try:
+            value = json.loads(
+                (self.runtime_dir / "scheduler/state.json").read_text())
+            return value if isinstance(value, dict) else \
+                SchedulerStateStore.defaults()
+        except (OSError, json.JSONDecodeError):
+            return SchedulerStateStore.defaults()
 
 
 def render_collect(payload):
@@ -377,6 +395,7 @@ def render_status(payload):
         + (f" ({payload['deployment_type']})"
            if payload.get("deployment_type") else "")]
     daemon = payload["daemon"]
+    scheduler = payload["scheduler"]
     current = ", ".join(daemon["current_collection"]) or "none"
     lines.extend((
         f"Daemon: {daemon['status']}",
@@ -385,6 +404,17 @@ def render_status(payload):
         f"{daemon.get('last_successful_collection') or 'Never'}",
         f"  Current collection: {current}",
         f"  Uptime: {daemon['uptime_seconds']} seconds",
+        f"Scheduler: {scheduler['lifecycle_state']}",
+        "  Initial discovery: "
+        f"{scheduler['initial_discovery']['outcome']}",
+        "  Initial collection: "
+        f"{scheduler['initial_collection']['outcome']}",
+        "  Last discovery success: "
+        f"{scheduler.get('last_successful_discovery') or 'Never'}",
+        "  Last collection success: "
+        f"{scheduler.get('last_successful_collection') or 'Never'}",
+        "  Last skip reason: "
+        f"{scheduler.get('last_skip_reason') or 'none'}",
         "Connectors:",
     ))
     for value in payload["connectors"]:
@@ -402,4 +432,12 @@ def render_status(payload):
     lines.append("Latest PipelineRun: " + (
         f"{latest['run_id']} ({latest['status']})"
         if latest else "Never Run"))
+    notifications = payload["notifications"]
+    lines.extend((
+        f"Active notifications: {notifications['active_count']}",
+        "Highest active severity: "
+        f"{notifications['highest_active_severity'] or 'none'}",
+        "Failed notification deliveries: "
+        f"{notifications['failed_delivery_count']}",
+    ))
     return "\n".join(lines)

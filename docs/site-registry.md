@@ -23,6 +23,34 @@ IDs are explicit and stable. Changing an alias does not change identity. Optiona
 `timezone`, `region`, `address`, and `notes` metadata is preserved without being
 required.
 
+Tracked registries contain only anonymised defaults. For a legacy/root
+deployment, create a complete local replacement and select it through the
+existing Compose path:
+
+```sh
+cp config/sites.yml config/sites.local.yml
+# Edit display_name and aliases in config/sites.local.yml.
+# Set ITP_SITES_CONFIG=./config/sites.local.yml in the ignored .env.
+```
+
+`config/*.local.yml` is ignored by Git. Do not add customer display names or
+aliases to tracked examples.
+
+Profiles use the same convention:
+
+```sh
+cp profiles/<profile>/sites.yml profiles/<profile>/sites.local.yml
+# Edit only the ignored sites.local.yml.
+./itp profile validate <profile>
+```
+
+Profile activation automatically selects `sites.local.yml` when it exists next
+to the tracked `sites.yml`. The selected file is exposed as
+`ITP_SITES_CONFIG` and mounted as the single active registry. This is a full
+replacement, not a merge, so resolution is deterministic and customer aliases
+cannot leak from one profile into another. Demo mode explicitly uses the
+tracked anonymised registry under its isolated runtime.
+
 ## Resolution strategy
 
 Resolution normalizes Unicode, case, whitespace, apostrophes, common punctuation,
@@ -65,3 +93,22 @@ Future adapters continue emitting their original site value. They must not embed
 alias logic. Add new canonical sites and exact aliases to `config/sites.yml`, then
 restart the collector and regenerate state. This keeps collector behavior
 independent from estate naming policy.
+
+For deployment-specific metadata, edit the ignored local registry instead of
+the tracked default. Regenerate every projection after changing it:
+
+```sh
+docker compose -p itp-<profile> exec collector \
+  python -m collectors --profile <profile> infrastructure generate
+./itp profile operations <profile>
+./itp profile services <profile>
+./itp profile wallboard <profile>
+./itp profile dashboards <profile>
+./itp profile restart <profile>
+```
+
+For legacy/root mode, run `docker compose exec collector python -m collectors`
+with `infrastructure generate`, `operations generate`, `services generate`,
+`wallboard generate`, and `dashboards generate`, in that order, then run
+`./itp restart`. These commands replace generated files under the selected
+runtime; no telemetry database reset is required.

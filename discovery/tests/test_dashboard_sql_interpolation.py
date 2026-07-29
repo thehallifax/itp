@@ -66,8 +66,8 @@ def test_text_variables_are_sqlstring_formatted_without_manual_quotes() -> None:
 
 def test_apostrophe_sites_render_as_valid_sql_literals() -> None:
     sites = (
-        "St Brigid's College, Lesmurdie",
-        "St Brigid's College, Lesmurdie P2P",
+        "O'Brien's Campus",
+        "O'Brien's Campus P2P",
     )
 
     for path in DASHBOARDS:
@@ -81,7 +81,7 @@ def test_apostrophe_sites_render_as_valid_sql_literals() -> None:
             for query in site_queries:
                 rendered = query.replace("${site:sqlstring}", rendered_literal)
                 assert "${site" not in rendered
-                assert "St Brigid''s College" in rendered
+                assert "O''Brien''s Campus" in rendered
 
 
 def test_all_value_wildcards_keep_like_semantics() -> None:

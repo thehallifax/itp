@@ -51,7 +51,8 @@ def test_dashboard_folders_and_uids_are_fixed():
         "itp-infrastructure-overview", "mist-infrastructure-overview",
         "fortigate-infrastructure-overview", "paloalto-operational-overview",
         "itp-operations-wallboard", "itp-collector-health",
-        "itp-virtualisation-overview",
+        "itp-virtualisation-overview", "itp-snmp-overview",
+        "papercut-operational-overview",
     }
 
 
@@ -65,17 +66,21 @@ def test_flightsql_datasource_is_provisioned_with_dashboard_uid():
     assert datasource["type"] == "influxdb"
     assert datasource["jsonData"] == {
         "version": "SQL",
-        "dbName": "local_system",
+        "dbName": "${INFLUXDB_BUCKET}",
         "httpMode": "POST",
         "insecureGrpc": True,
     }
     assert datasource["secureJsonData"]["token"] == "${INFLUXDB_TOKEN}"
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    assert "INFLUXDB_BUCKET=${INFLUXDB_BUCKET}" in \
+        compose["services"]["grafana"]["environment"]
 
 
 def test_deployment_scripts_and_templates_exist():
     for path in ("scripts/install.sh", "scripts/update.sh", "scripts/Install-ITP.ps1",
                  "scripts/Update-ITP.ps1", ".env.example", "discovery/config.example.yml",
-                 "secrets/mist.env.example", "secrets/fortigate.env.example"):
+                 "secrets/mist.env.example", "secrets/fortigate.env.example",
+                 "secrets/papercut.env.example", "secrets/aruba.env.example"):
         assert (ROOT / path).is_file()
     gitignore = (ROOT / ".gitignore").read_text().splitlines()
     assert ".env" in gitignore and "discovery/config.yml" in gitignore

@@ -1,5 +1,56 @@
 schema_version: 1
 connectors:
+  - id: aruba
+    display_name: HPE Aruba Networking Central
+    vendor: HPE Aruba Networking
+    domains:
+      - switching
+      - wireless
+    deployment_types:
+      - Business
+      - Enterprise
+      - Home Lab
+      - MSP
+      - School
+    implementation_status: supported
+    guided_setup: false
+    configuration_mode: manual
+    credential_fields:
+      - id: client_id
+        env: ARUBA_CENTRAL_CLIENT_ID
+        required: true
+        secret: false
+      - id: client_secret
+        env: ARUBA_CENTRAL_CLIENT_SECRET
+        required: true
+        secret: true
+      - id: refresh_token
+        env: ARUBA_CENTRAL_REFRESH_TOKEN
+        required: false
+        secret: true
+      - id: access_token
+        env: ARUBA_CENTRAL_ACCESS_TOKEN
+        required: false
+        secret: true
+    configuration_fields:
+      - collectors.aruba.base_url
+      - collectors.aruba.site
+    secret_handling:
+      templates:
+        - secrets/aruba.env.example
+      scope: root-or-profile
+    capabilities:
+      validation: true
+      doctor: false
+      status: true
+      demo_fixture: false
+    documentation: docs/collectors/aruba-central.md
+    implementation: collectors/aruba/collector.py:ArubaCentralCollector
+    dashboard_manifest: collectors/aruba/dashboard-manifest.yml
+    aliases:
+      - aruba-central
+      - hpe-aruba-central
+    notes: Read-only Aruba Central REST collector with OAuth renewal; guided setup is unavailable.
   - id: fortigate
     display_name: FortiGate
     vendor: Fortinet
@@ -18,6 +69,7 @@ connectors:
     capabilities: {validation: true, doctor: false, status: true, demo_fixture: false}
     documentation: collectors/fortigate/README.md
     implementation: collectors/fortigate/collector.py:FortiGateCollector
+    dashboard_manifest: collectors/fortigate/dashboard-manifest.yml
     aliases: [fortinet, fortios]
     notes: Native read-only API collector; credential onboarding remains manual.
 
@@ -58,6 +110,7 @@ connectors:
     capabilities: {validation: true, doctor: false, status: true, demo_fixture: false}
     documentation: collectors/mist/README.md
     implementation: collectors/mist/collector.py:MistCollector
+    dashboard_manifest: collectors/mist/dashboard-manifest.yml
     aliases: [juniper-mist]
     notes: Native read-only cloud API collector; regional endpoint selection is manual.
 
@@ -78,8 +131,30 @@ connectors:
     capabilities: {validation: true, doctor: false, status: true, demo_fixture: false}
     documentation: docs/collectors/paloalto.md
     implementation: collectors/paloalto/collector.py:PaloAltoCollector
+    dashboard_manifest: collectors/paloalto/dashboard-manifest.yml
     aliases: [panos, pan-os, palo-alto]
     notes: Native read-only PAN-OS XML API collector; guided setup is unavailable.
+
+  - id: papercut
+    display_name: PaperCut MF
+    vendor: PaperCut
+    domains: [printing, servers]
+    deployment_types: [Business, Enterprise, Home Lab, MSP, School]
+    implementation_status: supported
+    guided_setup: false
+    configuration_mode: manual
+    credential_fields:
+      - {id: authorization_key, env: PAPERCUT_AUTHORIZATION_KEY, env_aliases: [PAPERCUT_AUTHORIZATION], required: false, secret: true}
+    configuration_fields: [collectors.papercut.base_url, collectors.papercut.site]
+    secret_handling:
+      templates: [secrets/papercut.env.example]
+      scope: root-or-profile
+    capabilities: {validation: true, doctor: false, status: true, demo_fixture: false}
+    documentation: collectors/papercut/README.md
+    implementation: collectors/papercut/collector.py:PaperCutCollector
+    dashboard_manifest: collectors/papercut/dashboard-manifest.yml
+    aliases: [papercut-mf, pc-mf]
+    notes: Read-only PaperCut MF System Health JSON API collector; guided setup remains manual.
 
   - id: proxmox
     display_name: Proxmox VE
@@ -119,6 +194,7 @@ connectors:
     capabilities: {validation: false, doctor: false, status: true, demo_fixture: false}
     documentation: docs/collectors/snmp.md
     implementation: collectors/snmp/collector.py:SNMPCollector
+    dashboard_manifest: collectors/snmp/dashboard-manifest.yml
     aliases: [snmp-infrastructure, telegraf-snmp]
     notes: Generic discovery and Telegraf generation; device-specific setup remains manual.
 

@@ -9,6 +9,7 @@ from collectors.base import BaseCollector
 from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
+from collectors.configuration import parse_bool_default, parse_int
 from .client import FortiGateClient
 from .models import FortiGateConfig, FortiGateError
 from .normalizer import normalize
@@ -18,15 +19,6 @@ LOG = logging.getLogger("collector.fortigate")
 
 def _utcnow():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _bool(value, default=True):
-    if isinstance(value, bool): return value
-    if value in (None, ""): return default
-    text = str(value).strip().lower()
-    if text in ("true", "1", "yes", "on"): return True
-    if text in ("false", "0", "no", "off"): return False
-    raise ValueError("FORTIGATE_VERIFY_TLS must be true or false")
 
 
 def _legacy_points(record, points):
@@ -73,11 +65,14 @@ class FortiGateCollector(BaseCollector):
             base_url=settings.get("host", ""), api_token=settings.get("api_token", ""),
             customer=settings.get("customer") or config.get("customer", "unknown"),
             site=settings.get("site") or config.get("site", "unknown"),
-            verify_tls=_bool(settings.get("verify_tls", True)),
+            verify_tls=parse_bool_default(settings.get("verify_tls"), True),
             timeout_seconds=float(settings.get("timeout_seconds", 20)),
-            discovery_interval_seconds=int(settings.get("discovery_interval_seconds", 21600)),
-            collection_interval_seconds=int(settings.get("collection_interval_seconds", 60)),
-            max_retries=int(settings.get("max_retries", 2)))
+            discovery_interval_seconds=parse_int(
+                settings.get("discovery_interval_seconds", 21600), minimum=1),
+            collection_interval_seconds=parse_int(
+                settings.get("collection_interval_seconds", 60), minimum=1),
+            max_retries=parse_int(
+                settings.get("max_retries", 2), minimum=0, maximum=10))
         if not self.settings.base_url or not self.settings.api_token:
             raise ValueError("FORTIGATE_HOST and FORTIGATE_API_TOKEN are required")
         self.discovery_interval = self.settings.discovery_interval_seconds
@@ -86,7 +81,7 @@ class FortiGateCollector(BaseCollector):
         self.client = client or FortiGateClient(self.settings.base_url, self.settings.api_token,
             self.settings.timeout_seconds, verify_tls=self.settings.verify_tls,
             max_retries=self.settings.max_retries)
-        self.writer = writer or InfluxWriter()
+        self.writer = writer or InfluxWriter.from_config(config)
 
     async def _snapshot(self):
         results = {"system": (await self.client.endpoint("system")).data}

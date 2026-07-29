@@ -43,6 +43,7 @@ def test_grouping_and_generated_agents(tmp_path):
     switch = (tmp_path / "discovered-switches.conf").read_text()
     assert '"udp://192.0.2.1:161"' in printer and '"udp://192.0.2.2:161"' in printer
     assert 'agent_host_tag = "device_ip"' in printer
+    assert 'metric.tags["device_id"] = "snmp:" + address' in printer
     assert 'name = "printer_supplies"' in printer
     assert 'name = "network_interfaces"' in switch
 

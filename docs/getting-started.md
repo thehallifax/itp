@@ -1,5 +1,13 @@
 # Infrastructure Telemetry Platform
 
+After enabling collectors, inspect deterministic support and collection state
+with `./itp profile capabilities <profile>`.
+
+Choose a profile deployment mode before startup. Use `standalone` for a complete
+site-local stack, or the explicit `cluster_member` contract when Grafana and
+InfluxDB are shared. See [Deployment modes](deployment-modes.md) and
+[Canonical identity](canonical-identity.md).
+
 ITP gives an organisation one operational view of its infrastructure: what is
 working, what needs attention and which locations are affected. It collects
 facts from supported systems and applies fixed, explainable health rules.
@@ -10,7 +18,9 @@ A **deployment profile** is one customer or organisation boundary. A **site** is
 a physical campus, office or data centre inside that profile. The **estate** is
 all enabled sites belonging to that one profile.
 
-- Methodist Ladies' College (MLC) is a single-site profile.
+- MLC Reference Deployment (`mlc`) is the canonical single-site baseline.
+  Its tracked site metadata is anonymised; production display names come from
+  the ignored `profiles/mlc/sites.local.yml` override.
 - A school group can use one profile containing a head office and several schools.
 - A managed service provider uses separate profiles for separate customers.
 

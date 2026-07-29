@@ -44,7 +44,7 @@ class MistCollector(BaseCollector):
         self.inventory = InventoryManager(inventory_path, config.get("inventory"))
         self.client = client or MistClient(self.settings.base_url, self.settings.organization_id,
                                             self.settings.api_token, self.settings.timeout_seconds)
-        self.writer = writer or InfluxWriter()
+        self.writer = writer or InfluxWriter.from_config(config)
 
     @staticmethod
     def _stat_key(value):

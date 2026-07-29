@@ -10,8 +10,10 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -29,7 +31,9 @@ from collectors.vmware.client import VMwareClient
 from collectors.proxmox.client import ProxmoxClient
 from collectors.hyperv.runner import LocalPowerShellRunner
 from collectors.writer import InfluxWriter
+from collectors.file_permissions import restrict_owner_access
 from collectors.config import load_config
+from collectors.configuration import ConfigurationResolver
 from collectors.connector_registry import ConnectorMetadataRegistry
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
 from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
@@ -39,6 +43,11 @@ from analysis.doctor import (
 from analysis.operator import (
     DaemonAlreadyRunningError, OperatorCollectEngine, OperatorDaemon,
     OperatorStatusEngine, render_collect, render_status, start_background)
+from analysis.notifications import (
+    NotificationChannelRegistry, NotificationEngine, NotificationStore)
+from analysis.deployment import (
+    DeploymentError, DockerCompose, Provisioner, StackLifecycle)
+from analysis.demo import DemoEngine
 
 
 def load_root_env():
@@ -57,14 +66,24 @@ def load_root_env():
 
 
 def profile(value, *, secrets=True):
+    explicit = set(os.environ)
     load_root_env()
     result = DeploymentProfile.load(value, ROOT)
-    result.activate(load_secrets=secrets)
+    result.activate(
+        load_secrets=secrets, protected_environment=explicit)
     return result
 
 
 def describe(value):
     print(f"Profile: {value.id} ({value.name})")
+    print(f"Customer: {value.customer_id}")
+    sites = SiteRegistry.load(value.paths.sites)
+    if len(sites.sites) == 1:
+        site = sites.sites[0]
+        print(f"Site: {site.site_id} ({site.display_name})")
+    else:
+        print(f"Sites: {len(sites.sites)} canonical sites")
+    print(f"Deployment mode: {value.deployment_mode}")
     print(f"Configuration: {value.paths.discovery}")
     print(f"Sites: {value.paths.sites}")
     print(f"Secrets: {value.paths.secrets}")
@@ -75,7 +94,30 @@ def describe(value):
 def compose(value, *arguments, capture=False):
     environment = {**os.environ, **value.env()}
     return subprocess.run(["docker", "compose", *arguments], cwd=ROOT, env=environment,
-                          check=True, text=True, capture_output=capture)
+                          check=True, text=True, encoding="utf-8",
+                          errors="replace", capture_output=capture)
+
+
+def generate_profile_dashboards(value):
+    """Materialize managed folders before Grafana starts watching them."""
+    config = load_config(value.paths.discovery)
+    raw_config = yaml.safe_load(value.paths.discovery.read_text()) or {}
+    legacy_sites = []
+    for label, settings in [
+            ("profile", raw_config),
+            *((name, settings) for name, settings in
+              (raw_config.get("collectors") or {}).items()
+              if isinstance(settings, dict) and settings.get("enabled"))]:
+        configured_site = str(settings.get("site") or "")
+        if configured_site and not configured_site.startswith("site:"):
+            legacy_sites.append(f"{label}={configured_site}")
+    if legacy_sites:
+        print("[WARN] Identity compatibility: legacy site aliases will be "
+              "normalised; update " + ", ".join(legacy_sites))
+    return DashboardRegistry(
+        ROOT, config, value.paths.managed_dashboards,
+        value.paths.dashboard_runtime / "provisioning/dashboards.yml",
+        registry_validation_mode="runtime").generate()
 
 
 def port_available(port):
@@ -104,7 +146,7 @@ def required_secrets(config):
     return sorted(required)
 
 
-def validate(value):
+def validate(value, *, process_environment=None):
     describe(value)
     checks = []
 
@@ -122,7 +164,9 @@ def validate(value):
         "invalid_service_dependency", "unknown_dependency_site",
     }
     findings = [item for item in sites.validation() if item["type"] in blocking_types]
-    check("Manifest", True, f"deployment_id={value.deployment_id} timezone={value.timezone}")
+    check("Manifest", True, f"deployment_id={value.deployment_id} "
+          f"customer_id={value.customer_id} mode={value.deployment_mode} "
+          f"timezone={value.timezone}")
     check("Configuration", config.get("schema_version") == 1, "schema version 1")
     check("Sites", bool(sites.sites) and not findings,
           f"{len(sites.sites)} canonical site(s), model={sites.deployment_model}, "
@@ -136,6 +180,11 @@ def validate(value):
     enabled = sorted(name for name, settings in config.get("collectors", {}).items()
                      if isinstance(settings, dict) and settings.get("enabled"))
     check("Collectors", bool(enabled), ", ".join(enabled) or "none enabled")
+    resolution = ConfigurationResolver.profile(
+        value, ConnectorMetadataRegistry.load(ROOT),
+        process_environment=process_environment or {}).evaluate()
+    check("Connector configuration", resolution["ready"],
+          "ready" if resolution["ready"] else "required settings missing")
     missing, placeholders = [], []
     for name in required_secrets(config):
         raw = os.getenv(name, "").strip()
@@ -162,10 +211,17 @@ def validate(value):
     except (OSError, subprocess.CalledProcessError) as exc:
         compose_valid, compose_detail = False, str(exc)
     check("Compose", compose_valid, compose_detail)
-    occupied = [str(port) for port in (value.grafana_port, value.influxdb_port)
-                if not port_available(port)]
-    check("Ports", not occupied or _project_running(value),
-          "available" if not occupied else "in use: " + ", ".join(occupied))
+    if value.deployment_mode == "standalone":
+        occupied = [str(port) for port in
+                    (value.grafana_port, value.influxdb_port)
+                    if not port_available(port)]
+        check("Ports", not occupied or _project_running(value),
+              "available" if not occupied else "in use: " + ", ".join(occupied))
+    else:
+        check("Shared services", bool(
+            value.shared_grafana_url and value.shared_influxdb_url),
+            f"cluster={value.cluster_id} grafana={value.shared_grafana_url} "
+            f"influxdb={value.shared_influxdb_url}")
     if not all(checks):
         raise ProfileError(f"profile {value.id} validation failed")
     print(f"Status: valid ({len(checks)} checks)")
@@ -176,6 +232,60 @@ def _project_running(value):
         return bool(compose(value, "ps", "-q", capture=True).stdout.strip())
     except Exception:
         return False
+
+
+def _port_owner(port):
+    """Return the Compose project/container publishing a local port."""
+    try:
+        output = subprocess.run([
+            "docker", "ps", "--format",
+            '{{.Names}}\\t{{.Ports}}\\t{{.Label "com.docker.compose.project"}}'],
+            check=True, text=True, capture_output=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    marker = f":{port}->"
+    for line in output.splitlines():
+        name, ports, *project = line.split("\t")
+        if marker in ports:
+            return {"container": name, "project": project[0] if project else ""}
+    return None
+
+
+def preflight_start(value):
+    value.paths.create_runtime()
+    if value.deployment_mode == "cluster_member":
+        for label, endpoint in (
+                ("Grafana", value.shared_grafana_url),
+                ("InfluxDB", value.shared_influxdb_url)):
+            try:
+                with urllib.request.urlopen(endpoint, timeout=3):
+                    pass
+            except urllib.error.HTTPError as exc:
+                if exc.code < 500:
+                    continue
+                raise ProfileError(
+                    f"cluster-member profile {value.id} cannot reach shared "
+                    f"{label} at {endpoint}") from exc
+            except OSError as exc:
+                raise ProfileError(
+                    f"cluster-member profile {value.id} cannot reach shared "
+                    f"{label} at {endpoint}") from exc
+        return
+    if _project_running(value):
+        return
+    for label, port in (
+            ("Grafana", value.grafana_port),
+            ("InfluxDB", value.influxdb_port)):
+        if port_available(port):
+            continue
+        owner = _port_owner(port) or {}
+        detail = owner.get("project") or owner.get("container") or \
+            "an unknown local process"
+        raise ProfileError(
+            f"Cannot start standalone profile {value.id}. {label} port "
+            f"{port} is already used by {detail}. Stop the conflicting "
+            "deployment, configure alternate standalone ports, or use "
+            "cluster-member deployment mode.")
 
 
 def status(value):
@@ -192,7 +302,7 @@ def status(value):
                      if isinstance(settings, dict) and settings.get("enabled"))
     print("Enabled collectors: " + (", ".join(enabled) or "none"))
     sites = SiteRegistry.load(value.paths.sites)
-    print(f"Deployment model: {sites.deployment_model}")
+    print(f"Deployment model: {value.deployment_mode}")
     print(f"Enabled sites: {len(sites.sites)}")
     assets_path = value.paths.inventory / "assets.json"
     try:
@@ -212,8 +322,16 @@ def status(value):
     except Exception:
         count = 0
     print(f"Managed dashboards: {count}")
-    print(f"InfluxDB: http://localhost:{value.influxdb_port}")
-    print(f"Grafana: http://localhost:{value.grafana_port}")
+    if value.deployment_mode == "cluster_member":
+        print(f"Shared cluster: {value.cluster_id}")
+        print(f"InfluxDB: {value.shared_influxdb_url}")
+        print(f"Grafana: {value.shared_grafana_url}")
+    elif containers:
+        print(f"InfluxDB: http://localhost:{value.influxdb_port}")
+        print(f"Grafana: http://localhost:{value.grafana_port}")
+    else:
+        print("InfluxDB: stopped")
+        print("Grafana: stopped")
 
 
 def sites_status(value):
@@ -255,17 +373,16 @@ def virtualisation(value, *, fixture=None, provider_name=None):
         contracts = []
         for endpoint in endpoints:
             if selected == "vmware":
-                username = os.getenv(endpoint.get("username_env", "VMWARE_USERNAME"), "")
-                password = os.getenv(endpoint.get("password_env", "VMWARE_PASSWORD"), "")
+                username = str(endpoint.get("username") or "")
+                password = str(endpoint.get("password") or "")
                 if not username or not password:
                     raise ProfileError("VMware read-only credentials are unavailable")
                 verify = endpoint.get("ca_bundle") or endpoint.get("verify_tls", True)
                 contract = VMwareClient(endpoint["endpoint"], username, password,
                     verify=verify, timeout=float(endpoint.get("timeout_seconds", 20))).collect()
             elif selected == "proxmox":
-                token_id = os.getenv(endpoint.get("token_id_env", "PROXMOX_TOKEN_ID"), "")
-                token_secret = os.getenv(
-                    endpoint.get("token_secret_env", "PROXMOX_TOKEN_SECRET"), "")
+                token_id = str(endpoint.get("token_id") or "")
+                token_secret = str(endpoint.get("token_secret") or "")
                 if not token_id or not token_secret:
                     raise ProfileError("Proxmox read-only API token is unavailable")
                 verify = endpoint.get("ca_bundle") or endpoint.get("verify_tls", True)
@@ -291,7 +408,8 @@ def virtualisation(value, *, fixture=None, provider_name=None):
         result = engine.run_fixture(selected)
     else:
         result = render_virtualisation(output, engine.evaluate(contracts))
-        written = InfluxWriter().write(virtualisation_points(result))
+        written = InfluxWriter.from_config(config).write(
+            virtualisation_points(result))
         print(f"Telemetry points written: {written}")
     print(f"Profile: {value.id}")
     print(f"Provider: {selected}")
@@ -340,13 +458,15 @@ def init_secrets(value):
         if target.exists():
             continue
         shutil.copyfile(source, target)
-        target.chmod(0o600)
+        restrict_owner_access(target)
         created.append(target)
     print("Created: " + (", ".join(str(path) for path in created) or "none; existing files preserved"))
 
 
 def bootstrap_influx(value):
     """Create the first profile-local InfluxDB admin token without exposing it."""
+    if value.deployment_mode != "standalone":
+        return
     token_file = value.paths.secrets / "influxdb.env"
     if token_file.exists() and any(line.startswith("INFLUXDB_TOKEN=") and line.split("=", 1)[1].strip()
                                    for line in token_file.read_text().splitlines()):
@@ -361,7 +481,8 @@ def bootstrap_influx(value):
         "--service-ports", "--no-deps", "influxdb3-core",
         "influxdb3", "serve", "--node-id", os.getenv("INFLUXDB_NODE_ID", f"{value.id}-node"),
         "--object-store=file", "--data-dir=/var/lib/influxdb3"],
-        cwd=ROOT, env=environment, check=True, text=True, stdout=subprocess.DEVNULL)
+        cwd=ROOT, env=environment, check=True, text=True, encoding="utf-8",
+        errors="replace", stdout=subprocess.DEVNULL)
     try:
         for _ in range(60):
             with socket.socket() as connection:
@@ -454,6 +575,20 @@ def create(profile_id):
     print(f"Next: ./itp profile validate {profile_id}")
 
 
+def run_demo(seed=1001, days=30):
+    load_root_env()
+    engine = DemoEngine(ROOT, seed=seed, days=days)
+    os.environ.update(engine.environment())
+    config, _ = engine.prepare()
+    compose_runtime = DockerCompose(ROOT, environment=engine.environment)
+    engine.lifecycle = StackLifecycle(
+        compose_runtime,
+        Provisioner(
+            ROOT, config, engine.runtime, compose_runtime,
+            env_path=engine.env_path))
+    return engine.run()
+
+
 def main():
     parser = argparse.ArgumentParser(prog="./itp", description=__doc__)
     commands = parser.add_subparsers(dest="group", required=True)
@@ -487,6 +622,27 @@ def main():
     daemon_mode = daemon.add_mutually_exclusive_group()
     daemon_mode.add_argument("--foreground", action="store_true")
     daemon_mode.add_argument("--once", action="store_true")
+    for lifecycle_name in ("start", "stop", "restart"):
+        lifecycle = commands.add_parser(
+            lifecycle_name, help=f"{lifecycle_name} the root Compose stack")
+        lifecycle.add_argument("--json", action="store_true")
+    logs_root = commands.add_parser("logs", help="show root stack logs")
+    logs_root.add_argument("--follow", action="store_true")
+    logs_root.add_argument("--service")
+    logs_root.add_argument("--tail", type=int, default=200)
+    notifications = commands.add_parser(
+        "notifications", help="evaluate and inspect operational notifications")
+    notification_actions = notifications.add_subparsers(
+        dest="notification_action", required=True)
+    for name in ("evaluate", "list", "test"):
+        item = notification_actions.add_parser(name)
+        item.add_argument("--json", action="store_true")
+    notification_inspect = notification_actions.add_parser("inspect")
+    notification_inspect.add_argument("notification_id")
+    notification_inspect.add_argument("--json", action="store_true")
+    notification_ack = notification_actions.add_parser("acknowledge")
+    notification_ack.add_argument("notification_id")
+    notification_ack.add_argument("--json", action="store_true")
     setup_parser = commands.add_parser(
         "setup", help="prepare a new root Docker Compose deployment")
     setup_parser.add_argument("--non-interactive", action="store_true")
@@ -495,9 +651,24 @@ def main():
                               choices=("Home Lab", "School", "Business",
                                        "MSP", "Enterprise"))
     setup_parser.add_argument("--grafana-port", type=int)
+    setup_parser.add_argument("--influxdb-port", type=int)
+    setup_parser.add_argument("--timezone")
+    setup_parser.add_argument("--collection-interval")
+    setup_parser.add_argument("--demo", action="store_true", default=None)
     setup_parser.add_argument("--start", action="store_true", default=None)
     setup_parser.add_argument("--force", action="store_true")
     setup_parser.add_argument("--health-timeout", type=int, default=180)
+    demo_parser = commands.add_parser(
+        "demo", help="start and seed an isolated demonstration environment")
+    demo_parser.add_argument("--seed", type=int, default=1001)
+    demo_parser.add_argument("--days", type=int, default=30)
+    demo_parser.add_argument("--json", action="store_true")
+    config_parser = commands.add_parser(
+        "config", help="validate deterministic connector configuration")
+    config_actions = config_parser.add_subparsers(
+        dest="config_action", required=True)
+    config_validate = config_actions.add_parser("validate")
+    config_validate.add_argument("--json", action="store_true")
     profile_parser = commands.add_parser("profile")
     actions = profile_parser.add_subparsers(dest="action", required=True)
     actions.add_parser("list")
@@ -505,7 +676,7 @@ def main():
     for name in ("validate", "status", "sites", "virtualisation-status",
                  "up", "down", "restart", "logs",
                  "init-secrets", "dashboards", "operations", "services",
-                 "wallboard", "shell"):
+                 "wallboard", "capabilities", "shell"):
         item = actions.add_parser(name); item.add_argument("profile")
     virt = actions.add_parser("virtualisation")
     virt.add_argument("profile")
@@ -517,14 +688,86 @@ def main():
         parser.print_help()
         return
     if args.group == "setup":
-        BootstrapWizard(ROOT).run(SetupOptions(
+        def setup_provision():
+            load_root_env()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                setup_config = load_config(ROOT / "discovery/config.yml")
+            runtime = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
+            compose_runtime = DockerCompose(ROOT)
+            return Provisioner(
+                ROOT, setup_config, runtime, compose_runtime).provision()
+
+        def setup_start():
+            load_root_env()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                setup_config = load_config(ROOT / "discovery/config.yml")
+            runtime = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
+            compose_runtime = DockerCompose(ROOT)
+            return StackLifecycle(
+                compose_runtime,
+                Provisioner(ROOT, setup_config, runtime, compose_runtime)).start()
+
+        BootstrapWizard(
+            ROOT, provision_fn=setup_provision, start_fn=setup_start,
+            demo_fn=run_demo).run(SetupOptions(
             non_interactive=args.non_interactive,
             deployment_name=args.deployment_name,
             deployment_type=args.deployment_type,
             grafana_port=args.grafana_port,
+            influxdb_port=args.influxdb_port,
+            timezone=args.timezone,
+            collection_interval=args.collection_interval,
+            demo=args.demo,
             start=args.start,
             force=args.force,
             health_timeout=args.health_timeout))
+        return
+    if args.group == "demo":
+        result = run_demo(args.seed, args.days)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print("ITP demo environment is ready.")
+            print(f"Telemetry: {result['points_written']} points over "
+                  f"{result['days']} days")
+            print(f"Pipeline runs: {result['pipeline_runs']}")
+            print(f"Notifications: {result['notifications']}")
+            print("Grafana: http://localhost:3300")
+            print("Runtime: runtime/demo")
+        return
+    if args.group == "config":
+        explicit = dict(os.environ)
+        registry = ConnectorMetadataRegistry.load(ROOT)
+        result = ConfigurationResolver.root(
+            ROOT, registry, process_environment=explicit).evaluate()
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print("Configuration: " + (
+                "ready" if result["ready"] else "not ready"))
+            for connector in result["connectors"]:
+                if not connector["enabled"]:
+                    continue
+                print(
+                    f"[{'PASS' if connector['ready'] else 'FAIL'}] "
+                    f"{connector['display_name']}: enabled")
+                for setting in connector["settings"]:
+                    alias = (
+                        f" deprecated={setting['deprecated_alias']}"
+                        if setting["deprecated_alias"] else "")
+                    print(
+                        f"  {setting['name']}: {setting['status']} "
+                        f"source={setting['source']} "
+                        f"secret={'yes' if setting['secret'] else 'no'}"
+                        f"{alias}")
+                print(
+                    f"  TLS verification: "
+                    f"{connector['tls_verification']}")
+                print(f"  Site: {connector['site'] or 'not configured'}")
+        if not result["ready"]:
+            raise SystemExit(1)
         return
     if args.group == "doctor":
         report = DoctorEngine(
@@ -534,7 +777,9 @@ def main():
               else render_human(report, args.strict))
         raise SystemExit(report.exit_code(args.strict))
 
-    if args.group in {"collect", "status", "daemon"}:
+    if args.group in {
+            "collect", "status", "daemon", "notifications",
+            "start", "stop", "restart", "logs"}:
         load_root_env()
         # These commands intentionally operate on the backwards-compatible
         # root deployment, so its profile migration warning is not actionable.
@@ -542,7 +787,89 @@ def main():
             warnings.simplefilter("ignore", DeprecationWarning)
             config = load_config(ROOT / "discovery/config.yml")
         runtime_dir = Path(os.getenv("ITP_RUNTIME_DIR", ROOT / "runtime"))
-        if args.group == "collect":
+        compose_runtime = DockerCompose(ROOT)
+        lifecycle = StackLifecycle(
+            compose_runtime,
+            Provisioner(ROOT, config, runtime_dir, compose_runtime))
+        if args.group in {"start", "stop", "restart"}:
+            result = getattr(lifecycle, args.group)()
+            if args.json:
+                print(json.dumps(result, indent=2, sort_keys=True))
+            else:
+                print(
+                    f"Stack {args.group}: "
+                    f"{result['stack']['compose_project_state']}")
+                for service in result["stack"]["services"]:
+                    print(
+                        f"  {service['service']}: {service['state']}"
+                        + (f"/{service['health']}" if service["health"] else ""))
+        elif args.group == "logs":
+            lifecycle.logs(
+                follow=args.follow, service=args.service, tail=args.tail)
+        elif args.group == "notifications":
+            notification_config = config.get("notifications") or {}
+            channel_registry = NotificationChannelRegistry(
+                output=lambda value: print(value, file=sys.stderr))
+            engine = NotificationEngine(
+                runtime_dir, notification_config,
+                channel_registry=channel_registry)
+            store = NotificationStore(runtime_dir)
+            if args.notification_action == "evaluate":
+                status_result = OperatorStatusEngine(
+                    ROOT, config, runtime_dir=runtime_dir).run()
+                doctor_result = DoctorEngine(ROOT).run()
+                result = engine.evaluate(status_result, doctor_result)
+            elif args.notification_action == "test":
+                result = engine.test()
+            elif args.notification_action == "list":
+                state = store.read()
+                result = {
+                    "enabled": engine.enabled,
+                    "active": sorted(
+                        state["active"].values(),
+                        key=lambda value: value["id"]),
+                    "events": state["events"],
+                    "deliveries": state["deliveries"],
+                }
+            elif args.notification_action == "inspect":
+                result = store.find(args.notification_id)
+                if result is None:
+                    raise ValueError(
+                        f"notification not found: {args.notification_id}")
+            else:
+                result = store.acknowledge(
+                    args.notification_id,
+                    datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+                if result is None:
+                    raise ValueError(
+                        f"notification not found: {args.notification_id}")
+            if args.json:
+                print(json.dumps(result, indent=2, sort_keys=True))
+            elif args.notification_action == "list":
+                print(
+                    f"Notifications: {len(result['active'])} active, "
+                    f"{len(result['events'])} total")
+                for value in result["active"]:
+                    print(
+                        f"[{value['severity'].upper()}] {value['id']} "
+                        f"{value['title']} occurrences={value['occurrence_count']}")
+            elif args.notification_action == "evaluate":
+                print(
+                    f"Notification evaluation: {result['active_count']} active, "
+                    f"{len(result['new_events'])} new, "
+                    f"{len(result['recoveries'])} recovered")
+            elif args.notification_action == "test":
+                print(
+                    "Test notification: "
+                    f"{len(result['deliveries'])} delivery attempt(s)")
+            else:
+                print(
+                    f"Notification: {result['id']}\n"
+                    f"Severity: {result['severity']}\n"
+                    f"Title: {result['title']}\n"
+                    f"Summary: {result['summary']}\n"
+                    f"Acknowledged: {result.get('acknowledged', False)}")
+        elif args.group == "collect":
             result = OperatorCollectEngine(
                 ROOT, config, runtime_dir=runtime_dir).run()
             print(json.dumps(result, indent=2, sort_keys=True)
@@ -552,8 +879,20 @@ def main():
         elif args.group == "status":
             result = OperatorStatusEngine(
                 ROOT, config, runtime_dir=runtime_dir).run()
+            result["stack"] = lifecycle.status()
+            result["stack"]["daemon"] = result["daemon"]
             print(json.dumps(result, indent=2, sort_keys=True)
-                  if args.json else render_status(result))
+                  if args.json else render_status(result) + "\n"
+                  + f"Stack: {result['stack']['compose_project_state']}\n"
+                  + f"InfluxDB: {result['stack']['influxdb']}\n"
+                  + f"Grafana: {result['stack']['grafana']}\n"
+                  + "Provisioning: "
+                  + result["stack"]["provisioning"]["status"] + "\n"
+                  + "Dashboard packs: "
+                  + (", ".join(
+                      f"{value['id']}@{value['version']}"
+                      for value in result["stack"]["dashboard_packs"])
+                     or "none"))
         elif args.once:
             result = OperatorDaemon(
                 ROOT, config, runtime_dir=runtime_dir).run(once=True)
@@ -617,8 +956,10 @@ def main():
     if args.action == "create":
         create(args.profile)
         return
+    explicit_environment = dict(os.environ)
     value = profile(args.profile)
-    if args.action == "validate": validate(value)
+    if args.action == "validate":
+        validate(value, process_environment=explicit_environment)
     elif args.action == "status": status(value)
     elif args.action == "sites": sites_status(value)
     elif args.action == "virtualisation":
@@ -628,12 +969,30 @@ def main():
     elif args.action in {"up", "down", "restart"}:
         describe(value)
         if args.action == "up":
+            preflight_start(value)
             bootstrap_influx(value)
-            validate(value); compose(value, "up", "-d", "--build")
-        elif args.action == "down": compose(value, "down")
+            validate(value)
+            generate_profile_dashboards(value)
+            if value.deployment_mode == "cluster_member":
+                compose(value, "up", "-d", "--build", "--no-deps",
+                        "collector", "discovery")
+            else:
+                compose(value, "up", "-d", "--build")
+        elif args.action == "down":
+            if value.deployment_mode == "cluster_member":
+                compose(value, "stop", "collector", "discovery")
+            else:
+                compose(value, "down")
         else:
+            preflight_start(value)
             bootstrap_influx(value)
-            validate(value); compose(value, "up", "-d", "--build", "--remove-orphans")
+            validate(value)
+            generate_profile_dashboards(value)
+            if value.deployment_mode == "cluster_member":
+                compose(value, "up", "-d", "--build", "--no-deps",
+                        "--force-recreate", "collector", "discovery")
+            else:
+                compose(value, "up", "-d", "--build", "--remove-orphans")
     elif args.action == "logs":
         compose(value, "logs", "--tail=200", "-f")
     elif args.action == "shell":
@@ -641,7 +1000,8 @@ def main():
     elif args.action == "collect":
         compose(value, "exec", "collector", "python", "-m", "collectors",
                 "--profile", value.id, "collect", args.collector)
-    elif args.action in {"dashboards", "operations", "services", "wallboard"}:
+    elif args.action in {"dashboards", "operations", "services", "wallboard",
+                         "capabilities"}:
         compose(value, "exec", "collector", "python", "-m", "collectors",
                 "--profile", value.id, args.action, "generate")
 
@@ -655,7 +1015,7 @@ if __name__ == "__main__":
     except DoctorFatalError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(3)
-    except (DaemonAlreadyRunningError, ProfileError, SetupError,
+    except (DaemonAlreadyRunningError, DeploymentError, ProfileError, SetupError,
             subprocess.CalledProcessError,
             OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

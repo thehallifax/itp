@@ -14,7 +14,10 @@ from .models import asset_kind, asset_name, health_of, state_of
 from .policy import (finding, infrastructure_health, management_ip_required,
                      observability_health)
 from .renderer import write_state
+from analysis.readiness import (
+    aggregate_readiness, credentials_ready, evaluate_readiness)
 from analysis.sites import SiteRegistry
+from collectors.connector_registry import ConnectorMetadataRegistry
 
 
 def _read(path, fallback):
@@ -37,12 +40,17 @@ class InfrastructureStateEngine:
                  operations_dir="/app/runtime/operations",
                  output_dir="/app/runtime/infrastructure",
                  dashboard_dir="/app/runtime/dashboard", status_freshness_seconds=300,
-                 sites_config="/app/config/sites.yml", sites_output="/app/runtime/sites"):
+                 sites_config="/app/config/sites.yml", sites_output="/app/runtime/sites",
+                 readiness_config=None, platform_running=True,
+                 registry_validation_mode="strict"):
         self.inventory_dir = Path(inventory_dir); self.operations_dir = Path(operations_dir)
         self.output_dir = Path(output_dir); self.dashboard_dir = Path(dashboard_dir)
         self.fusion = FusionEngine(status_freshness_seconds)
         self.site_registry = SiteRegistry.load(sites_config)
         self.sites_output = Path(sites_output)
+        self.readiness_config = readiness_config or {}
+        self.platform_running = bool(platform_running)
+        self.registry_validation_mode = registry_validation_mode
 
     def _canonicalize_sites(self, assets):
         for asset in assets:
@@ -210,6 +218,51 @@ class InfrastructureStateEngine:
             "warnings": len(actionable), "critical": health["critical"],
             "collectors_healthy": sum(value["status"] == "healthy" for value in collectors),
             "collectors_failed": sum(value["status"] == "failed" for value in collectors)}
+        configured_collectors = self.readiness_config.get("collectors") or {}
+        enabled_collectors = sorted(
+            name for name, value in configured_collectors.items()
+            if isinstance(value, dict) and value.get("enabled") is True)
+        if not self.readiness_config:
+            enabled_collectors = sorted(
+                value["collector"] for value in collectors
+                if value.get("collector"))
+        demo = str(self.readiness_config.get("deployment_id") or "").casefold() == "demo"
+        registry = ConnectorMetadataRegistry.load(
+            Path(__file__).resolve().parents[2],
+            validation_mode=self.registry_validation_mode)
+        readiness = evaluate_readiness(
+            enabled_collectors=enabled_collectors,
+            collector_records=collectors,
+            capability_manifest=_read(
+                self.inventory_dir.parent / "capabilities/collectors.json",
+                {}),
+            assets=assets,
+            operations_generated=(
+                self.operations_dir / "operations.json").is_file(),
+            deployment_configured=bool(
+                self.readiness_config.get("deployment_id")
+                or not self.readiness_config),
+            platform_running=self.platform_running,
+            credentials_configured=credentials_ready(
+                self.readiness_config, registry, os.environ)
+                if self.readiness_config else bool(collectors),
+            demo=demo, now=now,
+            stale_seconds=self.fusion.freshness_seconds)
+        if (assets and readiness["infrastructure"]["state"] == "healthy"
+                and infra_health in {"Warning", "Critical"}):
+            readiness["infrastructure"].update({
+                "state": infra_health.casefold(),
+                "reason": "infrastructure_degradation",
+                "display_label": infra_health,
+                "operator_action": "Review active infrastructure findings.",
+            })
+            readiness["overall"] = aggregate_readiness(
+                readiness["observability"], readiness["infrastructure"])
+        summary["infrastructure_health"] = \
+            readiness["infrastructure"]["display_label"]
+        summary["observability_health"] = \
+            readiness["observability"]["display_label"]
+        summary["readiness_state"] = readiness["overall"]["state"]
         return {"generated_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "deployment_id": os.getenv("ITP_DEPLOYMENT_ID", ""),
             "sites": sites, "summary": summary,
@@ -228,7 +281,8 @@ class InfrastructureStateEngine:
             "collectors": collectors, "warnings": findings, "validation_findings": findings,
             "site_validation": site_validation, "site_registry_statistics": site_statistics,
             "fusion_statistics": fusion_statistics, "assets": assets,
-            "reconciliations": reconciliations, "signals": signals}
+            "reconciliations": reconciliations, "signals": signals,
+            "readiness": readiness}
 
     def run(self, now=None):
         state = self.evaluate(now); write_state(self.output_dir, self.dashboard_dir, state)

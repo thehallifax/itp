@@ -34,6 +34,7 @@ configuration, or make network calls.
 | `mist` | Juniper Mist API | switching, wireless | supported | manual |
 | `fortigate` | Fortinet FortiGate API | firewall, internet, switching | supported | manual |
 | `paloalto` | Palo Alto PAN-OS API | firewall, internet | supported | manual |
+| `papercut` | PaperCut MF System Health API | printing, servers | supported | manual |
 | `vmware` | VMware vSphere | virtualisation, servers | profile-only | profile manual |
 | `hyperv` | Microsoft Hyper-V | virtualisation, servers | profile-only | profile manual |
 | `proxmox` | Proxmox VE | virtualisation, servers | profile-only | profile manual |
@@ -42,10 +43,11 @@ No connector currently claims guided setup. OOBE-001 continues to bootstrap the
 platform. OOBE-002 Phase 1 exposes accurate connector metadata; a later phase
 may present only entries explicitly marked `guided_setup: true`.
 
-Printer, UPS, environmental, server, and generic network evidence are currently
-SNMP domains, not separate connector implementations. PaperCut, UniFi, and
-Aruba appear in future-facing service/dashboard concepts but have no collector
-implementation and are therefore not advertised in the registry. Operations
+Printer, UPS, environmental, server, and generic network evidence can be
+collected through SNMP. PaperCut MF also has a dedicated read-only System
+Health connector. UniFi and Aruba appear in future-facing service/dashboard
+concepts but have no connector implementation and are therefore not advertised
+in the registry. Operations
 Engine and Service Health consume canonical outputs downstream; they are not
 external connectors.
 

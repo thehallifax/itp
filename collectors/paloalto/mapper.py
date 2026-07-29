@@ -37,7 +37,7 @@ def map_snapshot(parsed, config, observed_at):
             "available": True if state in {"up", "active"} else
                          False if state in {"down", "inactive"} else None,
             "classification_authoritative": True,
-            "site": config.site, "site_id": config.site,
+            "site": config.site_name or config.site, "site_id": config.site,
             "device": hostname, "observed_at": observed_at,
             "rx_bytes_total": item.get("rx_bytes_total"),
             "tx_bytes_total": item.get("tx_bytes_total"),
@@ -65,7 +65,12 @@ def map_snapshot(parsed, config, observed_at):
                       **(parsed.get("sessions") or {})}}
     record = {"id": identifier, "source": "paloalto", "collector": "paloalto",
         "source_asset_id": system.get("serial") or hostname.lower(),
-        "source_record_id": identifier, "customer": config.customer, "site": config.site,
+        "source_record_id": identifier,
+        "deployment_id": config.deployment_id,
+        "customer_id": config.customer,
+        "customer": config.customer,
+        "site_id": config.site,
+        "site": config.site_name or config.site,
         "hostname": hostname, "display_name": hostname, "management_ip": management_ip,
         "serial_number": system.get("serial"), "model": system.get("model"),
         "vendor": "Palo Alto Networks", "platform": "PAN-OS",
@@ -73,10 +78,14 @@ def map_snapshot(parsed, config, observed_at):
         "firmware_version": system.get("software_version"),
         "online": True, "operational_status": status,
         "source_last_seen_at": observed_at, "extensions": extensions,
-        "_authoritative_fields": ["customer", "site", "hostname", "management_ip",
+        "_authoritative_fields": ["customer_id", "site_id", "hostname", "management_ip",
             "serial_number", "model", "vendor", "platform", "device_type", "device_role",
             "firmware_version", "online"]}
-    tags = {"collector": "paloalto", "customer": config.customer, "site": config.site,
+    tags = {"collector": "paloalto", "deployment_id": config.deployment_id,
+        "customer_id": config.customer, "customer": config.customer,
+        "customer_name": config.customer_name,
+        "site_id": config.site, "site": config.site,
+        "site_name": config.site_name,
         "device_id": identifier, "hostname": hostname, "vendor": "Palo Alto Networks",
         "platform": "PAN-OS", "device_role": "firewall"}
     device_fields = {"online": True}

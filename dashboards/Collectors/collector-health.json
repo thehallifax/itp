@@ -20,6 +20,7 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "noValue": "No run in selected range",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -53,7 +54,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -63,9 +64,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector, site ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS healthy FROM latest WHERE rn = 1",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS \"Healthy Collectors\" FROM latest WHERE rn = 1",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector, site ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS healthy FROM latest WHERE rn = 1",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 1 ELSE 0 END) AS \"Healthy Collectors\" FROM latest WHERE rn = 1",
           "refId": "A"
         }
       ],
@@ -83,12 +84,17 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "noValue": "No run in selected range",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
               }
             ]
           },
@@ -116,7 +122,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -126,13 +132,13 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector, site ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS failed FROM latest WHERE rn = 1",
+          "query": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS \"Collectors Requiring Attention\" FROM latest WHERE rn = 1",
           "rawQuery": true,
-          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector, site ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS failed FROM latest WHERE rn = 1",
+          "rawSql": "WITH latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY collector ORDER BY time DESC) AS rn FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo) SELECT SUM(CASE WHEN success THEN 0 ELSE 1 END) AS \"Collectors Requiring Attention\" FROM latest WHERE rn = 1",
           "refId": "A"
         }
       ],
-      "title": "Collectors Failed",
+      "title": "Collectors Requiring Attention",
       "type": "stat"
     },
     {
@@ -146,11 +152,12 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "noValue": "No run in selected range",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "blue",
                 "value": null
               }
             ]
@@ -179,7 +186,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -189,9 +196,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT duration_ms AS duration FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT duration_ms AS \"Collection Duration\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT duration_ms AS duration FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT duration_ms AS \"Collection Duration\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -209,11 +216,12 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "noValue": "No run in selected range",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "blue",
                 "value": null
               }
             ]
@@ -242,7 +250,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "targets": [
@@ -252,9 +260,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT points_written AS points_written FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "query": "SELECT points_written AS \"Points Written\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "rawQuery": true,
-          "rawSql": "SELECT points_written AS points_written FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT points_written AS \"Points Written\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -299,9 +307,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "SELECT time AS \"Time\", collector AS \"Collector\", site AS \"Site\", success AS \"Success\", partial AS \"Partial\", duration_ms AS \"Duration ms\", api_requests AS \"API Requests\", points_written AS \"Points Written\", retry_count AS \"Retries\", error_count AS \"Errors\", diagnostic_category AS \"Result\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 200",
+          "query": "SELECT time AS \"Time\", collector AS \"Collector\", site AS \"Site\", success AS \"Success\", partial AS \"Partial\", duration_ms AS \"Collection Duration\", api_requests AS \"API Requests\", points_written AS \"Points Written\", retry_count AS \"Retries\", error_count AS \"Errors\", diagnostic_category AS \"Result\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 200",
           "rawQuery": true,
-          "rawSql": "SELECT time AS \"Time\", collector AS \"Collector\", site AS \"Site\", success AS \"Success\", partial AS \"Partial\", duration_ms AS \"Duration ms\", api_requests AS \"API Requests\", points_written AS \"Points Written\", retry_count AS \"Retries\", error_count AS \"Errors\", diagnostic_category AS \"Result\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 200",
+          "rawSql": "SELECT time AS \"Time\", collector AS \"Collector\", site AS \"Site\", success AS \"Success\", partial AS \"Partial\", duration_ms AS \"Collection Duration\", api_requests AS \"API Requests\", points_written AS \"Points Written\", retry_count AS \"Retries\", error_count AS \"Errors\", diagnostic_category AS \"Result\" FROM collector_health WHERE collector LIKE ${collector:sqlstring} AND site LIKE ${site:sqlstring} AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time DESC LIMIT 200",
           "refId": "A"
         }
       ],

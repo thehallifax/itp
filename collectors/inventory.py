@@ -1,6 +1,5 @@
 """Vendor-neutral inventory engine with legacy JSON compatibility."""
 from __future__ import annotations
-import fcntl
 import fnmatch
 import hashlib
 import ipaddress
@@ -12,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .writer import atomic_write
+from .file_lock import exclusive_file_lock
 
 
 SCHEMA_VERSION = 2
@@ -133,6 +133,9 @@ class InventoryAsset:
     mac_address: str | None = None
     management_ip: str | None = None
     firmware_version: str | None = None
+    deployment_id: str | None = None
+    customer_id: str | None = None
+    site_id: str | None = None
     customer: str | None = None
     site: str | None = None
     location: str | None = None
@@ -198,11 +201,8 @@ class InventoryEngine:
     def locked(self):
         self.root.mkdir(parents=True, exist_ok=True)
         with open(self.root / ".inventory.lock", "a+") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
+            with exclusive_file_lock(lock):
                 yield
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
 
     @staticmethod
     def _read_json(path, missing):
@@ -524,7 +524,9 @@ class InventoryEngine:
                  "last_seen_at", "last_seen", "last_changed_at", "source_asset_id", "external_device_id",
                  "vendor", "platform", "device_type", "device_role", "hostname", "display_name", "name",
                  "model", "serial_number", "serial", "mac_address", "mac", "management_ip", "ip",
-                 "firmware_version", "firmware", "customer", "site", "location", "retired_at",
+                 "firmware_version", "firmware", "deployment_id",
+                 "customer_id", "site_id", "customer", "site",
+                 "location", "retired_at",
                  "source_record_id", "source_priority", "source_last_seen_at", "online", "claimed",
                  "managed", "reconciliation_status", "reconciliation_evidence", "extensions",
                  "operational_status", "status", "community_index", "lifecycle_reason",
@@ -542,6 +544,10 @@ class InventoryEngine:
             mac_address=_normal_mac(record.get("mac_address") or record.get("mac")),
             management_ip=_normal_ip(record.get("management_ip") or record.get("ip")),
             firmware_version=_clean(record.get("firmware_version") or record.get("firmware")),
+            deployment_id=_clean(record.get("deployment_id")),
+            customer_id=_clean(record.get("customer_id") or
+                               record.get("customer") or customer),
+            site_id=_clean(record.get("site_id")),
             customer=_clean(record.get("customer") or customer), site=_clean(record.get("site") or site),
             location=_clean(record.get("location")), lifecycle_state=lifecycle,
             first_seen_at=first, last_seen_at=last,
@@ -858,11 +864,8 @@ class InventoryManager:
     def locked(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(f"{self.path}.lock", "a+") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
+            with exclusive_file_lock(lock):
                 yield
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
 
     def write(self, inventory):
         atomic_write(self.path, json.dumps(inventory, indent=2) + "\n")
@@ -878,8 +881,10 @@ class InventoryManager:
         if self.enabled:
             records = [item for item in result.get("devices", [])
                        if item.get("source") in (None, "snmp") and item.get("status") == "active"]
-            authoritative = {"hostname", "management_ip", "vendor", "platform", "device_type",
-                             "device_role", "customer", "site", "location"}
+            authoritative = {
+                "hostname", "management_ip", "vendor", "platform",
+                "device_type", "device_role", "deployment_id",
+                "customer_id", "site_id", "location"}
             self.engine.ingest("snmp", records, customer=result.get("customer"),
                                site=result.get("site"), now=result.get("generated_at"),
                                source_run_id=source_run_id, authoritative_fields=authoritative,

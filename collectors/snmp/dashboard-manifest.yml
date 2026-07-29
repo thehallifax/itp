@@ -5,4 +5,9 @@ capabilities:
   - switching
   - telemetry
 requires: []
-dashboards: []
+dashboards:
+  - uid: itp-snmp-overview
+    source: dashboards/Network/snmp-overview.json
+    folder: Infrastructure
+    tags: [snmp, network, availability]
+    requires_capabilities: [switching]

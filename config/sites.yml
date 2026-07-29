@@ -1,14 +1,14 @@
 sites:
   - id: st-brigids-lesmurdie
-    display_name: "St Brigid's College, Lesmurdie"
+    display_name: "Northwind College"
     aliases:
       - SBC
       - st-brigids
-      - "St Brigid's College"
-      - "St Brigid's College, Lesmurdie P2P"
+      - st-brigids-lesmurdie
+      - "Northwind College"
+      - "Northwind College P2P"
 
   - id: MLC
-    display_name: "Methodist Ladies College"
+    display_name: "MLC Reference Site"
     aliases:
       - MLC
-      - Methodist Ladies' College

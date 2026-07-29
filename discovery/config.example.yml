@@ -1,6 +1,9 @@
 schema_version: 1
-customer: st-brigids
-site: st-brigids
+deployment_id: example
+customer_id: example
+customer: example
+site_id: site:st-brigids-lesmurdie
+site: site:st-brigids-lesmurdie
 
 discovery:
   interval_seconds: 3600
@@ -97,9 +100,25 @@ state_history:
   volatile_fields_policy: default
   expected_sources: []
 
+# Optional OPS-009 notification delivery. Omission remains fully compatible.
+notifications:
+  enabled: false
+  minimum_severity: warning
+  repeat_suppression_seconds: 3600
+  daemon_heartbeat_stale_seconds: 30
+  channels:
+    console:
+      enabled: true
+    webhook:
+      enabled: false
+      url: ${NOTIFICATION_WEBHOOK_URL}
+      timeout_seconds: 5
+      headers:
+        Authorization: ${NOTIFICATION_WEBHOOK_AUTHORIZATION}
+
 collectors:
   snmp:
-    enabled: true
+    enabled: false
     execution: edge
   mist:
     enabled: false
@@ -152,3 +171,44 @@ collectors:
       - name: ethernet1/2
         role: backup
         display_name: Backup Internet
+  aruba:
+    enabled: false
+    execution: central
+    customer: customer-id
+    site: site:customer-site
+    # Use the regional API gateway shown by Aruba Central.
+    base_url: https://api-ap.central.arubanetworks.com
+    token_url: https://api-ap.central.arubanetworks.com/oauth2/token
+    auth_mode: refresh_token
+    # Regional/API-generation overrides are optional. Empty optional paths
+    # explicitly disable that resource class without affecting AP collection.
+    # endpoints:
+    #   switches: ""
+    #   gateways: ""
+    account_id:
+    client_id_env: ARUBA_CENTRAL_CLIENT_ID
+    client_secret_env: ARUBA_CENTRAL_CLIENT_SECRET
+    refresh_token_env: ARUBA_CENTRAL_REFRESH_TOKEN
+    access_token_env: ARUBA_CENTRAL_ACCESS_TOKEN
+    verify_tls: true
+    timeout_seconds: 20
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 120
+    max_retries: 2
+  papercut:
+    enabled: false
+    execution: central
+    customer: Customer Name
+    site: customer-site-slug
+    base_url: https://papercut.example.test:9192
+    authorization_key_env: PAPERCUT_AUTHORIZATION_KEY
+    verify_tls: true
+    timeout_seconds: 20
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 60
+    max_retries: 2
+    disk_warning_percent: 85
+    jvm_warning_percent: 85
+    held_jobs_warning: 25
+    upgrade_assurance_warning_days: 90
+    uptime_advisory_days: 180

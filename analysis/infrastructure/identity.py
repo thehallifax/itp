@@ -81,4 +81,10 @@ def canonical_id(records):
                 source_ids = sorted(str(record.get("source_asset_id") or record.get("asset_id") or "")
                                     for record in records)
                 identity = "source:" + source_ids[0]
-    return "asset:canonical:" + hashlib.sha256(identity.encode()).hexdigest()[:24]
+    partitions = sorted({
+        f"{str(record.get('deployment_id') or '').casefold()}|"
+        f"{str(record.get('customer_id') or record.get('customer') or '').casefold()}"
+        for record in records})
+    partition = partitions[0] if partitions else "|"
+    return "asset:canonical:" + hashlib.sha256(
+        f"{partition}|{identity}".encode()).hexdigest()[:24]
