@@ -1,0 +1,48 @@
+{
+  "groups": {
+    "groups": [
+      {"group": "Campus"}
+    ]
+  },
+  "sites": {
+    "sites": [
+      {"site_name": "Reference Campus"}
+    ]
+  },
+  "devices": {
+    "devices": [
+      {
+        "serial": "CN00000001",
+        "name": "reference-ap-01",
+        "device_type": "AP",
+        "model": "AP-515",
+        "firmware_version": "10.7.0.0",
+        "status": "Up",
+        "ip_address": "192.0.2.10",
+        "macaddr": "02:00:00:00:00:01",
+        "group_name": "Campus",
+        "site_name": "Reference Campus",
+        "subscription_status": "assigned",
+        "last_seen": "2026-01-01T00:00:00Z",
+        "client_count": 14
+      },
+      {
+        "serial": "CN00000002",
+        "name": "reference-switch-01",
+        "device_type": "SWITCH",
+        "model": "6200F",
+        "firmware_version": "10.13.1000",
+        "status": "Down",
+        "ip_address": "192.0.2.11",
+        "macaddr": "02:00:00:00:00:02",
+        "group_name": "Campus",
+        "site_name": "Reference Campus",
+        "subscription_status": "assigned",
+        "last_seen": "2026-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "alerts": {
+    "alerts": []
+  }
+}

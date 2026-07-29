@@ -46,7 +46,7 @@ def test_managed_dashboard_empty_states_come_from_capability_manifest(tmp_path):
 def test_manifests_are_complete_unique_and_future_extensible(tmp_path):
     value = registry(tmp_path, {}).manifests()
     assert [item.collector for item in value] == [
-        "fortigate", "mist", "paloalto", "papercut", "platform", "snmp",
+        "aruba", "fortigate", "mist", "paloalto", "papercut", "platform", "snmp",
         "virtualisation"]
     assert all(item.version == 1 for item in value)
     assert all(item.path.name in {"dashboard-manifest.yml", "platform-manifest.yml"}
@@ -157,7 +157,7 @@ def test_pack_versions_metadata_and_disabled_pack_cleanup(tmp_path):
 
 def test_connector_metadata_links_dashboard_manifests():
     metadata = ConnectorMetadataRegistry.load(ROOT)
-    for name in ("snmp", "mist", "fortigate", "paloalto", "papercut"):
+    for name in ("snmp", "mist", "fortigate", "paloalto", "papercut", "aruba"):
         connector = metadata.get(name)
         assert connector.dashboard_manifest
         assert (ROOT / connector.dashboard_manifest).is_file()

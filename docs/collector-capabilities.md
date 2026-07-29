@@ -45,3 +45,8 @@ rendering.
 Add a stable declaration in `collectors/capabilities.py` and a fixture-based
 test. Never infer support from a dashboard query or from a field being present
 in one response.
+
+Aruba Central declares its static contract in
+`collectors/aruba/capabilities.py`. Its inventory, health, firmware and client
+capabilities are conditional on authoritative device/API evidence; group, site
+and account discovery remain separately explainable.

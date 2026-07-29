@@ -167,6 +167,41 @@ class Scheduler:
                 key: result[key] for key in sorted(safe_keys & result.keys())
                 if isinstance(result[key], (str, int, float, bool, type(None)))
             }
+            capability_states = result.get("capability_states")
+            if isinstance(capability_states, dict):
+                allowed_states = {
+                    "collected", "not_yet_collected", "disabled",
+                    "unavailable", "failed", "partial", "not_applicable"}
+                connector_state[f"last_{phase}_result"][
+                    "capability_states"] = {
+                        str(key): str(value)
+                        for key, value in sorted(capability_states.items())
+                        if str(value) in allowed_states}
+            capability_resources = result.get("capability_resources")
+            if isinstance(capability_resources, dict):
+                connector_state[f"last_{phase}_result"][
+                    "capability_resources"] = {
+                        str(key): max(0, int(value))
+                        for key, value in sorted(capability_resources.items())
+                        if isinstance(value, int) and not isinstance(value, bool)
+                    }
+            endpoint_states = result.get("endpoint_states")
+            if isinstance(endpoint_states, dict):
+                allowed_endpoint_states = {
+                    "collected", "endpoint_disabled", "invalid_response",
+                    "insufficient_permissions", "api_unavailable",
+                    "unsupported_endpoint",
+                }
+                connector_state[f"last_{phase}_result"]["endpoint_states"] = {
+                    str(key): {
+                        "state": str(value.get("state")),
+                        "resource_count": max(
+                            0, int(value.get("resource_count") or 0)),
+                    }
+                    for key, value in sorted(endpoint_states.items())
+                    if isinstance(value, dict)
+                    and str(value.get("state")) in allowed_endpoint_states
+                }
         connector_state["last_error_class"] = (
             outcome.get("exception_type") or None)
         if status == "success":

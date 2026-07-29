@@ -10,6 +10,7 @@ contract. See [Collector capability manifests](collector-capabilities.md).
 | SNMP/Telegraf | edge | local configuration | device, availability, performance/interface/wireless where applicable |
 | Palo Alto PAN-OS | edge | `secrets/paloalto.env` | device, availability, performance, interface, firewall, license, content_package, collector_health |
 | PaperCut MF | central | `secrets/papercut.env` | device, availability, performance, license, collector_health |
+| HPE Aruba Networking Central | central | `secrets/aruba.env` | device, availability, wireless, collector_health |
 | VMware vSphere | profile | profile-scoped `vmware.env` | virtualisation manager, cluster, host, workload, storage and findings |
 | Microsoft Hyper-V | profile | optional profile-scoped `hyperv.env` | virtualisation host, workload, storage and findings |
 | Proxmox VE | profile | profile-scoped `proxmox.env` | virtualisation manager, cluster, host, workload, storage and findings |

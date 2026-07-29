@@ -80,7 +80,7 @@ def test_deployment_scripts_and_templates_exist():
     for path in ("scripts/install.sh", "scripts/update.sh", "scripts/Install-ITP.ps1",
                  "scripts/Update-ITP.ps1", ".env.example", "discovery/config.example.yml",
                  "secrets/mist.env.example", "secrets/fortigate.env.example",
-                 "secrets/papercut.env.example"):
+                 "secrets/papercut.env.example", "secrets/aruba.env.example"):
         assert (ROOT / path).is_file()
     gitignore = (ROOT / ".gitignore").read_text().splitlines()
     assert ".env" in gitignore and "discovery/config.yml" in gitignore

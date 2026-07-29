@@ -57,7 +57,7 @@ def _enabled_collectors(config):
     if runtime_mode not in ("central", "edge"):
         raise ValueError(f"unsupported ITP_RUNTIME_MODE: {runtime_mode}")
     inventory_path = os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json")
-    for name in ("mist", "fortigate", "paloalto", "papercut"):
+    for name in ("mist", "fortigate", "paloalto", "papercut", "aruba"):
         collector_settings = settings.get(name, {})
         if not collector_settings.get("enabled", False): continue
         eligible, execution = CollectorRegistry.execution_eligible(
@@ -75,6 +75,21 @@ def inspection_lines(name, result):
         f"API hostname: {result['api_hostname']}", f"Organisation ID: {result['organization_id']}",
         f"Sites: {result['site_count']}", f"Devices: {result['device_count']}",
         "Device types: " + ", ".join(f"{key}={value}" for key, value in result["device_types"].items())]
+    if name == "aruba":
+        lines.extend((
+            f"API base URL: {result['api_base_url']}",
+            f"Authentication: {result['authentication_result']}",
+            f"Account discovery: {result['account_discovery']}",
+            f"Groups: {result['group_count']}",
+            f"Access points: {result['access_point_count']}",
+            f"Switches: {result['switch_count']}",
+            f"Gateways: {result['gateway_count']}",
+            f"Readiness: {result['diagnostics']['category']}",
+            "Capabilities: " + ", ".join(
+                f"{key}={value}"
+                for key, value in sorted(result["capability_states"].items())
+            ),
+        ))
     for measurement, shape in result["measurements"].items():
         lines.extend((f"Measurement: {measurement}", "  tags: " + ", ".join(shape["tags"]),
             "  fields: " + ", ".join(f"{key} ({shape['field_counts'][key]}/{shape['points']})" for key in shape["fields"])))
@@ -106,11 +121,13 @@ async def _validate(config):
     check("schema version", config.get("schema_version") == 1,
           f"configured={config.get('schema_version')!r} supported=1")
     registered = set(CollectorRegistry.names())
-    check("collector registration", {"mist", "fortigate", "paloalto", "snmp"} <= registered,
+    check("collector registration",
+          {"mist", "fortigate", "paloalto", "papercut", "aruba", "snmp"}
+          <= registered,
           ", ".join(sorted(registered)))
     declared = set(MANIFESTS) - {"framework"}
     check("collector capability manifests",
-          {"paloalto", "papercut", "snmp"} <= declared,
+          {"paloalto", "papercut", "aruba", "snmp"} <= declared,
           ", ".join(sorted(declared)))
     for name, settings in config.get("collectors", {}).items():
         if not settings.get("enabled") or name not in registered: continue
@@ -128,6 +145,14 @@ async def _validate(config):
             except ValueError as exc:
                 ok = False; detail = str(exc)
             check("Palo Alto configuration", ok, detail)
+        if name == "aruba":
+            from .aruba.collector import validate_settings
+            try:
+                validate_settings(config)
+                ok = True; detail = "configured"
+            except ValueError as exc:
+                ok = False; detail = str(exc)
+            check("Aruba Central configuration", ok, detail)
     provision = ROOT / "grafana/provisioning/dashboards/dashboards.yml"
     try:
         import yaml
@@ -514,7 +539,10 @@ async def _run(args):
         try:
             result = await getattr(collector, args.command)()
             if args.command == "inspect":
-                print("\n".join(inspection_lines(args.name, result)))
+                if args.json:
+                    print(json.dumps(result, indent=2, sort_keys=True))
+                else:
+                    print("\n".join(inspection_lines(args.name, result)))
         finally:
             close = getattr(collector, "close", None)
             if close: await close()
@@ -619,6 +647,8 @@ def build_parser():
     connectors.add_argument("--json", action="store_true")
     for command in ("discover", "collect", "inspect"):
         item = sub.add_parser(command); item.add_argument("name")
+        if command == "inspect":
+            item.add_argument("--json", action="store_true")
     inventory = sub.add_parser("inventory")
     inventory.add_argument("action", choices=("list", "show", "summary", "reconcile", "lifecycle",
                                                "retire", "restore", "history", "sources", "changes",

@@ -62,7 +62,7 @@ def engine_fixture(tmp_path):
 
 def test_four_existing_output_adapters_register_and_clean_bootstrap(tmp_path):
     assert [adapter.name for adapter in SignalAdapter.registered(tmp_path)] == [
-        "fortigate", "inventory", "mist", "paloalto", "papercut", "snmp",
+        "aruba", "fortigate", "inventory", "mist", "paloalto", "papercut", "snmp",
         "virtualisation"]
     state = InfrastructureStateEngine(tmp_path / "missing", tmp_path / "operations",
                                       tmp_path / "state", tmp_path / "dashboard",

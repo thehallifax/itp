@@ -3,7 +3,7 @@ profile:
   name: MLC Reference Deployment
   environment: production
   timezone: Australia/Perth
-  runtime_mode: edge
+  runtime_mode: central
 identity:
   customer_id: mlc
 deployment:

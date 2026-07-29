@@ -1,0 +1,9 @@
+collector: aruba
+version: 1
+capabilities:
+  - inventory
+  - switching
+  - telemetry
+  - wireless
+requires: []
+dashboards: []

@@ -21,7 +21,7 @@ def _write(path, value):
 
 
 def test_declarations_are_complete_and_valid():
-    assert {"paloalto", "papercut", "snmp", "framework"} == set(MANIFESTS)
+    assert {"paloalto", "papercut", "snmp", "aruba", "framework"} == set(MANIFESTS)
     for values in MANIFESTS.values():
         assert values and len({value.id for value in values}) == len(values)
         for value in values:
@@ -76,7 +76,7 @@ def test_generation_is_deterministic_redacted_and_has_required_files(tmp_path):
     assert engine.generate() == engine.generate()
     content = (tmp_path / "capabilities/collectors.json").read_text()
     assert "super-secret" not in content
-    for name in ("collectors", "paloalto", "papercut", "snmp"):
+    for name in ("collectors", "paloalto", "papercut", "snmp", "aruba"):
         assert (tmp_path / f"capabilities/{name}.json").is_file()
     assert not (tmp_path / "capabilities/framework.json").exists()
 

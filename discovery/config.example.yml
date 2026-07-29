@@ -171,6 +171,30 @@ collectors:
       - name: ethernet1/2
         role: backup
         display_name: Backup Internet
+  aruba:
+    enabled: false
+    execution: central
+    customer: customer-id
+    site: site:customer-site
+    # Use the regional API gateway shown by Aruba Central.
+    base_url: https://api-ap.central.arubanetworks.com
+    token_url: https://api-ap.central.arubanetworks.com/oauth2/token
+    auth_mode: refresh_token
+    # Regional/API-generation overrides are optional. Empty optional paths
+    # explicitly disable that resource class without affecting AP collection.
+    # endpoints:
+    #   switches: ""
+    #   gateways: ""
+    account_id:
+    client_id_env: ARUBA_CENTRAL_CLIENT_ID
+    client_secret_env: ARUBA_CENTRAL_CLIENT_SECRET
+    refresh_token_env: ARUBA_CENTRAL_REFRESH_TOKEN
+    access_token_env: ARUBA_CENTRAL_ACCESS_TOKEN
+    verify_tls: true
+    timeout_seconds: 20
+    discovery_interval_seconds: 21600
+    collection_interval_seconds: 120
+    max_retries: 2
   papercut:
     enabled: false
     execution: central

@@ -7,7 +7,7 @@ from .connector_registry import ConnectorMetadata, ConnectorMetadataRegistry
 __all__ = ["BaseCollector", "ConnectorMetadata", "ConnectorMetadataRegistry",
            "CollectorRegistry", "InventoryAsset", "InventoryEngine",
            "InventoryManager", "SNMPCollector", "MistCollector", "FortiGateCollector",
-           "PaloAltoCollector"]
+           "PaloAltoCollector", "ArubaCentralCollector"]
 
 
 def __getattr__(name):
@@ -17,6 +17,7 @@ def __getattr__(name):
         "MistCollector": (".mist", "MistCollector"),
         "FortiGateCollector": (".fortigate", "FortiGateCollector"),
         "PaloAltoCollector": (".paloalto", "PaloAltoCollector"),
+        "ArubaCentralCollector": (".aruba", "ArubaCentralCollector"),
     }
     if name not in modules:
         raise AttributeError(name)

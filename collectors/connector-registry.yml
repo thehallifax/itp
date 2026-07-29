@@ -1,5 +1,56 @@
 schema_version: 1
 connectors:
+  - id: aruba
+    display_name: HPE Aruba Networking Central
+    vendor: HPE Aruba Networking
+    domains:
+      - switching
+      - wireless
+    deployment_types:
+      - Business
+      - Enterprise
+      - Home Lab
+      - MSP
+      - School
+    implementation_status: supported
+    guided_setup: false
+    configuration_mode: manual
+    credential_fields:
+      - id: client_id
+        env: ARUBA_CENTRAL_CLIENT_ID
+        required: true
+        secret: false
+      - id: client_secret
+        env: ARUBA_CENTRAL_CLIENT_SECRET
+        required: true
+        secret: true
+      - id: refresh_token
+        env: ARUBA_CENTRAL_REFRESH_TOKEN
+        required: false
+        secret: true
+      - id: access_token
+        env: ARUBA_CENTRAL_ACCESS_TOKEN
+        required: false
+        secret: true
+    configuration_fields:
+      - collectors.aruba.base_url
+      - collectors.aruba.site
+    secret_handling:
+      templates:
+        - secrets/aruba.env.example
+      scope: root-or-profile
+    capabilities:
+      validation: true
+      doctor: false
+      status: true
+      demo_fixture: false
+    documentation: docs/collectors/aruba-central.md
+    implementation: collectors/aruba/collector.py:ArubaCentralCollector
+    dashboard_manifest: collectors/aruba/dashboard-manifest.yml
+    aliases:
+      - aruba-central
+      - hpe-aruba-central
+    notes: Read-only Aruba Central REST collector with OAuth renewal; guided setup is unavailable.
   - id: fortigate
     display_name: FortiGate
     vendor: Fortinet

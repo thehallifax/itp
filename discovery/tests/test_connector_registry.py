@@ -18,7 +18,7 @@ from itp_profiles.setup import BootstrapWizard, SetupOptions
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED = {
-    "snmp", "mist", "fortigate", "paloalto", "papercut",
+    "snmp", "mist", "fortigate", "paloalto", "papercut", "aruba",
     "vmware", "hyperv", "proxmox",
 }
 

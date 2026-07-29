@@ -27,6 +27,7 @@ class Capability:
     condition: str = ""
     reason: str = ""
     phase: str = "collection"
+    health_impact: bool = True
 
     def __post_init__(self):
         if self.support not in SUPPORT_STATES:
@@ -41,7 +42,11 @@ def _cap(identifier, label, support="supported", **kwargs):
     return Capability(identifier, label, support, **kwargs)
 
 
+from .aruba.capabilities import CAPABILITIES as ARUBA_CAPABILITIES
+
+
 MANIFESTS = {
+    "aruba": ARUBA_CAPABILITIES,
     "paloalto": (
         _cap("device_inventory", "Device inventory", measurements=("device",),
              services=("Security",), panels=("Overview", "Inventory")),
@@ -228,6 +233,20 @@ class CapabilityManifestEngine:
             return "not_applicable", declaration.reason
         if not enabled:
             return "disabled", "Collector is not enabled."
+        runtime_capabilities = (
+            connector.get("last_collection_result") or {}).get(
+                "capability_states", {})
+        explicit = runtime_capabilities.get(declaration.id)
+        if explicit in COLLECTION_STATES:
+            explanations = {
+                "collected": "Authoritative capability evidence was collected.",
+                "unavailable": declaration.condition or
+                    "The capability is currently unavailable.",
+                "failed": "The latest capability collection failed.",
+                "partial": "Capability evidence is incomplete.",
+            }
+            return explicit, explanations.get(
+                explicit, "Runtime capability state is explicit.")
         phase = declaration.phase
         outcome = connector.get(f"last_{phase}_outcome")
         if not outcome and source:
@@ -260,6 +279,19 @@ class CapabilityManifestEngine:
                     "services": list(declaration.services),
                     "panels": list(declaration.panels),
                     "collection": state,
+                    "configured": enabled,
+                    "available": state in {"collected", "partial"},
+                    "collectable": (
+                        enabled and declaration.support in {
+                            "supported", "conditional"}
+                        and state not in {
+                            "disabled", "unavailable", "failed",
+                            "not_applicable"}),
+                    "resource_count": (
+                        (connector.get("last_collection_result") or {})
+                        .get("capability_resources", {})
+                        .get(declaration.id)
+                    ),
                     "explanation": explanation,
                 })
                 items.append(value)
@@ -270,6 +302,7 @@ class CapabilityManifestEngine:
                 "collector": {
                     "id": name,
                     "display_name": {
+                        "aruba": "HPE Aruba Networking Central",
                         "paloalto": "Palo Alto Networks",
                         "papercut": "PaperCut MF",
                         "snmp": "SNMP",
@@ -294,8 +327,10 @@ class CapabilityManifestEngine:
                     "state": (
                     "disabled" if not enabled else
                     "failed" if any(item["collection"] == "failed" for item in items) else
-                    "partial" if any(item["collection"] in {"partial", "unavailable"}
-                                     for item in items) else
+                    "partial" if any(
+                        item["health_impact"]
+                        and item["collection"] in {"partial", "unavailable"}
+                        for item in items) else
                     "not_yet_collected" if any(item["collection"] == "not_yet_collected"
                                                for item in items) else "collected"),
                 },
