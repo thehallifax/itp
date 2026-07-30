@@ -33,8 +33,8 @@ from collectors.tls import connector_tls_context
 class PaperCutClient:
     """PaperCut System Health JSON client.
 
-    Contract: GET the documented ``/api/health/`` and component paths, send
-    the System Health authorization key as the raw ``Authorization`` header,
+    Contract: GET the documented ``/api/health`` and component paths, send
+    the System Health authorization key as the ``Authorization`` query value,
     request JSON with ``Accept: application/json``, send no request body or
     Content-Type, and do not follow redirects implicitly.
     """
@@ -46,7 +46,12 @@ class PaperCutClient:
         self.base_url = self.normalize_url(base_url)
         self._headers = {"Accept": "application/json",
                          "User-Agent": "itp-papercut-collector/1.0"}
-        self.authorization_key = str(authorization_key or "").strip()
+        self.authorization_key = str(
+            authorization_key or "").strip(" \t\r\n")
+        if any(ord(character) < 32 or ord(character) == 127
+               for character in self.authorization_key):
+            raise ValueError(
+                "PaperCut authorization key contains a control character")
         self.max_retries = max(0, int(max_retries))
         self.sleep = sleep
         self.api_requests = 0
@@ -73,18 +78,18 @@ class PaperCutClient:
                 "PaperCut endpoint must not include a path other than /api/health")
         return urlunsplit(("https", parsed.netloc, path, "", ""))
 
-    async def get(self, path="/api/health/"):
+    async def get(self, path="/api/health"):
         transient = {429, 502, 503, 504}
         for attempt in range(self.max_retries + 1):
             self.api_requests += 1
             try:
                 headers = dict(self._headers)
-                if self.authorization_key:
-                    headers["Authorization"] = self.authorization_key
-
+                url = httpx.URL(self.base_url).copy_with(path=path)
+                parameters = (
+                    {"Authorization": self.authorization_key}
+                    if self.authorization_key else None)
                 response = await self.client.get(
-                    self.base_url + "/" + path.lstrip("/"),
-                    headers=headers)
+                    url, params=parameters, headers=headers)
             except httpx.TimeoutException as exc:
                 if attempt == self.max_retries:
                     raise PaperCutTimeoutError(
@@ -238,7 +243,7 @@ class PaperCutClient:
         return None
 
     async def snapshot(self):
-        base = await self.get("/api/health/")
+        base = await self.get("/api/health")
         if not isinstance(base.get("applicationServer"), dict) or \
                 not isinstance(base.get("database"), dict):
             raise PaperCutUnsupportedResponseError(

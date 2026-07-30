@@ -114,12 +114,20 @@ def test_client_uses_optional_authorization_without_exposing_it():
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     with pytest.raises(PaperCutAuthenticationError) as caught:
         asyncio.run(client.get())
-    assert requests[0].headers["Authorization"] == "secret-value"
+    assert requests[0].url.params.get_list("Authorization") == [
+        "secret-value"]
+    assert "Authorization" not in requests[0].headers
     assert "secret-value" not in str(caught.value)
     asyncio.run(client.client.aclose())
 
 
-def test_system_health_request_contract_is_exact():
+@pytest.mark.parametrize("base_url", [
+    "https://print.example.invalid:9192",
+    "https://print.example.invalid:9192/",
+    "https://print.example.invalid:9192///",
+    "https://print.example.invalid:9192/api/health",
+])
+def test_system_health_request_contract_is_exact(base_url):
     requests = []
 
     async def handler(request):
@@ -127,15 +135,18 @@ def test_system_health_request_contract_is_exact():
         return httpx.Response(200, json=fixture("healthy.json")["health"])
 
     client = PaperCutClient(
-        "https://print.example.invalid:9192/api/health",
+        base_url,
         "health-key", max_retries=0,
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     asyncio.run(client.get())
     request = requests[0]
     assert request.method == "GET"
-    assert request.url.path == "/api/health/"
-    assert request.url.query == b""
-    assert request.headers["Authorization"] == "health-key"
+    assert request.url.path == "/api/health"
+    assert request.url.params.get_list("Authorization") == ["health-key"]
+    assert str(request.url).count("Authorization=") == 1
+    assert "/api/health?" in str(request.url)
+    assert "/api/health/?" not in str(request.url)
+    assert "Authorization" not in request.headers
     assert request.headers["Accept"] == "application/json"
     assert "Content-Type" not in request.headers
     asyncio.run(client.client.aclose())
@@ -166,12 +177,35 @@ def test_http_400_returns_bounded_sanitized_diagnostic(
         "message": "PaperCut System Health rejected the request (HTTP 400)",
         "http_status": 400,
         "method": "GET",
-        "path": "/api/health/",
+        "path": "/api/health",
         "content_type": content_type,
         "response": expected,
     }
     assert "secret-value" not in json.dumps(diagnostic)
     asyncio.run(client.client.aclose())
+
+
+def test_authorization_key_trims_edges_and_rejects_internal_controls():
+    requests = []
+
+    async def handler(request):
+        requests.append(request)
+        return httpx.Response(401, request=request)
+
+    client = PaperCutClient(
+        "https://print.example.invalid", " \t\r\n valid key \r\n",
+        max_retries=0,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(PaperCutAuthenticationError):
+        asyncio.run(client.get())
+    assert requests[0].url.params["Authorization"] == "valid key"
+    assert "valid key" not in str(PaperCutAuthenticationError(
+        "PaperCut System Health authentication failed (HTTP 401)"))
+    asyncio.run(client.client.aclose())
+
+    with pytest.raises(ValueError, match="control character"):
+        PaperCutClient(
+            "https://print.example.invalid", "invalid\x16key")
 
 
 def test_http_400_html_is_stripped_truncated_and_redacted():

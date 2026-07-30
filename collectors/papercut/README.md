@@ -30,16 +30,24 @@ collectors:
 ## HTTP request contract
 
 ITP sends an HTTP `GET` request to the application-server origin plus
-`/api/health/`, followed by a separate `GET /api/health/devices` request.
-The System Health authorization key is sent as its raw value in the
-`Authorization` header. Requests use `Accept: application/json`, have no
-request body or `Content-Type`, contain no query parameters, and do not follow
-redirects automatically. Configure `base_url` as the HTTPS application-server
-origin; a trailing `/api/health` is accepted and normalized to the same origin.
+`/api/health`, followed by a separate `GET /api/health/devices` request.
+The System Health authorization key is encoded once as the `Authorization`
+query parameter:
+
+```text
+/api/health?Authorization=<key>
+```
+
+Requests use `Accept: application/json`, have no request body or
+`Content-Type`, and do not follow redirects automatically. Structured URL
+construction ensures there is no trailing slash before the query string.
+Configure `base_url` as the HTTPS application-server origin; trailing slashes
+or a trailing `/api/health` are normalized to the same origin.
 
 The value in `PAPERCUT_AUTHORIZATION_KEY` must be the System Health interface
 authorization key from PaperCut's **Options > Advanced > System Health
-Monitoring** section. Do not include the literal `Authorization:` header name.
+Monitoring** section. Surrounding spaces, tabs, CR, and LF are removed;
+embedded control characters are rejected.
 
 For HTTP failures, `collector test papercut --json` reports the status, method,
 sanitized path, response content type, and a bounded response excerpt.
