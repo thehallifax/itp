@@ -77,7 +77,7 @@ Assert-Equal $Arm64.Sha256 `
     "ARM64 pinned hash"
 $UnsupportedArchitecture = $false
 try { Get-ITPPythonInstaller -Architecture "x86" } catch {
-    $UnsupportedArchitecture = $_.Exception.Message -match "Unsupported or ambiguous"
+    $UnsupportedArchitecture = $_.Exception.Message -match "No verified direct Python installer"
 }
 Assert-True $UnsupportedArchitecture "unsupported architecture must fail accurately"
 
@@ -344,7 +344,194 @@ function New-WindowsState {
     }
 }
 
+function Get-ClassifiedWindowsState {
+    param(
+        [string]$Architecture = "AMD64",
+        $FirmwareRaw = $true,
+        $VmMonitor = $true,
+        $Slat = $true,
+        $HypervisorPresent = $false,
+        [bool]$WslOperational = $false,
+        [bool]$DockerOperational = $false,
+        [string]$DockerArchitecture = "amd64",
+        [string]$SystemInfoOutput = "",
+        [switch]$CimFailure,
+        [switch]$NullProcessor
+    )
+    $OperatingSystem = [PSCustomObject]@{
+        Caption = "Microsoft Windows 11 Enterprise"
+        Version = "10.0.26100"
+        BuildNumber = "26100"
+        OperatingSystemSKU = 4
+    }
+    $Processor = if ($NullProcessor) {
+        $null
+    } else {
+        [PSCustomObject]@{
+            VirtualizationFirmwareEnabled = $FirmwareRaw
+            VMMonitorModeExtensions = $VmMonitor
+            SecondLevelAddressTranslationExtensions = $Slat
+        }
+    }
+    $Computer = [PSCustomObject]@{
+        HypervisorPresent = $HypervisorPresent
+    }
+    $Resolver = {
+        param($Name)
+        if ($Name -eq "wsl" -and $WslOperational) {
+            return [PSCustomObject]@{ Source = "wsl.exe" }
+        }
+        if ($Name -eq "docker" -and $DockerOperational) {
+            return [PSCustomObject]@{ Source = "docker.exe" }
+        }
+        if ($Name -eq "systeminfo" -and $SystemInfoOutput) {
+            return [PSCustomObject]@{ Source = "systeminfo.exe" }
+        }
+        return $null
+    }.GetNewClosure()
+    $Runner = {
+        param($Executable, $Arguments)
+        $ArgumentText = $Arguments -join " "
+        if ($Executable -eq "wsl.exe" -and $ArgumentText -eq "--version") {
+            return [PSCustomObject]@{
+                ExitCode = 0
+                Output = "WSL version: 2.5.9`nKernel version: 6.6.87"
+            }
+        }
+        if ($Executable -eq "wsl.exe" -and $ArgumentText -eq "--status") {
+            return [PSCustomObject]@{
+                ExitCode = 0
+                Output = "Default Version: 2"
+            }
+        }
+        if ($Executable -eq "docker.exe" -and $ArgumentText -eq "info") {
+            return [PSCustomObject]@{
+                ExitCode = 0
+                Output = (
+                    "Kernel Version: microsoft-standard-WSL2`n" +
+                    "Architecture: $DockerArchitecture`nBackend: WSL")
+            }
+        }
+        if ($Executable -eq "docker.exe") {
+            return [PSCustomObject]@{ ExitCode = 0; Output = "Docker version 28" }
+        }
+        if ($Executable -eq "systeminfo.exe") {
+            return [PSCustomObject]@{
+                ExitCode = 0
+                Output = $SystemInfoOutput
+            }
+        }
+        return [PSCustomObject]@{ ExitCode = 1; Output = "" }
+    }.GetNewClosure()
+    $Cim = {
+        param($ClassName)
+        if ($CimFailure) { throw "CIM unavailable" }
+        switch ($ClassName) {
+            "Win32_OperatingSystem" { return $OperatingSystem }
+            "Win32_Processor" { return $Processor }
+            "Win32_ComputerSystem" { return $Computer }
+        }
+    }.GetNewClosure()
+    return Get-ITPWindowsPlatformState -PlatformOverride "Windows" `
+        -ArchitectureOverride $Architecture -CommandResolver $Resolver `
+        -CommandRunner $Runner -CimProvider $Cim `
+        -FeatureProvider { param($Name) "Enabled" } `
+        -RebootProvider { $false }
+}
+
 # Windows feature readiness and preparation are deterministic and resumable.
+$ArmOperational = Get-ClassifiedWindowsState -Architecture "ARM64" `
+    -FirmwareRaw $false -VmMonitor $true -Slat $false `
+    -HypervisorPresent $true -WslOperational $true `
+    -DockerOperational $true -DockerArchitecture "aarch64" `
+    -SystemInfoOutput (
+        "Virtualization-based security: Running`n" +
+        "A hypervisor has been detected")
+Assert-Equal $ArmOperational.Platform.NativeArchitecture "ARM64" `
+    "ARM64 native architecture must be preserved"
+Assert-Equal $ArmOperational.Virtualization.FirmwareVirtualizationState `
+    "enabled" "ARM64 operational evidence must override false firmware CIM"
+Assert-Equal $ArmOperational.Virtualization.FirmwareVirtualizationRaw $false `
+    "ARM64 raw firmware evidence must remain inspectable"
+Assert-Equal $ArmOperational.Virtualization.FirmwareEvidenceReliable $false `
+    "ARM64 firmware CIM evidence must not be authoritative"
+Assert-True $ArmOperational.Virtualization.CpuCapable `
+    "ARM64 VM monitor and operational evidence must establish capability"
+Assert-True $ArmOperational.Virtualization.WSL2Operational `
+    "ARM64 WSL2 must be detected as operational"
+Assert-True $ArmOperational.Virtualization.DockerVirtualizationOperational `
+    "ARM64 Docker WSL2 backend must be operational"
+Assert-Equal $ArmOperational.Docker.Architecture "aarch64" `
+    "ARM64 Docker architecture must be reported"
+Assert-True ($ArmOperational.Virtualization.ConflictingEvidence -contains `
+    "cim.firmware_false_but_operational") `
+    "contradictory ARM64 firmware CIM evidence must be recorded"
+Assert-True ($ArmOperational.Virtualization.ConflictingEvidence -contains `
+    "cim.slat_false_not_authoritative_on_arm64") `
+    "false ARM64 SLAT evidence must be non-authoritative"
+Assert-True ($ArmOperational.Virtualization.OperationalEvidence -contains `
+    "windows.vbs_running") "active VBS must be operational evidence"
+Assert-True ($ArmOperational.Virtualization.OperationalEvidence -contains `
+    "windows.hypervisor_present") `
+    "active Windows hypervisor must be operational evidence"
+$ArmJson = $ArmOperational | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+Assert-Equal $ArmJson.Virtualization.FirmwareVirtualizationState "enabled" `
+    "JSON firmware virtualization state must be stable"
+Assert-Equal $ArmJson.Virtualization.FirmwareVirtualizationRaw $false `
+    "JSON raw firmware value must be stable"
+Assert-True ($null -ne $ArmJson.Virtualization.OperationalEvidence) `
+    "JSON operational evidence must be an array"
+Assert-True ($null -ne $ArmJson.Virtualization.ConflictingEvidence) `
+    "JSON conflicting evidence must be an array"
+$ArmReadiness = Get-ITPWindowsReadiness -State $ArmOperational
+Assert-True (-not ($ArmReadiness.BlockingItems -contains `
+    "virtualization.firmware_disabled")) `
+    "operational ARM64 must not emit firmware-disabled blocker"
+
+$ArmUnknown = Get-ClassifiedWindowsState -Architecture "ARM64" `
+    -NullProcessor
+Assert-Equal $ArmUnknown.Virtualization.FirmwareVirtualizationState "unknown" `
+    "ARM64 null firmware evidence must remain unknown"
+Assert-Equal $ArmUnknown.Virtualization.CpuCapable $null `
+    "ARM64 null CPU evidence must remain unknown"
+
+$ArmUnavailable = Get-ClassifiedWindowsState -Architecture "ARM64" `
+    -FirmwareRaw $false -VmMonitor $false -Slat $false `
+    -SystemInfoOutput "Virtualization Enabled In Firmware: No"
+Assert-Equal $ArmUnavailable.Virtualization.FirmwareVirtualizationState `
+    "disabled" "reliable firmware report with no operational evidence must block ARM64"
+Assert-Equal $ArmUnavailable.Virtualization.CpuCapable $false `
+    "confirmed unavailable ARM64 must fail capability"
+Assert-True ((Get-ITPWindowsReadiness -State $ArmUnavailable).BlockingItems `
+    -contains "virtualization.firmware_disabled") `
+    "confirmed disabled ARM64 must remain blocking"
+
+$AmdEnabled = Get-ClassifiedWindowsState -Architecture "AMD64"
+Assert-Equal $AmdEnabled.Virtualization.FirmwareVirtualizationState "enabled" `
+    "AMD64 firmware-enabled evidence must pass"
+$AmdDisabled = Get-ClassifiedWindowsState -Architecture "AMD64" `
+    -FirmwareRaw $false -VmMonitor $false -Slat $false
+Assert-Equal $AmdDisabled.Virtualization.FirmwareVirtualizationState "disabled" `
+    "AMD64 reliable firmware false without operational evidence must block"
+Assert-True ((Get-ITPWindowsReadiness -State $AmdDisabled).BlockingItems `
+    -contains "virtualization.firmware_disabled") `
+    "confirmed disabled AMD64 must remain blocking"
+$AmdConflict = Get-ClassifiedWindowsState -Architecture "AMD64" `
+    -FirmwareRaw $false -VmMonitor $false -Slat $false `
+    -DockerOperational $true
+Assert-Equal $AmdConflict.Virtualization.FirmwareVirtualizationState "enabled" `
+    "healthy Docker must override conflicting AMD64 firmware metadata"
+Assert-True ($AmdConflict.Virtualization.ConflictingEvidence -contains `
+    "cim.firmware_false_but_operational") `
+    "AMD64 conflicting evidence must remain visible"
+
+$CimUnknown = Get-ClassifiedWindowsState -Architecture "ARM64" -CimFailure
+Assert-Equal $CimUnknown.Virtualization.FirmwareVirtualizationState "unknown" `
+    "CIM query failure must produce unknown firmware state"
+Assert-True (-not ((Get-ITPWindowsReadiness -State $CimUnknown).BlockingItems `
+    -contains "virtualization.firmware_disabled")) `
+    "unknown firmware state must not block deployment"
+
 $ProtectedLocation = $false
 try {
     Test-ITPWindowsRepositoryLocation `
@@ -476,7 +663,7 @@ try {
         -PlatformOverride "Windows" `
         -StateProvider { $FirmwareState }.GetNewClosure()
 }
-catch { $FirmwareBlocked = $_.Exception.Message -match "disabled in firmware" }
+catch { $FirmwareBlocked = $_.Exception.Message -match "confirmed disabled" }
 Assert-True $FirmwareBlocked "firmware virtualization failure must be targeted"
 
 $CpuBlocked = $false

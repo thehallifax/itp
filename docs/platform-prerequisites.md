@@ -63,6 +63,13 @@ The repository must be outside protected Windows locations such as
 directory is recommended. Canonical path resolution prevents `..`, separator,
 or case variations from bypassing this preflight.
 
+Virtualisation readiness uses native architecture and operational evidence.
+Active WSL2, Docker, VBS, or a Windows hypervisor takes precedence over
+contradictory legacy CIM fields. This is especially important on ARM64, where
+x86-oriented firmware and SLAT properties may report false while the
+hypervisor is operational. Raw and conflicting evidence remains visible in
+JSON diagnostics.
+
 After Python is available, an interactive deployment checks Windows Subsystem
 for Linux and Virtual Machine Platform. When either is missing, ITP explains
 the required changes and asks for consent before running:

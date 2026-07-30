@@ -478,6 +478,12 @@ def test_windows_launcher_is_thin_and_preserves_exit_code():
     assert "rebootRequired" in helper
     assert "repairableItems" in helper
     assert "blockingItems" in helper
+    assert "FirmwareVirtualizationState" in helper
+    assert "OperationalEvidence" in helper
+    assert "ConflictingEvidence" in helper
+    assert "DockerVirtualizationOperational" in helper
+    assert "cim.slat_false_not_authoritative_on_arm64" in helper
+    assert "Intel VT-x" not in helper
     assert "Locations checked" in helper
 
 
@@ -504,7 +510,11 @@ def test_windows_bootstrap_has_cross_platform_reviewable_harness():
             "resume after reboot must continue to Docker validation",
             "pending reboot must stop before Docker",
             "must have targeted guidance",
-            "JSON WSL state"):
+            "JSON WSL state",
+            "ARM64 operational evidence must override false firmware CIM",
+            "false ARM64 SLAT evidence must be non-authoritative",
+            "healthy Docker must override conflicting AMD64 firmware metadata",
+            "CIM query failure must produce unknown firmware state"):
         assert scenario in harness
 
 

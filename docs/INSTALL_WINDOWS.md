@@ -106,6 +106,13 @@ After Python bootstrap and before Docker validation, ITP inspects:
 - pending Windows restart state;
 - Docker Desktop, CLI, daemon, Compose v2, and detected backend.
 
+Virtualisation classification is architecture-aware. On ARM64, legacy
+`Win32_Processor` firmware and SLAT fields are diagnostic evidence only and
+cannot override a working Windows hypervisor, WSL2, VBS, or Docker daemon.
+Unknown firmware state is reported as a warning; deployment is blocked only
+when hardware virtualisation is positively confirmed unavailable without
+contradictory operational evidence.
+
 If WSL or Virtual Machine Platform is missing, an interactive deployment lists
 the required features and asks `[Y/n]`. No feature is changed without consent.
 After consent, ITP runs Microsoft's supported:
@@ -187,7 +194,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 prerequisites 
 The JSON contract includes `platform`, `windowsFeatures`, `virtualization`,
 `docker`, `rebootRequired`, `repairableItems`, and `blockingItems`. Readiness
 item arrays contain stable identifiers such as `windows_feature.wsl` and
-`docker.desktop_missing`.
+`docker.desktop_missing`. The `virtualization` object includes
+`nativeArchitecture`, `firmwareVirtualizationState`,
+`firmwareVirtualizationRaw`, `firmwareEvidenceReliable`, `wsl2Operational`,
+`dockerVirtualizationOperational`, `operationalEvidence`, and
+`conflictingEvidence`.
 
 Deployment configuration, generated credentials, dashboards, and local runtime
 state are stored below:

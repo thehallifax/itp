@@ -96,8 +96,9 @@ function Get-ITPNativeArchitecture {
     switch -Regex ("$Raw".ToUpperInvariant()) {
         '^(AMD64|X64)$' { return "AMD64" }
         '^ARM64$' { return "ARM64" }
+        '^(X86|I386|I686)$' { return "x86" }
         default {
-            throw "Unsupported or ambiguous native Windows architecture '$Raw'. ITP supports AMD64 and ARM64."
+            throw "Unsupported or ambiguous native Windows architecture '$Raw'. ITP detects AMD64, ARM64, and x86; deployment supports AMD64 and ARM64."
         }
     }
 }
@@ -586,6 +587,20 @@ function Get-ITPWindowsPlatformState {
             param($Executable, $Arguments)
             Invoke-ITPCommandCapture -Executable $Executable -Arguments $Arguments
         },
+        [scriptblock]$CimProvider = {
+            param($ClassName)
+            if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+                return Get-CimInstance $ClassName -ErrorAction SilentlyContinue
+            }
+            return $null
+        },
+        [scriptblock]$FeatureProvider = {
+            param($Name)
+            Get-ITPOptionalFeatureState $Name
+        },
+        [scriptblock]$RebootProvider = {
+            Test-ITPPendingReboot
+        },
         $EvidenceOverride
     )
     if (-not (Test-ITPRunningOnWindows -PlatformOverride $PlatformOverride)) {
@@ -598,16 +613,15 @@ function Get-ITPWindowsPlatformState {
         return $EvidenceOverride
     }
 
-    $OperatingSystem = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
-        Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
-    } else { $null }
-    $Processor = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
-        Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-    } else { $null }
-    $Computer = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
-        Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
-    } else { $null }
+    $OperatingSystem = try {
+        & $CimProvider "Win32_OperatingSystem"
+    } catch { $null }
+    $Processor = try {
+        & $CimProvider "Win32_Processor" | Select-Object -First 1
+    } catch { $null }
+    $Computer = try {
+        & $CimProvider "Win32_ComputerSystem"
+    } catch { $null }
     $Architecture = try {
         Get-ITPNativeArchitecture -ArchitectureOverride $ArchitectureOverride
     } catch { "Unsupported" }
@@ -615,14 +629,15 @@ function Get-ITPWindowsPlatformState {
         [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
     } catch { $env:PROCESSOR_ARCHITECTURE }
 
-    $WslFeature = Get-ITPOptionalFeatureState "Microsoft-Windows-Subsystem-Linux"
-    $VirtualMachinePlatform = Get-ITPOptionalFeatureState "VirtualMachinePlatform"
-    $HyperV = Get-ITPOptionalFeatureState "Microsoft-Hyper-V-All"
-    $HypervisorPlatform = Get-ITPOptionalFeatureState "HypervisorPlatform"
+    $WslFeature = & $FeatureProvider "Microsoft-Windows-Subsystem-Linux"
+    $VirtualMachinePlatform = & $FeatureProvider "VirtualMachinePlatform"
+    $HyperV = & $FeatureProvider "Microsoft-Hyper-V-All"
+    $HypervisorPlatform = & $FeatureProvider "HypervisorPlatform"
     $Wsl = & $CommandResolver "wsl"
     $WslVersion = ""
     $WslKernel = ""
     $DefaultWslVersion = ""
+    $WslStatusSuccessful = $false
     if ($Wsl) {
         $VersionResult = & $CommandRunner $Wsl.Source @("--version")
         if ($VersionResult.ExitCode -eq 0) {
@@ -636,6 +651,7 @@ function Get-ITPWindowsPlatformState {
             $WslKernel = "$KernelLine".Split(":", 2)[-1].Trim()
         }
         $StatusResult = & $CommandRunner $Wsl.Source @("--status")
+        $WslStatusSuccessful = $StatusResult.ExitCode -eq 0
         $StatusOutput = "$($StatusResult.Output)".Replace("`0", "")
         $DefaultLine = $StatusOutput -split "`r?`n" |
             Where-Object { $_ -match '(?i)^Default Version:' } |
@@ -698,6 +714,8 @@ function Get-ITPWindowsPlatformState {
     $Compose = $false
     $DockerBackend = "Unknown"
     $DockerVersion = ""
+    $DockerArchitecture = ""
+    $DockerKernel = ""
     if ($Docker) {
         $VersionResult = & $CommandRunner $Docker.Source @("--version")
         $DockerVersion = $VersionResult.Output
@@ -705,8 +723,111 @@ function Get-ITPWindowsPlatformState {
         $DockerDaemon = $InfoResult.ExitCode -eq 0
         if ($InfoResult.Output -match '(?i)wsl') { $DockerBackend = "WSL" }
         elseif ($InfoResult.Output -match '(?i)hyper-v') { $DockerBackend = "Hyper-V" }
+        $ArchitectureLine = $InfoResult.Output -split "`r?`n" |
+            Where-Object { $_ -match '(?i)^\s*Architecture\s*:' } |
+            Select-Object -First 1
+        if ($ArchitectureLine) {
+            $DockerArchitecture = "$ArchitectureLine".Split(":", 2)[-1].Trim()
+        }
+        $KernelLine = $InfoResult.Output -split "`r?`n" |
+            Where-Object { $_ -match '(?i)^\s*Kernel Version\s*:' } |
+            Select-Object -First 1
+        if ($KernelLine) {
+            $DockerKernel = "$KernelLine".Split(":", 2)[-1].Trim()
+        }
         $ComposeResult = & $CommandRunner $Docker.Source @("compose", "version")
         $Compose = $ComposeResult.ExitCode -eq 0
+    }
+    $SystemInfoOutput = ""
+    $SystemInfo = & $CommandResolver "systeminfo"
+    if ($SystemInfo) {
+        $SystemInfoResult = & $CommandRunner $SystemInfo.Source @()
+        if ($SystemInfoResult.ExitCode -eq 0) {
+            $SystemInfoOutput = "$($SystemInfoResult.Output)"
+        }
+    }
+    $SystemInfoHypervisor = (
+        $SystemInfoOutput -match '(?i)a hypervisor has been detected')
+    $VbsRunning = (
+        $SystemInfoOutput -match
+            '(?is)virtualization-based security[^\r\n]*running')
+    $SystemInfoFirmwareEnabled = $null
+    if ($SystemInfoOutput -match
+            '(?i)virtualization enabled in firmware\s*:\s*(yes|no)') {
+        $SystemInfoFirmwareEnabled = $Matches[1].ToLowerInvariant() -eq "yes"
+    }
+    $RawVmMonitor = if ($Processor -and
+            $null -ne $Processor.VMMonitorModeExtensions) {
+        [bool]$Processor.VMMonitorModeExtensions
+    } else { $null }
+    $RawSlat = if ($Processor -and
+            $null -ne $Processor.SecondLevelAddressTranslationExtensions) {
+        [bool]$Processor.SecondLevelAddressTranslationExtensions
+    } else { $null }
+    $RawFirmware = if ($Processor -and
+            $null -ne $Processor.VirtualizationFirmwareEnabled) {
+        [bool]$Processor.VirtualizationFirmwareEnabled
+    } else { $null }
+    $HypervisorPresent = if ($Computer -and
+            $null -ne $Computer.HypervisorPresent) {
+        [bool]$Computer.HypervisorPresent
+    } else { $null }
+    $Wsl2Operational = (
+        $WslStatusSuccessful -and $DefaultWslVersion -eq "2")
+    $DockerVirtualizationOperational = $DockerDaemon
+    $OperationalEvidence = @()
+    if ($DockerDaemon) { $OperationalEvidence += "docker.daemon_reachable" }
+    if ($DockerVirtualizationOperational) {
+        $OperationalEvidence += "docker.virtualization_backend_operational"
+    }
+    if ($Wsl2Operational) { $OperationalEvidence += "wsl2.operational" }
+    if ($HypervisorPresent -eq $true) {
+        $OperationalEvidence += "windows.hypervisor_present"
+    }
+    if ($SystemInfoHypervisor) {
+        $OperationalEvidence += "systeminfo.hypervisor_detected"
+    }
+    if ($VbsRunning) { $OperationalEvidence += "windows.vbs_running" }
+    $OperationalEvidence = @($OperationalEvidence | Sort-Object -Unique)
+    $HasOperationalEvidence = $OperationalEvidence.Count -gt 0
+    $FirmwareEvidenceReliable = (
+        $null -ne $SystemInfoFirmwareEnabled -or
+        ($Architecture -in @("AMD64", "x86") -and $null -ne $RawFirmware))
+    $FirmwareState = "unknown"
+    if ($HasOperationalEvidence -or $RawFirmware -eq $true -or
+            $SystemInfoFirmwareEnabled -eq $true) {
+        $FirmwareState = "enabled"
+    }
+    elseif ($FirmwareEvidenceReliable -and (
+            $RawFirmware -eq $false -or
+            $SystemInfoFirmwareEnabled -eq $false)) {
+        $FirmwareState = "disabled"
+    }
+    $ConflictingEvidence = @()
+    if ($HasOperationalEvidence -and $RawFirmware -eq $false) {
+        $ConflictingEvidence += "cim.firmware_false_but_operational"
+    }
+    if ($Architecture -eq "ARM64" -and $RawSlat -eq $false) {
+        $ConflictingEvidence += "cim.slat_false_not_authoritative_on_arm64"
+    }
+    if ($SystemInfoFirmwareEnabled -eq $false -and $HasOperationalEvidence) {
+        $ConflictingEvidence += "systeminfo.firmware_false_but_operational"
+    }
+    $CpuCapable = if ($HasOperationalEvidence) {
+        $true
+    }
+    elseif ($Architecture -eq "ARM64" -and $RawVmMonitor -eq $true) {
+        $true
+    }
+    elseif ($Architecture -in @("AMD64", "x86") -and (
+            $RawVmMonitor -eq $true -or $RawSlat -eq $true)) {
+        $true
+    }
+    elseif ($FirmwareState -eq "disabled") {
+        $false
+    }
+    else {
+        $null
     }
     $Interactive = Test-ITPInteractiveDeployment -Arguments @("deploy") `
         -InteractiveOverride $InteractiveOverride
@@ -732,17 +853,25 @@ function Get-ITPWindowsPlatformState {
                 $Architecture -in @("AMD64", "ARM64"))
         }
         Virtualization = [PSCustomObject]@{
-            CpuCapable = if ($Processor) {
-                [bool]($Processor.VMMonitorModeExtensions -or
-                    $Processor.SecondLevelAddressTranslationExtensions)
-            } else { $null }
-            FirmwareEnabled = if ($Processor) {
-                [bool]$Processor.VirtualizationFirmwareEnabled
-            } else { $null }
+            CpuCapable = $CpuCapable
+            FirmwareEnabled = $(if ($FirmwareState -eq "enabled") {
+                $true
+            } elseif ($FirmwareState -eq "disabled") {
+                $false
+            } else {
+                $null
+            })
+            nativeArchitecture = $Architecture
+            firmwareVirtualizationState = $FirmwareState
+            firmwareVirtualizationRaw = $RawFirmware
+            firmwareEvidenceReliable = $FirmwareEvidenceReliable
             HyperVAvailable = $HyperV -eq "Enabled"
-            HypervisorPresent = if ($Computer) {
-                [bool]$Computer.HypervisorPresent
-            } else { $null }
+            HypervisorPresent = $HypervisorPresent
+            wsl2Operational = $Wsl2Operational
+            dockerVirtualizationOperational = $DockerVirtualizationOperational
+            vbsRunning = $VbsRunning
+            operationalEvidence = $OperationalEvidence
+            conflictingEvidence = @($ConflictingEvidence | Sort-Object -Unique)
         }
         WindowsFeatures = [PSCustomObject]@{
             WSL = $WslFeature
@@ -760,11 +889,13 @@ function Get-ITPWindowsPlatformState {
             DesktopPath = "$DockerDesktopPath"
             CliAvailable = $DockerCliAvailable
             Version = $DockerVersion
+            Architecture = $DockerArchitecture
+            Kernel = $DockerKernel
             DaemonReachable = $DockerDaemon
             ComposeV2 = $Compose
             Backend = $DockerBackend
         }
-        RebootRequired = Test-ITPPendingReboot
+        RebootRequired = & $RebootProvider
         Interactive = $Interactive
     }
 }
@@ -955,8 +1086,8 @@ function Initialize-ITPWindowsPlatform {
     }
     if ($State.Virtualization.FirmwareEnabled -eq $false) {
         throw (
-            "Hardware virtualization is disabled in firmware. Enable AMD-V, SVM, " +
-            "or Intel VT-x in system firmware, restart Windows, and rerun the deployment.")
+            "Hardware virtualisation is confirmed disabled. Enable hardware " +
+            "virtualisation in UEFI/firmware, restart Windows, and rerun the deployment.")
     }
     if ($State.RebootRequired) {
         [Console]::Error.WriteLine(
@@ -1317,12 +1448,49 @@ function Invoke-ITPPrerequisiteDiagnostics {
         Write-Output ""
 
         Write-ITPPrerequisiteSection "Virtualization"
+        $FirmwareDisplayState = if (
+                $Result.virtualization.PSObject.Properties.Name -contains
+                    "FirmwareVirtualizationState") {
+            "$($Result.virtualization.FirmwareVirtualizationState)"
+        } elseif ($Result.virtualization.FirmwareEnabled -eq $true) {
+            "enabled"
+        } elseif ($Result.virtualization.FirmwareEnabled -eq $false) {
+            "disabled"
+        } else {
+            "unknown"
+        }
         Write-ITPPrerequisiteValue $(if ($Result.virtualization.CpuCapable -eq $false) { "FAIL" } elseif ($null -eq $Result.virtualization.CpuCapable) { "INFO" } else { "PASS" }) `
-            "CPU virtualization capability" $Result.virtualization.CpuCapable
-        Write-ITPPrerequisiteValue $(if ($Result.virtualization.FirmwareEnabled -eq $false) { "FAIL" } elseif ($null -eq $Result.virtualization.FirmwareEnabled) { "INFO" } else { "PASS" }) `
-            "Firmware virtualization" $Result.virtualization.FirmwareEnabled
+            "Hardware virtualisation operational" $Result.virtualization.CpuCapable
+        Write-ITPPrerequisiteValue $(if ($FirmwareDisplayState -eq "disabled") { "FAIL" } elseif ($FirmwareDisplayState -eq "unknown") { "WARNING" } else { "PASS" }) `
+            "Firmware virtualisation state" $FirmwareDisplayState
         Write-ITPPrerequisiteValue "INFO" "Hyper-V available" $Result.virtualization.HyperVAvailable
-        Write-ITPPrerequisiteValue "INFO" "Hypervisor present" $Result.virtualization.HypervisorPresent
+        Write-ITPPrerequisiteValue $(if ($Result.virtualization.HypervisorPresent) { "PASS" } else { "INFO" }) `
+            "Active Windows hypervisor detected" `
+            $Result.virtualization.HypervisorPresent
+        Write-ITPPrerequisiteValue $(if ($Result.virtualization.WSL2Operational) { "PASS" } else { "INFO" }) `
+            "WSL2 operational" $Result.virtualization.WSL2Operational
+        Write-ITPPrerequisiteValue $(if ($Result.virtualization.DockerVirtualizationOperational) { "PASS" } else { "INFO" }) `
+            "Docker Desktop virtualisation backend operational" `
+            $Result.virtualization.DockerVirtualizationOperational
+        foreach ($Conflict in @($Result.virtualization.ConflictingEvidence)) {
+            $ConflictLabel = switch ($Conflict) {
+                "cim.firmware_false_but_operational" {
+                    if ($Result.virtualization.nativeArchitecture -eq "ARM64") {
+                        "Firmware virtualisation CIM field reported false but is not authoritative on ARM64"
+                    } else {
+                        "Firmware virtualisation CIM field reported false but operational evidence overrides it"
+                    }
+                }
+                "cim.slat_false_not_authoritative_on_arm64" {
+                    "SLAT CIM field reported false but is not authoritative on ARM64"
+                }
+                "systeminfo.firmware_false_but_operational" {
+                    "System firmware metadata conflicts with active virtualisation evidence"
+                }
+                default { $Conflict }
+            }
+            Write-ITPPrerequisiteValue "WARNING" "Conflicting evidence" $ConflictLabel
+        }
         Write-Output ""
 
         Write-ITPPrerequisiteSection "Windows Features"
