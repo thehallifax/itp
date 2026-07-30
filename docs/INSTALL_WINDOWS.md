@@ -9,7 +9,6 @@ Windows containers are not supported.
 Install:
 
 - Git for Windows;
-- Python 3.9 or later from python.org;
 - Docker Desktop with Docker Compose v2.
 
 Docker Desktop commonly uses its WSL 2 backend. WSL 2 must be installed and
@@ -18,22 +17,29 @@ from PowerShell and does not require an interactive WSL shell. A supported
 Hyper-V backend may also be used where Docker Desktop and the Windows edition
 provide it.
 
-During Python installation, enable the Python launcher and add Python to
-`PATH`. ITP tries `py -3`, then `python`, then `python3`.
+Python does not need to be installed manually before an interactive
+deployment. ITP tries `py -3`, then `python`, then `python3`, and validates
+that the resolved interpreter is Python 3.9 or later. If none is supported,
+the launcher explains the requirement and asks for consent to install
+`Python.Python.3.12` through WinGet. Pressing Enter accepts the default Yes;
+declining makes no installation changes.
 
 Start Docker Desktop and verify the Linux-container engine before cloning ITP:
 
 ```powershell
-py -3 --version
 git --version
 docker version
 docker compose version
 docker info
 ```
 
-If `py` is unavailable, use `python --version`. If `python.exe` opens the
-Microsoft Store, install Python from python.org and disable the conflicting
-Windows App Execution Alias.
+Automatic Python installation depends on WinGet. WinGet may be unavailable on
+older Windows builds, unregistered first-login environments, stripped-down
+server installations, or managed systems without App Installer. In that case,
+install Python from https://www.python.org/downloads/windows/, enable
+`Add python.exe to PATH`, open a new PowerShell window, and retry. If
+`python.exe` opens the Microsoft Store, disable the conflicting Windows App
+Execution Alias.
 
 ## Clean installation
 
@@ -42,6 +48,14 @@ Open PowerShell and run:
 ```powershell
 git clone https://github.com/thehallifax/infrastructure-telemetry-platform.git
 cd infrastructure-telemetry-platform
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy
+```
+
+The execution-policy override applies only to this launched PowerShell process
+and does not permanently change machine or user policy. When local script
+execution is already allowed, use the shorter command:
+
+```powershell
 .\itp.ps1 deploy
 ```
 
@@ -49,6 +63,18 @@ The PowerShell launcher invokes the shared bootstrap automatically. It creates
 `.venv`, installs the runtime dependencies declared by `pyproject.toml`, checks
 Docker and Compose, and starts the deployment. Running
 `py scripts\bootstrap.py` separately is not required.
+
+If Python is missing, an interactive deployment offers the exact WinGet
+package `Python.Python.3.12`. Installation never starts without consent. After
+WinGet succeeds, ITP refreshes the current process from the Machine and User
+`PATH` values, checks the standard per-user Python 3.12 and WinGet link
+locations, validates the interpreter, and continues deployment without asking
+the user to reopen PowerShell.
+
+Non-interactive invocations never wait for consent and never install software.
+Preinstall Python 3.9 or later before using such an invocation. If WinGet
+reports success but Python cannot be resolved safely, ITP exits non-zero and
+asks the user to open a new PowerShell window and rerun the command.
 
 Deployment configuration, generated credentials, dashboards, and local runtime
 state are stored below:
@@ -77,21 +103,17 @@ to untrusted networks.
 
 ## PowerShell execution policy
 
-The repository PowerShell launcher may be blocked when local scripts are not
-permitted. A common per-user setting is:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-
-For a single invocation without changing the persistent policy:
+The repository launcher may be blocked when local scripts are not permitted.
+Use the canonical process-only invocation:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy
 ```
 
 Use `pwsh` instead of `powershell.exe` when using PowerShell 7. An execution
-policy enforced by organisational Group Policy requires administrator help.
+policy enforced by organisational Group Policy may prevent even the
+process-level override; ITP cannot bypass that control, so contact the system
+administrator.
 
 ## Contributor setup
 
@@ -127,6 +149,7 @@ the filesystem, then remove the cloned repository if it is no longer needed.
 - Only Linux containers are supported.
 - WSL or Git Bash is required for POSIX-only maintenance scripts.
 - Windows App Execution Aliases can interfere with Python discovery.
+- Automatic Python installation requires WinGet and interactive consent.
 - Corporate execution policy, endpoint protection, proxy, or firewall rules
   may require administrator-approved configuration.
 

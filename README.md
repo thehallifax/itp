@@ -18,8 +18,13 @@ automatically.
 ```powershell
 git clone https://github.com/thehallifax/infrastructure-telemetry-platform.git
 cd infrastructure-telemetry-platform
-.\itp.ps1 deploy
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy
 ```
+
+This process-only execution-policy override does not permanently change the
+machine or user policy. On systems where local scripts are already allowed,
+the shorter `.\itp.ps1 deploy` command is equivalent. The launcher can offer
+to install Python 3.12 through WinGet when no supported Python is available.
 
 ### macOS or Linux
 

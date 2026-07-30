@@ -18,40 +18,43 @@ Python launcher is unavailable.
 Install:
 
 - Git for Windows
-- Python 3.9 or later from
-  [python.org](https://www.python.org/downloads/windows/)
 - Docker Desktop with Docker Compose v2
 - Windows PowerShell 5.1 or PowerShell 7
 
-During Python installation, enable `Add python.exe to PATH` and install the
-Python launcher when offered. ITP tries `py -3`, then `python`, and finally
-`python3`. Disable the Windows App Execution Aliases for `python.exe` and
-`python3.exe` if they redirect to the Microsoft Store.
+ITP tries `py -3`, then `python`, and finally `python3`, validating Python 3.9
+or later rather than relying on command presence. During an interactive
+deployment, it can install the exact WinGet package `Python.Python.3.12` after
+the user consents. It then refreshes the current Machine and User `PATH` and
+continues without reopening PowerShell where the interpreter can be resolved.
+Non-interactive invocations never prompt or install software.
 
 Verify:
 
 ```powershell
-py -3 --version
 git --version
 docker --version
 docker compose version
 docker info
 ```
 
-Windows may block local scripts. The recommended per-user policy is:
+Automatic installation requires WinGet. It may be unavailable on older
+Windows builds, unregistered first-login environments, stripped-down servers,
+or managed systems where App Installer is unavailable. Install Python from
+[python.org](https://www.python.org/downloads/windows/) and enable
+`Add python.exe to PATH` when automatic installation is unavailable. Disable
+Windows App Execution Aliases if they redirect `python.exe` or `python3.exe`
+to the Microsoft Store.
+
+Windows may block local scripts. The canonical first-run command uses a
+process-only override without changing persistent machine or user policy:
 
 ```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy
 ```
 
-For one invocation without a persistent policy change:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 --help
-```
-
-Use `pwsh` instead of `powershell.exe` for PowerShell 7. ITP cannot bypass a
-policy enforced by organisational Group Policy.
+Use `.\itp.ps1 deploy` when scripts are already allowed, or `pwsh` instead of
+`powershell.exe` for PowerShell 7. Organisational Group Policy may prevent the
+process-level override; ITP cannot bypass that control.
 
 ### Docker virtualization
 

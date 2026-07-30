@@ -1,7 +1,8 @@
 # Install ITP
 
-ITP requires Git, Python 3.9 or later, Docker Desktop or Docker Engine, and
-Docker Compose v2.
+ITP requires Git, Docker Desktop or Docker Engine, Docker Compose v2, and
+Python 3.9 or later. On an interactive Windows deployment, the launcher can
+install Python 3.12 through WinGet with the user's explicit consent.
 
 From a clean clone:
 
@@ -23,7 +24,9 @@ After deployment:
 ./itp collector list
 ```
 
-On Windows PowerShell, run `.\itp.ps1 deploy`. See
+On Windows PowerShell, the canonical first-run command is
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy`.
+Use `.\itp.ps1 deploy` where script execution is already allowed. See
 [Platform prerequisites](platform-prerequisites.md), the
 [Windows guide](INSTALL_WINDOWS.md), [macOS guide](INSTALL_MACOS.md), or
 [Linux guide](INSTALL_LINUX.md) for operating-system details.

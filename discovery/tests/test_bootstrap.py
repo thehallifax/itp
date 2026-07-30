@@ -426,30 +426,46 @@ def test_main_strips_bootstrap_verbose_before_launch(monkeypatch):
 
 
 def test_windows_launcher_is_thin_and_preserves_exit_code():
-    text = (Path(__file__).resolve().parents[2] / "itp.ps1").read_text()
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "itp.ps1").read_text()
+    helper = (root / "scripts/windows-bootstrap.ps1").read_text()
     assert "$PSScriptRoot" in text
     assert 'Join-Path $Root "scripts\\bootstrap.py"' in text
-    assert text.index('Name = "py"') < text.index('Name = "python"')
-    assert text.index('Name = "python"') < text.index('Name = "python3"')
-    assert 'Prefix = @("-3")' in text
-    assert "System.Diagnostics.ProcessStartInfo" in text
-    assert "$StartInfo.RedirectStandardError = $true" in text
-    assert "$Process.ExitCode -ne 0" in text
-    assert "sys.version_info >= (3, 9)" in text
-    assert "catch {" in text
-    assert "continue" in text
+    assert 'Join-Path $Root "scripts\\windows-bootstrap.ps1"' in text
+    assert text.index(". $WindowsBootstrap") < text.index("Initialize-ITPPython")
     assert "@args" in text
     assert "$BootstrapExitCode = $LASTEXITCODE" in text
     assert "exit $BootstrapExitCode" in text
     assert "pip install" not in text
-    assert "ITP prerequisite check failed: Python was not found." in text
-    assert "Windows App Execution Aliases" in text
-    assert "Python $MinimumPython or later" in text
-    missing_start = text.index(
-        'if ($null -eq $Selected) {')
-    missing_end = text.index(
-        '$env:ITP_BOOTSTRAP_PYTHON_LABEL')
-    assert "exit 1" in text[missing_start:missing_end]
+    assert helper.index('Name = "py"') < helper.index('Name = "python"')
+    assert helper.index('Name = "python"') < helper.index('Name = "python3"')
+    assert 'Prefix = @("-3")' in helper
+    assert "System.Diagnostics.ProcessStartInfo" in helper
+    assert "$StartInfo.RedirectStandardError = $true" in helper
+    assert "$Process.ExitCode -ne 0" in helper
+    assert "Python.Python.3.12" in helper
+    assert '"--exact", "--source", "winget"' in helper
+    assert '"--accept-package-agreements", "--accept-source-agreements"' in helper
+    assert 'GetEnvironmentVariable("Path", $Scope)' in helper
+    assert "IsInputRedirected" in helper
+    assert "WinGet is unavailable" in helper
+    assert "could not resolve a supported" in helper
+
+
+def test_windows_bootstrap_has_cross_platform_reviewable_harness():
+    root = Path(__file__).resolve().parents[2]
+    harness = (root / "scripts/Test-WindowsBootstrap.ps1").read_text()
+    for scenario in (
+            "py must take precedence",
+            "python fallback must be selected",
+            "unsupported Python must not be selected",
+            "declined installation must stop cleanly",
+            "missing WinGet must be actionable",
+            "non-interactive deployment must not prompt",
+            "PATH must refresh from both scopes",
+            "successful install with no interpreter must fail clearly",
+            "launcher must forward all arguments"):
+        assert scenario in harness
 
 
 def test_unix_launcher_is_location_relative_and_forwards_arguments():
