@@ -676,7 +676,7 @@ function Invoke-ITPPrerequisiteDiagnostics {
     $Result = Get-ITPPrerequisiteDiagnostics -InteractiveOverride $InteractiveOverride
     Write-Output "ITP Windows prerequisite diagnostics"
     foreach ($Check in $Result.Checks) {
-        Write-Output ("[{0}] {1} — {2} ({3})" -f `
+        Write-Output ("[{0}] {1} - {2} ({3})" -f `
             $Check.State, $Check.Name, $Check.Detail, $Check.Classification)
     }
     Write-Output ""

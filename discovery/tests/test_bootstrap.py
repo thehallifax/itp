@@ -485,6 +485,22 @@ def test_windows_bootstrap_has_cross_platform_reviewable_harness():
         assert scenario in harness
 
 
+def test_production_powershell_sources_are_windows_51_ascii_safe():
+    root = Path(__file__).resolve().parents[2]
+    paths = (
+        root / "itp.ps1",
+        root / "scripts/windows-bootstrap.ps1",
+        root / "scripts/Install-ITP.ps1",
+        root / "scripts/Update-ITP.ps1",
+        root / "collectors/hyperv/Collect-ITPHyperV.ps1",
+    )
+    for path in paths:
+        data = path.read_bytes()
+        assert data.isascii(), (
+            f"{path.relative_to(root)} contains non-ASCII source bytes")
+        assert data.decode("ascii") == data.decode("cp1252")
+
+
 def test_unix_launcher_is_location_relative_and_forwards_arguments():
     text = (Path(__file__).resolve().parents[2] / "itp").read_text()
     assert 'dirname -- "$0"' in text
