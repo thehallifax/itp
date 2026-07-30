@@ -8,6 +8,7 @@ import pytest
 
 from collectors.file_lock import exclusive_file_lock, lock_file, unlock_file
 from collectors.file_permissions import restrict_owner_access
+from collectors.writer import atomic_write
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -73,6 +74,16 @@ def test_secret_permissions_are_posix_only(tmp_path):
     restrict_owner_access(path, platform="nt")
     assert path.stat().st_mode & 0o777 == 0o644
     restrict_owner_access(path, platform="posix")
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="POSIX modes are not authoritative")
+def test_atomic_write_defaults_remain_restrictive_for_secret_artifacts(tmp_path):
+    path = tmp_path / "secret.env"
+    atomic_write(path, "TOKEN=redacted\n")
+    assert path.stat().st_mode & 0o777 == 0o600
+    atomic_write(path, "TOKEN=still-redacted\n")
     assert path.stat().st_mode & 0o777 == 0o600
 
 

@@ -1181,7 +1181,7 @@
           "refId": "A"
         }
       ],
-      "title": "${wan_interface:text}",
+      "title": "WAN Throughput \u00b7 ${wan_interface:text}",
       "type": "timeseries"
     },
     {

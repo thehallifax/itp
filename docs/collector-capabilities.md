@@ -19,6 +19,25 @@ capabilities do.
 Entries identify measurements, fields, canonical services and dashboard panels.
 They never contain endpoints, credentials, tokens, payloads or raw exceptions.
 
+## Lifecycle and visibility contract
+
+| Stage | Meaning |
+| --- | --- |
+| known | ITP has a static capability declaration. |
+| discovered | Discovery ran; this does not enable the capability. |
+| selected / enabled | The operator explicitly enabled its collector. |
+| configured | Required non-secret connector settings are present. |
+| validated | A current successful collection proves the configuration. |
+| collecting | The latest authoritative collection succeeded. |
+| healthy / warning / critical | Service Health evaluated current evidence. |
+| stale | Previously valid evidence exceeded its freshness policy. |
+| unsupported / unavailable | Static support is absent, or current evidence cannot be collected. |
+
+Operational cards appear only for explicitly enabled capabilities. Disabled
+capabilities remain in onboarding, Doctor, and capability inspection; they are
+not rendered as unhealthy, unknown, or awaiting collection. Health and
+freshness remain independent.
+
 ## Generate and inspect
 
 ```bash

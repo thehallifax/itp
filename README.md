@@ -54,14 +54,15 @@ The examples below use the macOS/Linux launcher. On Windows PowerShell, replace
 Useful commands:
 
 ```sh
+./itp collector list
+./itp collector add <collector>
+./itp collector test <collector>
+./itp collect
 ./itp doctor
 ./itp status
-./itp collector list
-./itp collector add snmp
-./itp collector test snmp
 ./itp dashboard generate
 ./itp restart
-./itp logs
+./itp logs collector
 ```
 
 Runtime commands infer the active deployment. Select one explicitly with
@@ -110,6 +111,9 @@ tree.
 - [Windows installation](docs/INSTALL_WINDOWS.md)
 - [deployment runtime](docs/DEPLOYMENT_RUNTIME.md)
 - [collector onboarding](docs/COLLECTOR_ONBOARDING.md)
+- [capability lifecycle](docs/collector-capabilities.md)
+- [dashboard model](docs/dashboard-platform.md)
+- [troubleshooting](docs/TROUBLESHOOTING.md)
 - [security and secrets](docs/SECURITY_AND_SECRETS.md)
 - [upgrades](docs/UPGRADE.md)
 - [architecture](docs/architecture.md)

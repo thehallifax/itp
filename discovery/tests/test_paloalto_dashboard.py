@@ -97,7 +97,7 @@ def test_operational_telemetry_panels_use_live_canonical_measurements():
         "Active Sessions": "FROM performance",
         "Session Utilisation": "FROM performance",
         "Interface Inventory": "FROM interface",
-        "${wan_interface:text}": "FROM interface",
+        "WAN Throughput · ${wan_interface:text}": "FROM interface",
         "Interface Fault Counters": "FROM interface",
         "Licences": "FROM license",
         "Threat Package": "FROM content_package",
@@ -121,7 +121,8 @@ def test_operational_telemetry_panels_use_live_canonical_measurements():
 def test_wan_panel_repeats_per_interface_without_aggregation():
     dashboard = module().build()
     panel = next(value for value in dashboard["panels"]
-                 if value["title"] == "${wan_interface:text}")
+                 if value["title"] ==
+                 "WAN Throughput · ${wan_interface:text}")
     sql = panel["targets"][0]["rawSql"]
     assert panel["repeat"] == "wan_interface"
     assert panel["repeatDirection"] == "h"

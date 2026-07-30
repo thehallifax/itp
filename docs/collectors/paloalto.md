@@ -51,8 +51,9 @@ sites:
       - CUSTOMER-SITE
 ```
 
-Enable `collectors.paloalto` in `discovery/config.yml`, using that canonical ID
-for `site`. WAN classification is operator-owned and explicit:
+Enable `collectors.paloalto` in the selected deployment's ignored
+`runtime/deployments/<deployment>/collectors.yml`, using that canonical ID for
+`site`. WAN classification is operator-owned and explicit:
 
 ```yaml
 wan_interfaces:
@@ -73,13 +74,12 @@ traffic, and default routes never imply a WAN role.
 ## Commands
 
 ```sh
-docker compose exec collector python -m collectors paloalto validate
-docker compose exec collector python -m collectors paloalto discover
-docker compose exec collector python -m collectors paloalto run
-docker compose exec collector python -m collectors sites generate
-docker compose exec collector python -m collectors infrastructure generate
-docker compose exec collector python -m collectors operations generate
-docker compose exec collector python -m collectors wallboard generate
+./itp collector test paloalto --deployment <deployment>
+./itp collector run paloalto --deployment <deployment>
+./itp status --deployment <deployment>
+./itp doctor --deployment <deployment>
+./itp dashboard generate --deployment <deployment>
+./itp logs collector --deployment <deployment>
 ```
 
 Identity is mandatory. HA, interfaces, resources and licences are optional:
@@ -139,7 +139,10 @@ perpetual and malformed values are distinct states. Content timestamps use
 the firewall-provided AWST timezone where present. Unknown timestamps omit age
 instead of becoming zero.
 
-Internet health uses only configured WAN interfaces. All configured uplinks
+Internet health uses only configured WAN interfaces. Interface Inventory and
+Interface Status use the canonical `interface` measurement; an unavailable
+interface endpoint is reported as Feature unavailable rather than awaiting a
+first collection. All configured uplinks
 down is Critical; primary down with a working backup is Warning; stale,
 missing, invalid, or unconfigured evidence is Unknown. Security health uses
 firewall availability, subscription expiry, and device-certificate state.
@@ -147,17 +150,9 @@ Content age does not become Critical without an explicit policy.
 
 ## Dashboard regeneration
 
-Generate the classic dashboard with:
-
 ```sh
-python scripts/generate_paloalto_dashboard.py
-```
-
-```sh
-docker compose build collector
-docker compose up -d --no-deps --force-recreate collector
-docker compose exec collector python -m collectors dashboards generate
-docker compose restart grafana
+./itp dashboard generate --deployment <deployment>
+./itp restart --deployment <deployment>
 ```
 
 The dashboard consumes canonical `device`, `firewall`, `performance`,

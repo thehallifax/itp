@@ -33,6 +33,8 @@ FOLDERS = {
 CAPABILITIES = {"firewall", "internet", "wireless", "switching", "printing",
                 "identity", "compute", "storage", "voice", "email",
                 "inventory", "telemetry", "virtualisation"}
+SHARED_FILE_MODE = 0o644
+SHARED_DIRECTORY_MODE = 0o755
 
 
 @dataclass(frozen=True)
@@ -166,6 +168,17 @@ class DashboardPackRegistry:
             return dashboard_root.parent.parent
         return dashboard_root.parent
 
+    @staticmethod
+    def _shared_directory(path):
+        path = Path(path)
+        path.mkdir(
+            parents=True, exist_ok=True, mode=SHARED_DIRECTORY_MODE)
+        try:
+            path.chmod(SHARED_DIRECTORY_MODE)
+        except OSError:
+            pass
+        return path
+
     def _managed_dashboard(self, path, declaration, capabilities):
         try: dashboard = json.loads(path.read_text())
         except (OSError, json.JSONDecodeError) as exc:
@@ -191,6 +204,9 @@ class DashboardPackRegistry:
                                             "value": deployment_id}]
         dashboard["tags"] = sorted(tags)
         dashboard["editable"] = False
+        for panel in dashboard.get("panels", []):
+            panel.setdefault("fieldConfig", {}).setdefault(
+                "defaults", {}).setdefault("noValue", "No Matching Records")
         self._apply_capability_states(dashboard, declaration)
         if dashboard.get("uid") == "itp-collector-health":
             self._collector_health_empty_state(
@@ -206,9 +222,9 @@ class DashboardPackRegistry:
         manifest = self._read(
             runtime / f"capabilities/{collector}.json", {})
         labels = {
-            "disabled": "Collector Disabled",
-            "not_yet_collected": "Not Yet Collected",
-            "unavailable": "Currently Unavailable",
+            "disabled": "Feature Not Enabled",
+            "not_yet_collected": "Awaiting First Collection",
+            "unavailable": "Feature Unavailable",
             "failed": "Collection Failed",
             "partial": "Partial Data",
             "not_applicable": "Feature Not Enabled",
@@ -224,7 +240,11 @@ class DashboardPackRegistry:
                     continue
                 defaults = panel.setdefault("fieldConfig", {}).setdefault(
                     "defaults", {})
-                defaults["noValue"] = labels.get(state, "Not Yet Collected")
+                if capability.get("support") == "unsupported":
+                    defaults["noValue"] = "Feature Unavailable From Collector"
+                else:
+                    defaults["noValue"] = labels.get(
+                        state, "No Matching Records")
                 explanation = capability.get("explanation")
                 if explanation:
                     existing = str(panel.get("description") or "").strip()
@@ -280,7 +300,8 @@ class DashboardPackRegistry:
             credentials_configured=ready, demo=demo, now=now)
         atomic_write(
             runtime / "dashboard/readiness.json",
-            json.dumps(value, indent=2, sort_keys=True) + "\n")
+            json.dumps(value, indent=2, sort_keys=True) + "\n",
+            mode=SHARED_FILE_MODE, directory_mode=SHARED_DIRECTORY_MODE)
         return value
 
     @staticmethod
@@ -374,21 +395,22 @@ class DashboardPackRegistry:
         # can replace the previous managed dashboard.
         content = json.dumps(dashboard, indent=2, sort_keys=True) + "\n"
         json.loads(content)
-        atomic_write(destination, content)
+        atomic_write(
+            destination, content, mode=SHARED_FILE_MODE,
+            directory_mode=SHARED_DIRECTORY_MODE)
         return destination
 
     def refresh_state_derived(self):
         """Regenerate only platform dashboards backed by runtime snapshots."""
         resolved = self.resolve()
         self._readiness = self.readiness(resolved)
-        self.output_root.mkdir(parents=True, exist_ok=True)
-        runtime = (
-            self.output_root.parent.parent
-            if self.output_root.parent.name == "dashboard"
-            else self.output_root.parent)
+        self._shared_directory(self.output_root.parent)
+        self._shared_directory(self.output_root)
+        runtime = self._runtime_root()
         atomic_write(
             self.output_root / "registry.json",
-            json.dumps(resolved, indent=2, sort_keys=True) + "\n")
+            json.dumps(resolved, indent=2, sort_keys=True) + "\n",
+            mode=SHARED_FILE_MODE, directory_mode=SHARED_DIRECTORY_MODE)
         summary_path = runtime / "dashboard/infrastructure-summary.json"
         summary = self._read(
             summary_path, empty_infrastructure_summary(self._readiness))
@@ -397,7 +419,8 @@ class DashboardPackRegistry:
             summary.update(empty_infrastructure_summary(self._readiness))
         atomic_write(
             summary_path,
-            json.dumps(summary, indent=2, sort_keys=True) + "\n")
+            json.dumps(summary, indent=2, sort_keys=True) + "\n",
+            mode=SHARED_FILE_MODE, directory_mode=SHARED_DIRECTORY_MODE)
         operations = self._read(
             runtime / "operations/operations.json",
             {"generated_at": self._readiness["generated_at"],
@@ -437,13 +460,13 @@ class DashboardPackRegistry:
     def generate(self):
         resolved = self.resolve()
         self._readiness = self.readiness(resolved)
-        self.output_root.mkdir(parents=True, exist_ok=True)
-        atomic_write(self.output_root / "registry.json",
-            json.dumps(resolved, indent=2, sort_keys=True) + "\n")
-        runtime = (
-            self.output_root.parent.parent
-            if self.output_root.parent.name == "dashboard"
-            else self.output_root.parent)
+        self._shared_directory(self.output_root.parent)
+        self._shared_directory(self.output_root)
+        atomic_write(
+            self.output_root / "registry.json",
+            json.dumps(resolved, indent=2, sort_keys=True) + "\n",
+            mode=SHARED_FILE_MODE, directory_mode=SHARED_DIRECTORY_MODE)
+        runtime = self._runtime_root()
         summary_path = runtime / "dashboard/infrastructure-summary.json"
         summary = self._read(
             summary_path, empty_infrastructure_summary(self._readiness))
@@ -452,7 +475,8 @@ class DashboardPackRegistry:
             empty = empty_infrastructure_summary(self._readiness)
             summary.update(empty)
         atomic_write(
-            summary_path, json.dumps(summary, indent=2, sort_keys=True) + "\n")
+            summary_path, json.dumps(summary, indent=2, sort_keys=True) + "\n",
+            mode=SHARED_FILE_MODE, directory_mode=SHARED_DIRECTORY_MODE)
         operations = self._read(
             runtime / "operations/operations.json",
             {"generated_at": self._readiness["generated_at"],
@@ -483,9 +507,11 @@ class DashboardPackRegistry:
         for path in sorted(self.output_root.glob("*/*.json")):
             if path.resolve() not in expected: path.unlink()
         for _, slug in FOLDERS.values():
-            (self.output_root / slug).mkdir(parents=True, exist_ok=True)
-        atomic_write(self.provisioning_path,
-            yaml.safe_dump(self.provisioning(), sort_keys=False))
+            self._shared_directory(self.output_root / slug)
+        atomic_write(
+            self.provisioning_path,
+            yaml.safe_dump(self.provisioning(), sort_keys=False),
+            mode=SHARED_FILE_MODE, directory_mode=SHARED_DIRECTORY_MODE)
         return resolved
 
 

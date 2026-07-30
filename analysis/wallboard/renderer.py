@@ -20,6 +20,8 @@ HEALTH_COLORS = {"Healthy": "green", "Fresh": "green", "Warning": "orange",
                  "Collectors unavailable": "red",
                  "Unavailable": "red",
                  "Not Yet Collected": "gray",
+                 "WAN Role Not Configured": "gray",
+                 "Feature Unavailable": "gray",
                  "Collector Disabled": "gray",
                  "Waiting for first run": "gray",
                  "Waiting for first success": "gray"}
@@ -318,7 +320,7 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         if status == "Unknown":
             status = ("Collector Disabled"
                       if not summary.get("enabled_collectors")
-                      else "Not Yet Collected")
+                      else "Feature Unavailable")
         monitoring_service.append({
             "scope": scope["scope"], "value": status})
         services = ", ".join(value["stale_services"]) or "none"
@@ -530,8 +532,8 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         panel["targets"] = []
         panel["transformations"] = []
         panel["options"] = {"mode": "markdown", "content":
-            "## Not Yet Collected\n\nNo authoritative WAN interface "
-            "traffic has been collected for the selected site."}
+            "## WAN role not configured\n\nSelect at least one authoritative "
+            "WAN interface in the Palo Alto collector configuration."}
         dashboard["panels"].append(panel)
         panels[panel["title"]] = panel
 
@@ -613,5 +615,7 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                            if panel["title"] not in disabled_panels]
     _layout(dashboard)
     dashboard["version"] = int(dashboard.get("version", 0)) + 1
-    atomic_write(dashboard_path, json.dumps(dashboard, indent=2, sort_keys=True) + "\n")
+    atomic_write(
+        dashboard_path, json.dumps(dashboard, indent=2, sort_keys=True) + "\n",
+        mode=0o644, directory_mode=0o755)
     return dashboard

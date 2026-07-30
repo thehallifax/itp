@@ -23,7 +23,7 @@ def test_overview_contains_required_operational_panels_and_honest_placeholders()
     panels = {panel["title"]: panel for panel in dashboard["panels"]}
     required = {
         "Infrastructure Health", "Devices Online", "Devices Offline",
-        "Observability Health", "Actionable Warnings", "Collectors Healthy", "Switches",
+        "Observability Health", "Data Quality Findings", "Collectors Healthy", "Switches",
         "Access Points", "Firewalls", "Servers", "Printers", "WAN Latency",
         "WAN Packet Loss", "WAN Bandwidth", "DNS", "DHCP", "Active Directory",
         "PaperCut", "Certificates", "Active Issues", "Operational Risks",
@@ -34,7 +34,7 @@ def test_overview_contains_required_operational_panels_and_honest_placeholders()
     operations_generated = {"Active Issues", "Operational Risks", "Recommendations"}
     state_generated = {
         "Infrastructure Health", "Devices Online", "Devices Offline",
-        "Observability Health", "Actionable Warnings", "Collectors Healthy",
+        "Observability Health", "Data Quality Findings", "Collectors Healthy",
         "Switches", "Access Points", "Firewalls", "Servers", "Printers",
         "Sites", "Healthy Sites", "Warning Sites", "Critical Sites",
     }

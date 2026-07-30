@@ -370,6 +370,30 @@ def test_doctor_detects_active_bootstrap_payload_but_ignores_no_value(
     assert result.status == "pass"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes are not authoritative")
+def test_doctor_reports_unreadable_grafana_publication(tmp_path, monkeypatch):
+    root = repository(tmp_path)
+    runtime = tmp_path / "runtime"
+    provisioning = runtime / "generated/dashboard/provisioning/dashboards.yml"
+    managed = runtime / (
+        "generated/dashboard/managed/operations/"
+        "itp-operations-wallboard.json")
+    provisioning.parent.mkdir(parents=True)
+    managed.parent.mkdir(parents=True)
+    provisioning.write_text("apiVersion: 1\n")
+    managed.write_text('{"panels":[]}')
+    provisioning.chmod(0o600)
+    managed.chmod(0o600)
+    monkeypatch.setenv("ITP_RUNTIME_DIR", str(runtime))
+
+    result = check(
+        engine(root, offline=True).run(),
+        "operations.dashboard_publication")
+    assert result.status == "warn"
+    assert "mode=0600" in result.detail
+    assert result.command == "./itp restart"
+
+
 def test_cli_exit_codes_json_alias_and_no_runtime_dependency(
         tmp_path, monkeypatch, capsys, caplog):
     import collectors.__main__ as cli

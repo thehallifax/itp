@@ -269,7 +269,7 @@ def _internet_rows(wan_rows, scopes, capability_enabled):
         if not capability_enabled:
             label, color = "Not Enabled", "gray"
         elif not selected:
-            label, color = "Not Yet Collected", "gray"
+            label, color = "WAN Role Not Configured", "gray"
         else:
             down = [value for value in selected if value["state"] == "Down"]
             unknown = [value for value in selected if value["state"] == "Unknown"]

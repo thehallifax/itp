@@ -77,6 +77,32 @@ def test_current_success_replaces_historical_capability_failure(tmp_path):
     assert recovered["last_collection"]["safe_error_class"] is None
 
 
+def test_capability_lifecycle_distinguishes_selection_configuration_and_run(
+        tmp_path):
+    disabled = CapabilityManifestEngine(
+        {"collectors": {"paloalto": {"enabled": False}}},
+        tmp_path).build()["collectors"]["paloalto"]["execution"]
+    assert disabled == {
+        **disabled,
+        "known": True,
+        "discovered": False,
+        "selected": False,
+        "configured": False,
+        "enabled": False,
+        "validated": False,
+        "collecting": False,
+    }
+
+    enabled = CapabilityManifestEngine(
+        {"collectors": {"paloalto": {
+            "enabled": True, "base_url": "https://firewall.example.invalid"}}},
+        tmp_path).build()["collectors"]["paloalto"]["execution"]
+    assert enabled["selected"] is True
+    assert enabled["configured"] is True
+    assert enabled["validated"] is False
+    assert enabled["collecting"] is False
+
+
 @pytest.mark.parametrize("content", ["", "{", "[]"])
 def test_unavailable_scheduler_state_uses_safe_defaults(tmp_path, content):
     path = tmp_path / "scheduler/state.json"

@@ -23,6 +23,13 @@ not readiness policy.
 | `warning` | Current evidence exists with a deterministic degraded condition. |
 | `critical` | Explicit critical infrastructure or service evidence exists. |
 
+Capability detail additionally distinguishes enabled but unconfigured,
+configured awaiting collection, collecting, stale, unsupported, unavailable,
+and no matching data. Dashboards render these as Configuration required,
+Awaiting first collection, Data stale, Feature not enabled, Feature unavailable
+from this collector, Collector failed, or No matching records. “Not Yet
+Collected” is not a catch-all for disabled or unsupported features.
+
 Missing telemetry is never Healthy. A disabled capability is not a failure, and
 an enabled collector without a successful run is not reported as merely
 Unknown.

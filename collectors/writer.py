@@ -10,15 +10,33 @@ from urllib.parse import urlsplit, urlunsplit
 from telemetry import DeploymentMetadata, normalize_point
 
 
-def atomic_write(path, content):
+def atomic_write(path, content, *, mode=None, directory_mode=None):
+    """Atomically publish content with an optional explicit permission policy.
+
+    The default remains owner-only through ``mkstemp``. Callers must opt in to
+    shared readability for non-secret cross-container artifacts.
+    """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(
+        parents=True, exist_ok=True,
+        mode=directory_mode if directory_mode is not None else 0o777)
+    if directory_mode is not None:
+        try:
+            path.parent.chmod(directory_mode)
+        except OSError:
+            # Windows and non-POSIX filesystems may not implement Unix modes.
+            pass
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(fd, "w") as handle:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
+        if mode is not None:
+            try:
+                os.chmod(temporary, mode)
+            except OSError:
+                pass
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):

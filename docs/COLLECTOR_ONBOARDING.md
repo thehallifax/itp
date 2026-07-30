@@ -15,6 +15,9 @@ operator guidance.
 Add writes only to the selected runtime deployment. Secret fields use hidden
 input and may be left blank for later completion. Remove disables collection;
 it does not delete historical telemetry or user-created dashboards.
+Only capabilities from explicitly enabled collectors appear on live
+operational dashboards. Discovery can report a possible product without
+selecting or enabling it.
 
 Prompt labels, examples, defaults, types, sensitivity, normalization, and
 canonical config/credential equivalence are declared in the connector registry.
@@ -45,3 +48,35 @@ Collectors provide source metadata and mapped values. Deployment identity,
 schema enforcement, writes, run health, and readiness belong to the framework.
 An edge-only connector in a central runtime remains visible as `skipped` with
 an explicit placement reason.
+
+For each selected connector, complete configuration and credentials, run
+`collector test`, then run one collection:
+
+```bash
+./itp collector test <collector> --deployment <deployment>
+./itp collector run <collector> --deployment <deployment>
+./itp doctor --deployment <deployment>
+./itp dashboard generate --deployment <deployment>
+```
+
+The generated deployment lives at
+`runtime/deployments/<deployment>/`. Safely rerun `collector add` to amend
+configuration; existing values are preserved unless the operator replaces
+them.
+
+Palo Alto WAN health requires an explicit `wan_interfaces` list in the
+deployment's ignored `collectors.yml`. Inspect candidate names in the Palo Alto
+Interface Inventory dashboard or collector output, then configure:
+
+```yaml
+collectors:
+  paloalto:
+    enabled: true
+    wan_interfaces:
+      - name: ethernet1/1
+        role: primary
+        display_name: Primary Internet
+```
+
+Until it is configured, the operational state is **WAN role not configured**,
+not a collector failure.

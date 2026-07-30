@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -114,6 +116,63 @@ def test_enabled_papercut_pack_is_provisioned_in_printing(tmp_path):
     assert (
         tmp_path / "managed/printing/papercut-operational-overview.json"
     ).is_file()
+    dashboard = json.loads((
+        tmp_path / "managed/printing/papercut-operational-overview.json"
+    ).read_text())
+    panels = {panel["title"]: panel for panel in dashboard["panels"]}
+    assert panels["Uptime"]["options"]["colorMode"] == "none"
+    assert "informational" in panels["Uptime"]["description"]
+    for title in (
+            "Printer and Device Summary", "Licensing",
+            "Active Operational Findings"):
+        assert panels[title]["fieldConfig"]["defaults"]["noValue"] == \
+            "No Matching Records"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes are not authoritative")
+def test_generated_dashboard_artifacts_are_cross_container_readable(tmp_path):
+    value = registry(tmp_path, {"paloalto": True, "papercut": True})
+    value.generate()
+    provisioning = tmp_path / "dashboards.yml"
+    managed = (
+        tmp_path / "managed/operations/itp-operations-wallboard.json")
+
+    for path in (provisioning, managed):
+        assert stat.S_IMODE(path.stat().st_mode) == 0o644
+        assert path.stat().st_mode & stat.S_IROTH
+        assert stat.S_IMODE(path.parent.stat().st_mode) == 0o755
+
+    value.generate()
+    assert stat.S_IMODE(provisioning.stat().st_mode) == 0o644
+    assert stat.S_IMODE(managed.stat().st_mode) == 0o644
+
+
+def test_unselected_services_are_absent_and_enabled_collectors_remain_visible(
+        tmp_path):
+    runtime = tmp_path / "runtime"
+    config = {
+        "deployment_id": "example",
+        "collectors": {
+            "paloalto": {"enabled": True},
+            "papercut": {"enabled": True},
+        },
+    }
+    value = DashboardRegistry(
+        ROOT, config, runtime / "dashboard/managed",
+        runtime / "dashboard/provisioning/dashboards.yml")
+    value.generate()
+    dashboard = json.loads((
+        runtime / "dashboard/managed/infrastructure/"
+        "itp-infrastructure-overview.json").read_text())
+    titles = {panel["title"] for panel in dashboard["panels"]}
+    assert {"DNS", "DHCP", "Active Directory"}.isdisjoint(titles)
+    assert {"PaperCut", "Firewalls"} <= titles
+    assert (
+        runtime / "dashboard/managed/vendor/"
+        "paloalto-operational-overview.json").is_file()
+    assert (
+        runtime / "dashboard/managed/printing/"
+        "papercut-operational-overview.json").is_file()
 
 
 def test_generation_is_deterministic_managed_and_removes_stale_only(tmp_path):

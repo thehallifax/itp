@@ -296,7 +296,7 @@ def test_unclassified_interfaces_do_not_become_wan(tmp_path):
     traffic = next(value for value in dashboard["panels"]
                    if value["title"] == "WAN Telemetry")
     assert traffic["type"] == "text"
-    assert "Not Yet Collected" in traffic["options"]["content"]
+    assert "WAN role not configured" in traffic["options"]["content"]
 
 
 def test_action_required_is_consolidated_filtered_and_ordered(tmp_path):

@@ -259,7 +259,7 @@ def evaluate_readiness(*, enabled_collectors=(), collector_records=(),
     overall = aggregate_readiness(observability, infrastructure)
     steps = (
         ("platform_services", "Platform services running", platform_running,
-         "Run ./itp start and confirm service health."),
+         "Run ./itp status; if services are stopped, run ./itp start."),
         ("deployment", "Deployment configured", deployment_configured,
          "Run ./itp setup to complete deployment configuration."),
         ("credentials", "Collector credentials configured",

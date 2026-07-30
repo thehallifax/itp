@@ -7,8 +7,8 @@ health without changing PaperCut configuration.
 ## Configure
 
 Copy `secrets/papercut.env.example` to the ignored
-`secrets/papercut.env`. Set `PAPERCUT_AUTHORIZATION_KEY` only when the API is
-configured to require an Authorization header.
+`secrets/papercut.env`. Set `PAPERCUT_AUTHORIZATION_KEY` when the API requires
+the System Health `Authorization` query parameter.
 
 Runtime onboarding accepts a hostname with an optional port or an HTTPS origin.
 It normalizes hostnames to HTTPS and removes a trailing `/api/health`; other
@@ -63,7 +63,7 @@ PaperCut. It is intended only for trusted internal networks and creates a
 traffic-interception and server-impersonation risk. Doctor, status, collector
 test, and the collector log report the disabled policy explicitly. It does not
 change TLS verification for any other HTTPS connector.
-The connector reads `/api/health/` and `/api/health/devices`; a failure of the
+The connector reads `/api/health` and `/api/health/devices`; a failure of the
 optional device-detail request is reported as a partial collection.
 
 Thresholds for disk, JVM memory, held jobs, Upgrade Assurance, and long uptime
@@ -77,3 +77,18 @@ and the available fields in the
 
 Authentication, TLS, timeout, connectivity, malformed-response, and partial
 failures are categorized without logging the endpoint key.
+
+PaperCut populations are intentionally distinct: `printer_count` is the
+configured printer-object aggregate reported by System Health; embedded-device
+count is the number of detailed device records; canonical operational printer
+assets are only individually identified embedded devices admitted by
+normalisation. These values are labelled separately and are not forced to
+match.
+
+```sh
+./itp collector test papercut --deployment <deployment>
+./itp collector run papercut --deployment <deployment>
+./itp status --deployment <deployment>
+./itp dashboard generate --deployment <deployment>
+./itp logs collector --deployment <deployment>
+```

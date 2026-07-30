@@ -8,6 +8,9 @@ from pathlib import Path
 
 from collectors.writer import atomic_write
 
+SHARED_FILE_MODE = 0o644
+SHARED_DIRECTORY_MODE = 0o755
+
 
 CSV_FIELDS = ("kind", "id", "rule_id", "title", "category", "severity", "priority",
               "canonical_id", "device", "site_id", "site", "summary", "impact", "reason",
@@ -26,7 +29,8 @@ METRIC_PANELS = {
     "Observability Health": ("observability_health", "healthy / failed collectors", ("collectors_healthy", "collectors_failed")),
     "Devices Online": ("devices_online", "devices total", "devices"),
     "Devices Offline": ("devices_offline", "devices total", "devices"),
-    "Actionable Warnings": ("actionable_warnings", "data quality findings", "data_quality_findings"),
+    "Data Quality Findings": ("data_quality_findings", "operational warnings",
+                              "actionable_warnings"),
     "Collectors Healthy": ("collectors_healthy", "collectors failed", "collectors_failed"),
     "Switches": ("switches_total", "online / offline", ("switches_online", "switches_offline")),
     "Access Points": ("aps_total", "online / offline", ("aps_online", "aps_offline")),
@@ -65,6 +69,38 @@ def _finding_table(panel, title, items, site_values, readiness=None):
     for scope, _ in scopes:
         selected = items if scope == "all" else [
             value for value in items if value.get("site_id") == scope]
+        if title == "Operational Risks":
+            groups = {}
+            retained = []
+            for value in selected:
+                if value.get("rule_id") not in {
+                        "PA-LICENCE-EXPIRED", "PA-LICENCE-EXPIRING"}:
+                    retained.append(value)
+                    continue
+                key = (
+                    value.get("site_id") or value.get("site"),
+                    value.get("canonical_id") or value.get("device"),
+                    value.get("rule_id"))
+                groups.setdefault(key, []).append(value)
+            for key, values in sorted(groups.items()):
+                representative = min(
+                    values, key=lambda item: (
+                        -int(item.get("priority", 0)),
+                        str((item.get("evidence") or {}).get("licence", "")),
+                        str(item.get("id", ""))))
+                state = (
+                    "expired" if key[2] == "PA-LICENCE-EXPIRED"
+                    else "approaching expiry")
+                retained.append({
+                    **representative,
+                    "title": (
+                        f"Palo Alto subscriptions {state} — "
+                        f"{len(values)} affected"),
+                })
+            selected = sorted(
+                retained, key=lambda item: (
+                    -int(item.get("priority", 0)),
+                    str(item.get("title", "")), str(item.get("id", ""))))
         if selected:
             for value in selected[:10]:
                 rows.append({"scope": scope, "priority": value.get("priority", 0),
@@ -153,7 +189,9 @@ def _stat_panel(panel, title, definition, summary):
             ("Monitoring not started", "gray"), ("Awaiting first collection", "gray"),
             ("Waiting for inventory", "gray"), ("Inventory unavailable", "red"),
             ("Collectors unavailable", "red"), ("Collector warning", "orange")))}
-    concerning = title in {"Devices Offline", "Actionable Warnings", "Warning Sites", "Critical Sites"}
+    concerning = title in {
+        "Devices Offline", "Data Quality Findings", "Warning Sites",
+        "Critical Sites"}
     panel["fieldConfig"] = {"defaults": {
         "color": {"mode": "thresholds"},
         "noValue": "State unavailable",
@@ -164,7 +202,8 @@ def _stat_panel(panel, title, definition, summary):
             if concerning else [{"color": "green" if title in {"Devices Online", "Collectors Healthy"}
                                   else "blue", "value": None}])}}, "overrides": []}
     panel["options"] = {"colorMode": "background" if title in {
-        "Infrastructure Health", "Observability Health", "Devices Offline", "Actionable Warnings"} else "value",
+        "Infrastructure Health", "Observability Health", "Devices Offline",
+        "Data Quality Findings"} else "value",
         "graphMode": "none", "justifyMode": "auto", "orientation": "auto",
         "reduceOptions": ({
             "calcs": [], "fields": "/^value$/", "values": True}
@@ -263,5 +302,50 @@ def render_dashboard(template_path, output_path, result, infrastructure_summary=
         else:
             message = "Awaiting path telemetry"
         panel["options"]["content"] = f"### {title.removeprefix('WAN ')}\n\n{message}"
+    collector_readiness = {
+        value.get("collector"): value
+        for value in readiness.get("collectors", [])}
+    papercut = next(
+        (value for value in dashboard["panels"]
+         if value.get("title") == "PaperCut"), None)
+    if papercut is not None and "printing" in capability_values:
+        state = collector_readiness.get("papercut", {})
+        labels = {
+            "healthy": "Healthy",
+            "warning": "Warning",
+            "unavailable": "Collector failed",
+            "waiting_first_collection": "Awaiting first collection",
+        }
+        label = labels.get(
+            state.get("state"), state.get("display_label")
+            or "Configuration required")
+        papercut["options"]["content"] = (
+            f"### PaperCut\n\n{label}\n\n"
+            "Open the PaperCut MF Operational Overview for current evidence.")
+        papercut["description"] = (
+            "PaperCut visibility follows the explicitly enabled printing "
+            "capability; state comes from current collector readiness.")
+
+    panel_capabilities = {
+        "Switches": "switching",
+        "Access Points": "wireless",
+        "Firewalls": "firewall",
+        "Servers": "compute",
+        "Printers": "printing",
+        "WAN Latency": "internet",
+        "WAN Packet Loss": "internet",
+        "WAN Bandwidth": "internet",
+        "DNS": "identity",
+        "DHCP": "identity",
+        "Active Directory": "identity",
+        "PaperCut": "printing",
+        "Certificates": "firewall",
+    }
+    dashboard["panels"] = [
+        panel for panel in dashboard["panels"]
+        if panel_capabilities.get(panel.get("title")) in capability_values
+        or panel.get("title") not in panel_capabilities]
     dashboard["version"] = int(dashboard.get("version", 0)) + 1
-    atomic_write(output_path, json.dumps(dashboard, indent=2, sort_keys=True) + "\n")
+    atomic_write(
+        output_path, json.dumps(dashboard, indent=2, sort_keys=True) + "\n",
+        mode=SHARED_FILE_MODE, directory_mode=SHARED_DIRECTORY_MODE)

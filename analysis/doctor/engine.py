@@ -906,6 +906,48 @@ class DoctorEngine:
             if value is None or isinstance(value, dict)
             else "Operations configuration must be a mapping")
         self._dashboard_freshness_check()
+        self._dashboard_publication_check()
+
+    def _dashboard_publication_check(self):
+        runtime = Path(os.getenv("ITP_RUNTIME_DIR", self.root / "runtime"))
+        dashboard_root = runtime / "generated/dashboard"
+        provisioning = dashboard_root / "provisioning/dashboards.yml"
+        managed = dashboard_root / (
+            "managed/operations/itp-operations-wallboard.json")
+        missing = [
+            path.relative_to(runtime).as_posix()
+            for path in (provisioning, managed) if not path.is_file()]
+        if missing:
+            self._result(
+                "operations.dashboard_publication", "Operations Engine",
+                "Grafana dashboard publication", "warn",
+                "Generated Grafana publication is incomplete",
+                detail=", ".join(missing),
+                remediation="Regenerate managed dashboards.",
+                command="./itp dashboard generate")
+            return
+        unreadable = []
+        for path in (provisioning, managed):
+            try:
+                mode = path.stat().st_mode & 0o777
+            except OSError:
+                continue
+            if os.name != "nt" and mode & 0o044 != 0o044:
+                unreadable.append(
+                    f"{path.relative_to(runtime).as_posix()} mode={mode:04o}")
+        self._result(
+            "operations.dashboard_publication", "Operations Engine",
+            "Grafana dashboard publication",
+            "warn" if unreadable else "pass",
+            "Generated Grafana files are not readable by the Grafana "
+            "container" if unreadable else
+            "Generated Grafana files follow the shared publication policy",
+            detail=", ".join(unreadable),
+            remediation=(
+                "Regenerate dashboards with the current collector image."
+                if unreadable else ""),
+            command=(
+                "./itp restart" if unreadable else ""))
 
     @staticmethod
     def _active_bootstrap_payload(value):
@@ -927,8 +969,14 @@ class DoctorEngine:
     def _dashboard_freshness_check(self):
         runtime = Path(os.getenv("ITP_RUNTIME_DIR", self.root / "runtime"))
         dashboard = runtime / (
-            "dashboard/managed/operations/"
+            "generated/dashboard/managed/operations/"
             "itp-operations-wallboard.json")
+        if not dashboard.is_file():
+            legacy = runtime / (
+                "dashboard/managed/operations/"
+                "itp-operations-wallboard.json")
+            if legacy.is_file():
+                dashboard = legacy
         sources = (
             runtime / "operations/operations.json",
             runtime / "services/service-health.json",

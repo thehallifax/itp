@@ -194,7 +194,8 @@ def build():
         "EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples "
         "WHERE previous_time IS NOT NULL ORDER BY time")
     wan_panel = timeseries(
-        0, "${wan_interface:text}", 0, 25, 12, 9, traffic_sql, unit="bps",
+        0, "WAN Throughput · ${wan_interface:text}", 0, 25, 12, 9,
+        traffic_sql, unit="bps",
         description="Per-interface rates derived from cumulative counters. "
         "Download and Upload current values are shown in the legend; negative "
         "deltas after reset are omitted.")

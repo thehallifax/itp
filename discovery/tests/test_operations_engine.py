@@ -49,6 +49,9 @@ def fixture(tmp_path):
         "signals": json.loads((output / "signals.json").read_text()),
     })
     write(tmp_path / "dashboard/infrastructure-summary.json", {
+        "readiness": {"capabilities": [
+            "switching", "wireless", "firewall", "compute", "printing",
+            "internet"]},
         "infrastructure_health": "Critical", "observability_health": "Warning",
         "devices": 3, "devices_online": 1,
         "devices_offline": 2, "critical": 1, "warnings": 2,
@@ -109,7 +112,7 @@ def test_outputs_and_runtime_dashboard_are_generated(tmp_path):
     assert panels["Switches"]["targets"][0]["csvContent"] == "value\n1"
     assert all(panels[title]["targets"][0]["scenarioId"] == "csv_content" for title in (
         "Infrastructure Health", "Observability Health", "Devices Online", "Devices Offline",
-        "Actionable Warnings", "Collectors Healthy", "Switches", "Access Points",
+        "Data Quality Findings", "Collectors Healthy", "Switches", "Access Points",
         "Firewalls", "Servers", "Printers"))
     assert dashboard["uid"] == "itp-infrastructure-overview"
 
@@ -139,7 +142,7 @@ def test_infrastructure_overview_findings_are_canonical_site_scoped(tmp_path):
                     "Northwind College", "example-corporate-AP investigate")]}
     scopes = [{"scope": "all"}, {"scope": "site:example-school"},
               {"scope": "site:example-corporate"}]
-    summary = {"site_options": [
+    summary = {"readiness": {"capabilities": []}, "site_options": [
         {"site_id": "site:example-school", "display_name": "example-school Reference Site"},
         {"site_id": "site:example-corporate",
          "display_name": "Northwind College"}],
@@ -161,6 +164,42 @@ def test_infrastructure_overview_findings_are_canonical_site_scoped(tmp_path):
         panels["Active Issues"]["targets"][0]["csvContent"])))
         if value["scope"] == "all"]
     assert len(all_issues) == 3
+
+
+def test_executive_risks_aggregate_paloalto_subscriptions_but_keep_details(
+        tmp_path):
+    risks = [{
+        "id": f"risk-{name}", "rule_id": "PA-LICENCE-EXPIRING",
+        "priority": 60, "severity": "Medium",
+        "title": f"Palo Alto licence expiring: {name}",
+        "canonical_id": "paloalto:one", "device": "FW-1",
+        "site_id": "site:hq", "site": "HQ",
+        "evidence": {"source_collector": "paloalto", "licence": name,
+                     "days_remaining": days},
+    } for name, days in (("Threat", 10), ("URL Filtering", 20))]
+    result = {
+        "generated_at": "2026-07-23T14:00:00Z",
+        "issues": [], "risks": risks, "recommendations": []}
+    output = tmp_path / "overview.json"
+    render_dashboard(
+        ROOT / "dashboards/Infrastructure Overview/infrastructure-overview.json",
+        output, result, {
+            "readiness": {"capabilities": ["firewall"]},
+            "site_options": [{"site_id": "site:hq", "display_name": "HQ"}],
+            "scopes": [{"scope": "all"}, {"scope": "site:hq"}],
+        })
+    dashboard = json.loads(output.read_text())
+    panel = next(
+        value for value in dashboard["panels"]
+        if value["title"] == "Operational Risks")
+    rows = list(csv.DictReader(io.StringIO(
+        panel["targets"][0]["csvContent"])))
+    assert [row["item"] for row in rows] == [
+        "Palo Alto subscriptions approaching expiry — 2 affected",
+        "Palo Alto subscriptions approaching expiry — 2 affected",
+    ]
+    assert [value["evidence"]["licence"] for value in result["risks"]] == [
+        "Threat", "URL Filtering"]
 
 
 def test_disabled_collector_health_does_not_generate_operations_findings(tmp_path):

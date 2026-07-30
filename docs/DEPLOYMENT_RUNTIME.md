@@ -14,6 +14,14 @@ replaced, so a render failure leaves the previous valid managed dashboard
 available. Grafana checks managed folders every 30 seconds and loads the
 replacement without UI edits.
 
+Dashboard JSON and Grafana provisioning YAML cross the collector/Grafana
+container boundary. They are deliberately published as `0644`, with shared
+dashboard directories as `0755`, so Grafana UID 472 can traverse and read the
+bind mount. Atomic replacement preserves those modes. This policy applies only
+to non-secret dashboard artifacts. Deployment environments, connector secrets,
+tokens, private keys, and CA material remain owner-only (`0600`, with secret
+directories `0700` where supported).
+
 `./itp start` and `./itp restart` rebuild the deployment images before starting
 services. This ensures a source update cannot leave the scheduler running an
 older collector image.
