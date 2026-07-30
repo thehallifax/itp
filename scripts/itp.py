@@ -782,19 +782,24 @@ def runtime_collection(runtime_manager, deployment, config, connector=None):
             capture=True, check=False)
         duration_ms = int((time.monotonic() - started) * 1000)
         output = (completed.stdout or "").strip()
-        payload = {}
+        payload = last_json_object(output) if output else {}
         if completed.returncode == 0 and output:
             payload = last_json_object(output)
+        diagnostic = (
+            payload.get("diagnostic", {})
+            if isinstance(payload, dict) else {})
         outcomes.append({
             "connector": metadata.id,
             "status": "success" if completed.returncode == 0 else "failed",
             "duration_ms": duration_ms,
             "value": payload,
             "exception_type": (
-                "" if completed.returncode == 0 else "CollectorCommandError"),
+                "" if completed.returncode == 0 else
+                str(diagnostic.get("category") or "CollectorCommandError")),
             "reason": (
                 "" if completed.returncode == 0
-                else "collector execution failed; inspect shared collector logs"),
+                else str(diagnostic.get("message") or
+                         "collector execution failed; inspect shared collector logs")),
         })
     if connector and not any(
             value.id == connector for value in runtime_manager.registry.all()):
@@ -851,6 +856,18 @@ def main():
             "grafana",
             help="display generated Grafana administrator credentials"))
     grafana_credentials.add_argument("--json", action="store_true")
+    ca_credentials = credential_actions.add_parser(
+        "ca", help="manage deployment-specific trusted CA certificates")
+    ca_actions = ca_credentials.add_subparsers(
+        dest="ca_action", required=True)
+    ca_add = add_local_deployment_selector(ca_actions.add_parser("add"))
+    ca_add.add_argument("certificate_file")
+    ca_add.add_argument("--json", action="store_true")
+    ca_list = add_local_deployment_selector(ca_actions.add_parser("list"))
+    ca_list.add_argument("--json", action="store_true")
+    ca_remove = add_local_deployment_selector(ca_actions.add_parser("remove"))
+    ca_remove.add_argument("identifier")
+    ca_remove.add_argument("--json", action="store_true")
     collector_runtime = add_deployment_selector(commands.add_parser(
         "collector", help="manage collectors in a runtime deployment"))
     collector_actions = collector_runtime.add_subparsers(
@@ -978,10 +995,32 @@ def main():
         ROOT, registry=runtime_registry)
     if args.group == "credentials":
         if not args.credential_action:
-            print("Credential targets: grafana")
-            print("Usage: ./itp credentials grafana [--deployment ID]")
+            print("Credential targets: grafana, ca")
             return
         deployment = runtime_manager.select(args.deployment)
+        if args.credential_action == "ca":
+            if args.ca_action == "add":
+                result = runtime_manager.ca_add(
+                    deployment, args.certificate_file)
+            elif args.ca_action == "list":
+                result = runtime_manager.ca_list(deployment)
+            else:
+                result = runtime_manager.ca_remove(
+                    deployment, args.identifier)
+            if args.json:
+                print(json.dumps(result, indent=2, sort_keys=True))
+            elif args.ca_action == "list":
+                if not result:
+                    print("No deployment-specific CA certificates installed.")
+                for item in result:
+                    print(f"{item['name']}\t{item['fingerprint']}")
+            else:
+                values = result if isinstance(result, list) else [result]
+                for item in values:
+                    verb = "Added" if args.ca_action == "add" else "Removed"
+                    print(f"{verb} CA certificate "
+                          f"{item['name']} ({item['fingerprint']})")
+            return
         result = runtime_manager.grafana_credentials(deployment)
         if args.json:
             print(json.dumps({
@@ -1196,14 +1235,21 @@ def main():
             result = {"collector": item.id, "enabled": False,
                       "configuration": str(deployment.collectors)}
         elif args.runtime_collector_action == "test":
-            result = deployment.run_compose(
+            readiness = {
+                item["id"]: item
+                for item in runtime_manager.collector_readiness(deployment)}
+            completed = deployment.run_compose(
                 "run", "--rm", "collector", "python", "-m", "collectors",
                 "--config", "/app/config.yml", "inspect", args.collector,
                 "--json", capture=True, check=False)
+            payload = last_json_object(
+                (completed.stdout or "").strip()) if completed.stdout else {}
             result = {
                 "collector": args.collector,
-                "success": result.returncode == 0,
-                "output": (result.stdout or result.stderr).strip()[:4000],
+                "success": completed.returncode == 0,
+                "tls_verification": readiness.get(
+                    args.collector, {}).get("tls_verification"),
+                **(payload if isinstance(payload, dict) else {}),
             }
         else:
             config = load_config(deployment.collectors)

@@ -8,6 +8,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
+from collectors.tls import connector_tls_context
 from .models import (
     ArubaCentralCredentialError,
     ArubaCentralMalformedError,
@@ -23,7 +24,8 @@ class ArubaOAuthTokenManager:
 
     def __init__(self, token_url, client_id, client_secret, *,
                  refresh_token="", access_token="", auth_mode="client_credentials",
-                 timeout=20, verify_tls=True, client=None, now=time.monotonic):
+                 timeout=20, verify_tls=True, ca_bundle=None,
+                 client=None, now=time.monotonic):
         self.token_url = token_url
         self.client_id = client_id
         self._client_secret = client_secret
@@ -35,7 +37,8 @@ class ArubaOAuthTokenManager:
         self._lock = asyncio.Lock()
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout, connect=timeout), verify=verify_tls)
+            timeout=httpx.Timeout(timeout, connect=timeout),
+            verify=connector_tls_context(verify_tls, ca_bundle))
 
     async def token(self, force=False):
         if not force and self._access_token and self.now() < self.expires_at - 60:
@@ -113,6 +116,7 @@ class ArubaCentralClient:
     }
 
     def __init__(self, base_url, token_manager, timeout=20, *, verify_tls=True,
+                 ca_bundle=None,
                  max_retries=2, client=None, sleep=asyncio.sleep,
                  endpoints=None):
         self.base_url = self.normalize_url(base_url)
@@ -124,7 +128,8 @@ class ArubaCentralClient:
         self.endpoints = {**self.ENDPOINTS, **(endpoints or {})}
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout, connect=timeout), verify=verify_tls,
+            timeout=httpx.Timeout(timeout, connect=timeout),
+            verify=connector_tls_context(verify_tls, ca_bundle),
             headers={"Accept": "application/json",
                      "User-Agent": "itp-aruba-central-collector/1.0"})
 

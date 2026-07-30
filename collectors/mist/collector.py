@@ -10,6 +10,8 @@ from collectors.base import BaseCollector
 from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
+from collectors.configuration import parse_bool_default
+from collectors.tls import deployment_ca_bundle
 from .client import MistClient
 from .models import MistConfig
 from .normalizer import METRIC_FIELDS, metric_points, normalize_device
@@ -34,6 +36,10 @@ class MistCollector(BaseCollector):
             discovery_interval_seconds=int(settings.get("discovery_interval_seconds", 21600)),
             collection_interval_seconds=int(settings.get("collection_interval_seconds", 120)),
             timeout_seconds=float(settings.get("timeout_seconds", 20)),
+            verify_tls=parse_bool_default(settings.get("verify_tls"), True),
+            ca_bundle=(
+                str(settings.get("ca_bundle") or "").strip()
+                or deployment_ca_bundle(config)),
         )
         if not self.settings.organization_id or not self.settings.api_token:
             raise ValueError("MIST_ORG_ID and MIST_API_TOKEN are required")
@@ -43,7 +49,9 @@ class MistCollector(BaseCollector):
         self.collection_interval = self.settings.collection_interval_seconds
         self.inventory = InventoryManager(inventory_path, config.get("inventory"))
         self.client = client or MistClient(self.settings.base_url, self.settings.organization_id,
-                                            self.settings.api_token, self.settings.timeout_seconds)
+            self.settings.api_token, self.settings.timeout_seconds,
+            verify_tls=self.settings.verify_tls,
+            ca_bundle=self.settings.ca_bundle)
         self.writer = writer or InfluxWriter.from_config(config)
 
     @staticmethod

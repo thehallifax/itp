@@ -1,4 +1,6 @@
 """Typed Aruba Central configuration and safe failure categories."""
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 
@@ -18,6 +20,7 @@ class ArubaCentralConfig:
     customer_name: str = ""
     site_name: str = ""
     verify_tls: bool = True
+    ca_bundle: str | None = None
     timeout_seconds: float = 20
     discovery_interval_seconds: int = 21600
     collection_interval_seconds: int = 120

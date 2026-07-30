@@ -40,6 +40,13 @@ class SchedulerStateStore:
     def __init__(self, path):
         self.path = Path(path) if path else None
         self.value = self.defaults()
+        if self.path:
+            try:
+                existing = json.loads(self.path.read_text())
+                if isinstance(existing, dict):
+                    self.value.update(existing)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                pass
 
     @staticmethod
     def defaults():

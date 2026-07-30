@@ -123,6 +123,7 @@ services:
       - ITP_DEPLOYMENT_ID=${ITP_DEPLOYMENT_ID:-legacy}
       - ITP_CUSTOMER_ID=${ITP_CUSTOMER_ID:-legacy}
       - ITP_CUSTOMER_NAME=${ITP_CUSTOMER_NAME:-}
+      - ITP_CA_BUNDLE=${ITP_CA_BUNDLE:-}
       - ITP_DEPLOYMENT_MODE=${ITP_DEPLOYMENT_MODE:-standalone}
       - COLLECTOR_CONFIG=/app/config.yml
       - ITP_RUNTIME_DIR=/app/runtime/${ITP_PROFILE:-legacy}
@@ -137,6 +138,7 @@ services:
       - ${ITP_CONNECTORS_CONFIG:-./config/connectors.local.example.yml}:/app/config/connectors.local.yml:ro
       - ${ITP_SITES_CONFIG:-./config/sites.yml}:/app/config/sites.yml:ro
       - ${ITP_RUNTIME_DIR:-./runtime}:/app/runtime/${ITP_PROFILE:-legacy}
+      - ${ITP_CA_DIR:-./runtime/ca}:/app/trust:ro
     command:
       - python
       - -m

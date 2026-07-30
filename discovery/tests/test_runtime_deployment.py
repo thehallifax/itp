@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+import certifi
 
 from analysis.runtime_deployment import (
     RuntimeDeployment,
@@ -844,3 +845,41 @@ def test_runtime_timezone_validation_is_iana_and_actionable(tmp_path):
     with pytest.raises(RuntimeDeploymentError, match="Australia/Perth"):
         manager(tmp_path / "invalid").create(
             name="Invalid", timezone="Not/AZone", non_interactive=True)
+
+
+def test_select_durably_migrates_legacy_site_alias(tmp_path):
+    runtime = manager(tmp_path)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    value = yaml.safe_load(deployment.collectors.read_text())
+    value["site"] = "example"
+    value["collectors"]["papercut"] = {
+        "enabled": True, "site": "example"}
+    deployment.collectors.write_text(yaml.safe_dump(value, sort_keys=False))
+    selected = runtime.select("example")
+    migrated = yaml.safe_load(selected.collectors.read_text())
+    assert migrated["site"] == "site:example"
+    assert migrated["collectors"]["papercut"]["site"] == "site:example"
+    before = selected.collectors.read_text()
+    runtime.select("example")
+    assert selected.collectors.read_text() == before
+
+
+def test_deployment_ca_store_builds_bundle_without_printing_contents(tmp_path):
+    runtime = manager(tmp_path)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    source = tmp_path / "private-root.pem"
+    certificates = Path(certifi.where()).read_text()
+    source.write_text(
+        certificates.split("-----END CERTIFICATE-----", 1)[0]
+        + "-----END CERTIFICATE-----\n")
+    added = runtime.ca_add(deployment, source)
+    assert len(added) == 1
+    assert len(added[0]["fingerprint"]) == 64
+    assert runtime.ca_list(deployment) == added
+    assert "BEGIN CERTIFICATE" not in str(added)
+    assert runtime._read_env(deployment.env_file)["ITP_CA_BUNDLE"] == \
+        "/app/trust/ca-bundle.pem"
+    removed = runtime.ca_remove(deployment, added[0]["fingerprint"][:20])
+    assert removed == added[0]
+    assert runtime.ca_list(deployment) == []
+    assert runtime._read_env(deployment.env_file)["ITP_CA_BUNDLE"] == ""

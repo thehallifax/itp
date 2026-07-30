@@ -267,6 +267,31 @@ runs in `itp-<deployment>-discovery-1`; a deliberately disabled discovery
 service does not mean the shared collector has failed. Other supported log
 targets are `discovery`, `telegraf`, `grafana`, and `influxdb3-core`.
 
+### Trusting a private connector CA
+
+For an HTTPS service signed by an internal CA, export the issuing root and each
+required intermediate as **Base-64 encoded X.509 (.CER)** files in the Windows
+Certificate Export Wizard. A Base-64 export is PEM encoded; do not export a
+private key or a PKCS#12/PFX file. Install each certificate for the deployment:
+
+```powershell
+.\itp.ps1 credentials ca add .\private-root.cer --deployment example
+.\itp.ps1 credentials ca add .\private-intermediate.cer --deployment example
+.\itp.ps1 credentials ca list --deployment example
+.\itp.ps1 restart --deployment example
+.\itp.ps1 collector test papercut --deployment example --json
+```
+
+Use the fingerprint shown by `list` to remove a certificate:
+
+```powershell
+.\itp.ps1 credentials ca remove <fingerprint> --deployment example
+```
+
+These files remain in the ignored deployment runtime, are mounted read-only
+into the collector, and extend normal public certificate trust. ITP never
+disables TLS verification or prints certificate contents.
+
 To permit remote access, explicitly choose an appropriate management address
 during deployment and restrict inbound access with Windows Defender Firewall
 or an equivalent network control. Do not expose Grafana or InfluxDB directly

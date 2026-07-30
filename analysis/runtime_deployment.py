@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import getpass
+import hashlib
 import json
 import os
 import platform
@@ -9,6 +10,7 @@ import re
 import secrets
 import shutil
 import socket
+import ssl
 import subprocess
 import tempfile
 import time
@@ -22,7 +24,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from collectors.configuration import ConfigurationResolver
+from collectors.configuration import ConfigurationResolver, parse_bool_default
 from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.writer import atomic_write
 
@@ -114,6 +116,14 @@ class RuntimeDeployment:
     @property
     def secrets_dir(self) -> Path:
         return self.path / "secrets"
+
+    @property
+    def ca_dir(self) -> Path:
+        return self.secrets_dir / "ca"
+
+    @property
+    def ca_bundle(self) -> Path:
+        return self.ca_dir / "ca-bundle.pem"
 
     @property
     def generated(self) -> Path:
@@ -235,6 +245,7 @@ class RuntimeDeploymentManager:
         deployment = RuntimeDeployment(self.root, slugify(selected))
         if not deployment.manifest.is_file():
             raise RuntimeDeploymentError(f"deployment does not exist: {selected}")
+        self._migrate_site_alias(deployment)
         return deployment
 
     def activate(self, deployment_id: str) -> RuntimeDeployment:
@@ -379,6 +390,7 @@ class RuntimeDeploymentManager:
         deployment.path.mkdir(parents=True, exist_ok=True)
         for directory in (
             deployment.secrets_dir, deployment.generated,
+            deployment.ca_dir,
             deployment.path / "logs", deployment.path / "evidence",
             deployment.path / "state", deployment.path / "generated/dashboard",
             deployment.path / "generated/telegraf",
@@ -468,6 +480,8 @@ class RuntimeDeploymentManager:
             "ITP_CONNECTORS_CONFIG": str(deployment.collectors),
             "ITP_SITES_CONFIG": str(deployment.generated / "sites.yml"),
             "ITP_SECRETS_DIR": str(deployment.secrets_dir),
+            "ITP_CA_DIR": str(deployment.ca_dir),
+            "ITP_CA_BUNDLE": "",
             "ITP_ENV_FILE": str(deployment.env_file),
             "TZ": timezone,
             "GRAFANA_ADDRESS": listen_address,
@@ -502,6 +516,139 @@ class RuntimeDeploymentManager:
         self.shared.mkdir(parents=True, exist_ok=True)
         atomic_write(self.shared / "active-deployment", identifier + "\n")
         return deployment
+
+    def _migrate_site_alias(self, deployment):
+        """Persist the canonical single-site ID in older generated runtimes."""
+        try:
+            value = yaml.safe_load(deployment.collectors.read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            return
+        canonical = str(value.get("site_id") or
+                        f"site:{deployment.deployment_id}")
+        if not canonical.startswith("site:"):
+            canonical = f"site:{deployment.deployment_id}"
+        changed = False
+        legacy = str(value.get("site") or "")
+        if legacy and legacy != canonical:
+            value["site"] = canonical
+            changed = True
+        if value.get("site_id") != canonical:
+            value["site_id"] = canonical
+            changed = True
+        for settings in (value.get("collectors") or {}).values():
+            if isinstance(settings, dict) and settings.get("site") and \
+                    settings["site"] != canonical:
+                settings["site"] = canonical
+                changed = True
+            if isinstance(settings, dict) and "site_id" in settings and \
+                    settings["site_id"] != canonical:
+                settings["site_id"] = canonical
+                changed = True
+        if changed:
+            atomic_write(deployment.collectors, yaml.safe_dump(
+                value, sort_keys=False))
+            self.output(
+                f"Migrated deployment {deployment.deployment_id} to canonical "
+                f"site identity {canonical}.")
+
+    @staticmethod
+    def _pem_certificates(data):
+        text = data.decode("ascii")
+        pattern = re.compile(
+            r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+            re.DOTALL)
+        certificates = pattern.findall(text)
+        remainder = pattern.sub("", text)
+        remainder = "\n".join(
+            line for line in remainder.splitlines()
+            if line.strip() and not line.lstrip().startswith("#"))
+        if not certificates or remainder.strip():
+            raise RuntimeDeploymentError(
+                "CA input must contain only PEM-encoded X.509 certificates")
+        result = []
+        for certificate in certificates:
+            try:
+                der = ssl.PEM_cert_to_DER_cert(certificate)
+            except ValueError as exc:
+                raise RuntimeDeploymentError(
+                    "CA input contains an invalid PEM certificate") from exc
+            result.append((
+                certificate.strip() + "\n",
+                hashlib.sha256(der).hexdigest()))
+        return result
+
+    def _write_ca_bundle(self, deployment):
+        certificates = sorted(
+            path for path in deployment.ca_dir.glob("*.pem")
+            if path.name != deployment.ca_bundle.name)
+        environment = self._read_env(deployment.env_file)
+        if certificates:
+            atomic_write(
+                deployment.ca_bundle,
+                "".join(path.read_text() for path in certificates))
+            os.chmod(deployment.ca_bundle, 0o600)
+            environment["ITP_CA_BUNDLE"] = "/app/trust/ca-bundle.pem"
+        else:
+            deployment.ca_bundle.unlink(missing_ok=True)
+            environment["ITP_CA_BUNDLE"] = ""
+        environment["ITP_CA_DIR"] = str(deployment.ca_dir)
+        atomic_write(
+            deployment.env_file,
+            "".join(f"{key}={value}\n" for key, value in environment.items()))
+        os.chmod(deployment.env_file, 0o600)
+
+    def ca_add(self, deployment, certificate_file):
+        source = Path(certificate_file).expanduser()
+        try:
+            certificates = self._pem_certificates(source.read_bytes())
+        except (OSError, UnicodeDecodeError) as exc:
+            raise RuntimeDeploymentError(
+                "unable to read the CA certificate file") from exc
+        deployment.ca_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(deployment.ca_dir, 0o700)
+        added = []
+        base = slugify(source.stem)
+        for index, (certificate, fingerprint) in enumerate(certificates, 1):
+            suffix = f"-{index}" if len(certificates) > 1 else ""
+            target = deployment.ca_dir / (
+                f"{base}{suffix}--{fingerprint[:16]}.pem")
+            atomic_write(target, certificate)
+            os.chmod(target, 0o600)
+            added.append({
+                "name": f"{base}{suffix}", "fingerprint": fingerprint})
+        self._write_ca_bundle(deployment)
+        return added
+
+    def ca_list(self, deployment):
+        result = []
+        if not deployment.ca_dir.is_dir():
+            return result
+        for path in sorted(deployment.ca_dir.glob("*.pem")):
+            if path.name == deployment.ca_bundle.name:
+                continue
+            for _, fingerprint in self._pem_certificates(path.read_bytes()):
+                result.append({
+                    "name": path.name.split("--", 1)[0],
+                    "fingerprint": fingerprint})
+        return result
+
+    def ca_remove(self, deployment, identifier):
+        matches = [
+            item for item in self.ca_list(deployment)
+            if item["name"] == identifier or
+            item["fingerprint"].startswith(identifier.casefold())]
+        if not matches:
+            raise RuntimeDeploymentError(
+                f"deployment CA certificate not found: {identifier}")
+        if len(matches) > 1:
+            raise RuntimeDeploymentError(
+                "deployment CA identifier is ambiguous; use a longer fingerprint")
+        selected = matches[0]
+        for path in deployment.ca_dir.glob(
+                f"{selected['name']}--{selected['fingerprint'][:16]}.pem"):
+            path.unlink()
+        self._write_ca_bundle(deployment)
+        return selected
 
     @staticmethod
     def _read_env(path):
@@ -921,6 +1068,11 @@ class RuntimeDeploymentManager:
             result.append({
                 "id": connector.id, "display_name": connector.display_name,
                 "state": state, "missing": missing,
+                "tls_verification": (
+                    parse_bool_default(
+                        (config.get("collectors", {}).get("papercut") or {}).get(
+                            "verify_tls"), True)
+                    if connector.id == "papercut" else None),
                 "next_action": (
                     f"./itp collector add {connector.id} --deployment "
                     f"{deployment.deployment_id}"

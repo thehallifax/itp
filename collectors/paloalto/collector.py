@@ -11,6 +11,7 @@ from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
 from collectors.configuration import parse_bool_default, parse_int
+from collectors.tls import deployment_ca_bundle
 from .api import PaloAltoClient
 from .mapper import map_snapshot
 from .models import PaloAltoConfig, PaloAltoError, Snapshot, WanInterface
@@ -84,7 +85,9 @@ def validate_settings(config, *, require_key=True):
     PaloAltoClient.normalize_url(base_url, allow_http=allow_http)
     timeout = float(raw.get("timeout_seconds", 20))
     if timeout <= 0 or timeout > 120: raise ValueError("Palo Alto timeout_seconds must be between 1 and 120")
-    ca_bundle = str(raw.get("ca_bundle") or "").strip() or None
+    ca_bundle = (
+        str(raw.get("ca_bundle") or "").strip()
+        or deployment_ca_bundle(config))
     if ca_bundle and not os.path.isfile(ca_bundle):
         raise ValueError("Palo Alto custom CA bundle does not exist")
     configured_wan = raw.get("wan_interfaces") or []

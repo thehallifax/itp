@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 
 import httpx
 
+from collectors.tls import connector_tls_context
 from .models import (CapabilityResult, PaloAltoCredentialError, PaloAltoError,
                      PaloAltoPermissionError, PaloAltoTLSError, PaloAltoTimeoutError,
                      PaloAltoUnreachableError, PaloAltoUnsupportedError)
@@ -40,7 +41,7 @@ class PaloAltoClient:
         self.sleep = sleep; self.api_requests = 0; self.retry_count = 0
         self.command_diagnostics = []
         self._owns_client = client is None
-        verify = ca_bundle or verify_tls
+        verify = connector_tls_context(verify_tls, ca_bundle)
         self.client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(float(timeout), connect=float(timeout)),
             verify=verify, headers=self._headers)

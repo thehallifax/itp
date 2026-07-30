@@ -193,8 +193,9 @@ def validate_manifest(payload):
 
 def _read(path, default):
     try:
-        return json.loads(Path(path).read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
+        value = json.loads(Path(path).read_text())
+        return value if isinstance(value, dict) else default
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return default
 
 
@@ -204,6 +205,7 @@ class CapabilityManifestEngine:
     def __init__(self, config, runtime_dir):
         self.config = config
         self.runtime_dir = Path(runtime_dir)
+        self._last_runtime_state = {}
 
     def _enabled(self, name):
         if name == "framework":
@@ -211,7 +213,11 @@ class CapabilityManifestEngine:
         return bool(self.config.get("collectors", {}).get(name, {}).get("enabled", False))
 
     def _runtime(self, name):
-        scheduler = _read(self.runtime_dir / "scheduler/state.json", {})
+        scheduler = _read(
+            self.runtime_dir / "scheduler/state.json",
+            self._last_runtime_state)
+        if scheduler:
+            self._last_runtime_state = scheduler
         if name == "framework":
             lifecycle = scheduler.get("lifecycle_state")
             return ({

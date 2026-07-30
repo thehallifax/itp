@@ -1,5 +1,6 @@
 import asyncio
 import json
+import ssl
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,9 +10,13 @@ import pytest
 from analysis.operations.models import OperationalContext
 from analysis.operations.rules import PaperCutHealthRule
 from collectors.papercut.client import PaperCutClient
+from collectors.papercut.collector import PaperCutCollector
 from collectors.papercut.models import (
-    PaperCutAuthenticationError, PaperCutConfig,
-    PaperCutMalformedResponseError, PaperCutUnreachableError,
+    PaperCutAuthenticationError, PaperCutAuthorizationError,
+    PaperCutCertificateExpiredError, PaperCutConfig,
+    PaperCutConnectionError, PaperCutHostnameMismatchError,
+    PaperCutMalformedResponseError, PaperCutRedirectError,
+    PaperCutUnknownIssuerError, PaperCutWrongEndpointError,
 )
 from collectors.papercut.normalizer import normalize
 
@@ -28,6 +33,29 @@ def settings():
     return PaperCutConfig(
         base_url="https://print.example.invalid:9192",
         authorization_key="", customer="example", site="main-campus")
+
+
+def test_disabled_tls_policy_is_warned_and_exposed(caplog, tmp_path):
+    class Client:
+        base_url = "https://print.example.invalid"
+        api_requests = 0
+        retry_count = 0
+
+    collector = PaperCutCollector({
+        "deployment_id": "example",
+        "customer": "example",
+        "site": "site:example",
+        "collectors": {"papercut": {
+            "enabled": True,
+            "base_url": "https://print.example.invalid",
+            "site": "site:example",
+            "verify_tls": False,
+        }},
+    }, tmp_path / "inventory/devices.json", client=Client(), writer=object())
+    assert collector.settings.verify_tls is False
+    assert caplog.messages.count(
+        "PaperCut TLS certificate verification is disabled for this "
+        "deployment.") == 1
 
 
 def test_healthy_fixture_normalizes_inventory_and_canonical_telemetry():
@@ -129,9 +157,46 @@ def test_invalid_endpoint_and_connectivity_fail_safely():
     client = PaperCutClient(
         "https://print.example.invalid", max_retries=0,
         client=httpx.AsyncClient(transport=httpx.MockTransport(unavailable)))
-    with pytest.raises(PaperCutUnreachableError) as caught:
+    with pytest.raises(PaperCutConnectionError) as caught:
         asyncio.run(client.get())
     assert "print.example.invalid" not in str(caught.value)
+    asyncio.run(client.client.aclose())
+
+
+@pytest.mark.parametrize("message,error", [
+    ("certificate has expired", PaperCutCertificateExpiredError),
+    ("hostname mismatch", PaperCutHostnameMismatchError),
+    ("certificate verify failed: unable to get local issuer certificate",
+     PaperCutUnknownIssuerError),
+])
+def test_tls_failures_have_actionable_categories(message, error):
+    request = httpx.Request("GET", "https://print.example.invalid")
+    failure = httpx.ConnectError(
+        "connect failed", request=request)
+    failure.__cause__ = ssl.SSLCertVerificationError(message)
+    classified = PaperCutClient._connection_error(failure)
+    assert isinstance(classified, error)
+    assert "print.example.invalid" not in str(classified)
+    if error is PaperCutUnknownIssuerError:
+        assert "credentials ca add" in str(classified)
+
+
+@pytest.mark.parametrize("status,error", [
+    (401, PaperCutAuthenticationError),
+    (403, PaperCutAuthorizationError),
+    (404, PaperCutWrongEndpointError),
+    (302, PaperCutRedirectError),
+])
+def test_http_responses_are_classified_not_reported_unreachable(status, error):
+    async def handler(request):
+        return httpx.Response(
+            status, headers={"location": "/users"}, request=request)
+
+    client = PaperCutClient(
+        "https://print.example.invalid", max_retries=0,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(error):
+        asyncio.run(client.get())
     asyncio.run(client.client.aclose())
 
 

@@ -51,7 +51,7 @@ def _since_timestamp(value):
         raise ValueError("--since must be ISO-8601 or a duration such as 7d") from exc
 
 
-def _enabled_collectors(config, *, include_ineligible=False):
+def _enabled_collectors(config, *, include_ineligible=False, names=None):
     result = []
     settings = config.get("collectors", {})
     runtime_mode = os.getenv("ITP_RUNTIME_MODE", "central").strip().lower()
@@ -61,6 +61,8 @@ def _enabled_collectors(config, *, include_ineligible=False):
     generated_dir = os.getenv(
         "TELEGRAF_GENERATED_DIR", "/app/runtime/telegraf")
     for name in CollectorRegistry.names():
+        if names is not None and name not in names:
+            continue
         collector_settings = settings.get(name, {})
         if not collector_settings.get("enabled", False): continue
         eligible, execution = CollectorRegistry.execution_eligible(
@@ -541,8 +543,12 @@ async def _run(args):
         else:
             print(json.dumps(result, indent=2, sort_keys=True))
         return
+    selected_names = (
+        {args.name}
+        if args.command in ("discover", "collect", "inspect") else None)
     collectors = _enabled_collectors(
-        config, include_ineligible=args.command == "run")
+        config, include_ineligible=args.command == "run",
+        names=selected_names)
     if args.command in ("discover", "collect", "inspect"):
         if args.name not in CollectorRegistry.names(): raise ValueError(f"unknown collector: {args.name}")
         collector = next((item for item in collectors if item.name == args.name), None)
@@ -768,6 +774,18 @@ def main():
                       args.command, exc)
         raise SystemExit(3)
     except Exception as exc:
+        if getattr(args, "json", False):
+            category = str(getattr(exc, "category", "failed"))
+            detail = str(exc) if hasattr(exc, "category") else (
+                f"{type(exc).__name__}: connector operation failed")
+            print(json.dumps({
+                "collector": getattr(args, "name", ""),
+                "success": False,
+                "diagnostic": {
+                    "category": category,
+                    "message": detail,
+                },
+            }, sort_keys=True))
         logging.error("collector=framework phase=%s result=failed error=%s", args.command, exc)
         raise SystemExit(1)
 

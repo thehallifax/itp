@@ -51,6 +51,20 @@ def test_runtime_mode_filtering(monkeypatch):
     )] == ["mist"]
 
 
+def test_selected_connector_does_not_initialize_unrelated_collectors(monkeypatch):
+    created = []
+    monkeypatch.setattr(
+        "collectors.__main__.CollectorRegistry.create",
+        lambda name, *_: created.append(name) or
+        type("C", (), {"name": name})())
+    cfg = {"collectors": {
+        "mist": {"enabled": True},
+        "fortigate": {"enabled": True, "execution": "either"}}}
+    assert [item.name for item in _enabled_collectors(
+        cfg, names={"fortigate"})] == ["fortigate"]
+    assert created == ["fortigate"]
+
+
 def test_auth_header_normalization_and_token_redaction():
     seen = {}
     async def handler(request):
@@ -76,7 +90,7 @@ def test_tls_defaults_timeout_and_retry(monkeypatch):
     delays = []
     async def sleep(value): delays.append(value)
     api = FortiGateClient("fg.example.test", "token", max_retries=1, sleep=sleep)
-    assert captured["verify"] is True
+    assert isinstance(captured["verify"], ssl.SSLContext)
     with pytest.raises(FortiGateTimeoutError): asyncio.run(api.request("/test"))
     assert api.retry_count == 1 and delays == [1]
 

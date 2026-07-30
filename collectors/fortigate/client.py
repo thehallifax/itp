@@ -5,6 +5,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
+from collectors.tls import connector_tls_context
 from .models import (
     EndpointResult,
     FortiGateCredentialError,
@@ -25,6 +26,7 @@ class FortiGateClient:
     }
 
     def __init__(self, host, api_token, timeout=20, *, verify_tls=True,
+                 ca_bundle=None,
                  max_retries=2, backoff_limit=4, client=None, sleep=asyncio.sleep):
         if not host or not api_token:
             raise ValueError("FORTIGATE_HOST and FORTIGATE_API_TOKEN are required")
@@ -35,7 +37,8 @@ class FortiGateClient:
         self.sleep = sleep; self.api_requests = 0; self.retry_count = 0
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(base_url=self.base_url,
-            timeout=httpx.Timeout(timeout, connect=timeout), verify=verify_tls,
+            timeout=httpx.Timeout(timeout, connect=timeout),
+            verify=connector_tls_context(verify_tls, ca_bundle),
             headers=self._headers)
 
     @staticmethod

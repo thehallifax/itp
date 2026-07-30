@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -52,6 +53,37 @@ def test_runtime_collection_states(tmp_path, outcome, expected):
         value for value in result["collectors"]["paloalto"]["capabilities"]
         if value["id"] == "availability")
     assert availability["collection"] == expected
+
+
+@pytest.mark.parametrize("content", ["", "{", "[]"])
+def test_unavailable_scheduler_state_uses_safe_defaults(tmp_path, content):
+    path = tmp_path / "scheduler/state.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(content)
+    result = CapabilityManifestEngine(
+        _config(paloalto=True), tmp_path).build()
+    assert result["collectors"]["paloalto"]["last_collection"]["status"] == \
+        "not_run"
+
+
+def test_temporarily_unreadable_scheduler_state_preserves_last_valid(
+        tmp_path, monkeypatch):
+    path = tmp_path / "scheduler/state.json"
+    _write(path, {"connectors": {"paloalto": {
+        "last_collection_outcome": "success"}}})
+    engine = CapabilityManifestEngine(_config(paloalto=True), tmp_path)
+    assert engine.build()["collectors"]["paloalto"][
+        "last_collection"]["status"] == "success"
+    original = Path.read_text
+
+    def unavailable(value, *args, **kwargs):
+        if value == path:
+            raise OSError(61, "No data available")
+        return original(value, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", unavailable)
+    assert engine.build()["collectors"]["paloalto"][
+        "last_collection"]["status"] == "success"
 
 
 def test_disabled_and_zero_target_snmp_are_not_failures(tmp_path):

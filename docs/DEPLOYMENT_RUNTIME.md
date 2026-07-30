@@ -212,6 +212,35 @@ never renders credential values. `status` reports connector configuration,
 freshness, last run, last success or failure, record count, shared collector
 service state, and the independent discovery state.
 
+### Private certificate authorities
+
+HTTPS connectors use the operating system's public CA trust plus any
+deployment-specific private roots or intermediates installed by the operator.
+Certificates are stored only under the ignored
+`runtime/deployments/<id>/secrets/ca/` directory and mounted read-only into
+the shared collector. TLS verification remains enabled.
+
+```bash
+./itp credentials ca add ./private-root.pem --deployment example
+./itp credentials ca add ./private-intermediate.pem --deployment example
+./itp credentials ca list --deployment example
+./itp restart --deployment example
+```
+
+Remove a certificate by its displayed name or an unambiguous fingerprint:
+
+```bash
+./itp credentials ca remove private-root --deployment example
+```
+
+The generated bundle extends, rather than replaces, Python's normal public CA
+trust. Certificate bodies are never written to command output.
+
+PaperCut also supports a connector-local `verify_tls: false` setting. This
+does not affect other connectors, but it permits interception or server
+impersonation and is intended only for trusted internal networks. Prefer
+installing the private root and intermediate CA certificates.
+
 Supported service log targets are:
 
 ```bash

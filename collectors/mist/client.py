@@ -7,6 +7,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
+from collectors.tls import connector_tls_context
 from .models import (
     MistAuthenticationError,
     MistAuthorizationError,
@@ -20,6 +21,7 @@ LOG = logging.getLogger("collector.mist")
 class MistClient:
     def __init__(self, base_url, organization_id, api_token, timeout=20, *,
                  max_pages=100, page_limit=1000, max_retries=3, backoff_limit=8,
+                 verify_tls=True, ca_bundle=None,
                  client=None, sleep=asyncio.sleep):
         if not organization_id or not api_token:
             raise ValueError("Mist organization ID and API token are required")
@@ -39,6 +41,7 @@ class MistClient:
         self.client = client or httpx.AsyncClient(
             base_url=self.base_url,
             timeout=httpx.Timeout(timeout, connect=timeout),
+            verify=connector_tls_context(verify_tls, ca_bundle),
             headers=self._headers,
         )
 

@@ -10,6 +10,7 @@ from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
 from collectors.configuration import parse_bool_default, parse_int
+from collectors.tls import deployment_ca_bundle
 from .client import FortiGateClient
 from .models import FortiGateConfig, FortiGateError
 from .normalizer import normalize
@@ -66,6 +67,9 @@ class FortiGateCollector(BaseCollector):
             customer=settings.get("customer") or config.get("customer", "unknown"),
             site=settings.get("site") or config.get("site", "unknown"),
             verify_tls=parse_bool_default(settings.get("verify_tls"), True),
+            ca_bundle=(
+                str(settings.get("ca_bundle") or "").strip()
+                or deployment_ca_bundle(config)),
             timeout_seconds=float(settings.get("timeout_seconds", 20)),
             discovery_interval_seconds=parse_int(
                 settings.get("discovery_interval_seconds", 21600), minimum=1),
@@ -80,6 +84,7 @@ class FortiGateCollector(BaseCollector):
         self.inventory = InventoryManager(inventory_path, config.get("inventory"))
         self.client = client or FortiGateClient(self.settings.base_url, self.settings.api_token,
             self.settings.timeout_seconds, verify_tls=self.settings.verify_tls,
+            ca_bundle=self.settings.ca_bundle,
             max_retries=self.settings.max_retries)
         self.writer = writer or InfluxWriter.from_config(config)
 

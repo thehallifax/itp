@@ -12,6 +12,7 @@ from collectors.configuration import parse_bool_default, parse_int
 from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
+from collectors.tls import deployment_ca_bundle
 
 from .client import ArubaCentralClient, ArubaOAuthTokenManager
 from .models import ArubaCentralConfig
@@ -145,6 +146,9 @@ def validate_settings(config):
                           (config.get("identity") or {}).get("customer_name") or ""),
         site_name=str(raw.get("site_name") or config.get("site_name") or ""),
         verify_tls=parse_bool_default(raw.get("verify_tls"), True),
+        ca_bundle=(
+            str(raw.get("ca_bundle") or "").strip()
+            or deployment_ca_bundle(config)),
         timeout_seconds=timeout,
         discovery_interval_seconds=parse_int(
             raw.get("discovery_interval_seconds", 21600), minimum=1),
@@ -182,11 +186,13 @@ class ArubaCentralCollector(BaseCollector):
                 access_token=self.settings.access_token,
                 auth_mode=self.settings.auth_mode,
                 timeout=self.settings.timeout_seconds,
-                verify_tls=self.settings.verify_tls)
+                verify_tls=self.settings.verify_tls,
+                ca_bundle=self.settings.ca_bundle)
             self.client = ArubaCentralClient(
                 self.settings.base_url, manager,
                 self.settings.timeout_seconds,
                 verify_tls=self.settings.verify_tls,
+                ca_bundle=self.settings.ca_bundle,
                 max_retries=self.settings.max_retries,
                 endpoints=self.settings.endpoints)
         self.writer = writer or InfluxWriter.from_config(config)

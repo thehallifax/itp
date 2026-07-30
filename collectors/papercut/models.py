@@ -1,4 +1,6 @@
 """Typed PaperCut configuration and safe failure categories."""
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 
@@ -9,6 +11,7 @@ class PaperCutConfig:
     customer: str
     site: str
     verify_tls: bool = True
+    ca_bundle: str | None = None
     timeout_seconds: float = 20
     discovery_interval_seconds: int = 21600
     collection_interval_seconds: int = 60
@@ -31,8 +34,32 @@ class PaperCutAuthenticationError(PaperCutError):
     category = "authentication"
 
 
+class PaperCutAuthorizationError(PaperCutError):
+    category = "authorization"
+
+
 class PaperCutTLSError(PaperCutError):
     category = "tls"
+
+
+class PaperCutCertificateExpiredError(PaperCutTLSError):
+    category = "tls_certificate_expired"
+
+
+class PaperCutHostnameMismatchError(PaperCutTLSError):
+    category = "tls_hostname_mismatch"
+
+
+class PaperCutUnknownIssuerError(PaperCutTLSError):
+    category = "tls_unknown_issuer"
+
+
+class PaperCutDNSError(PaperCutError):
+    category = "dns"
+
+
+class PaperCutConnectionError(PaperCutError):
+    category = "connection"
 
 
 class PaperCutTimeoutError(PaperCutError):
@@ -45,3 +72,19 @@ class PaperCutUnreachableError(PaperCutError):
 
 class PaperCutMalformedResponseError(PaperCutError):
     category = "invalid_response"
+
+
+class PaperCutWrongEndpointError(PaperCutError):
+    category = "wrong_endpoint"
+
+
+class PaperCutRedirectError(PaperCutError):
+    category = "redirect"
+
+
+class PaperCutUnsupportedResponseError(PaperCutError):
+    category = "unsupported_response"
+
+
+class PaperCutApplicationError(PaperCutError):
+    category = "application_error"

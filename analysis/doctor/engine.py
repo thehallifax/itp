@@ -691,6 +691,28 @@ class DoctorEngine:
                 detail=", ".join(missing_credentials),
                 remediation="Add required values to the connector's ignored secret file.",
                 command=connector.remediation_command)
+            if connector.id == "papercut":
+                verify_tls = settings.get("verify_tls", True)
+                if isinstance(verify_tls, str):
+                    verify_tls = verify_tls.strip().casefold() not in {
+                        "0", "false", "no", "off"}
+                self._result(
+                    "connector.papercut.tls", "Connectors",
+                    connector.display_name,
+                    "pass" if verify_tls else "warn",
+                    "TLS certificate verification is enabled"
+                    if verify_tls else
+                    "PaperCut TLS certificate verification is disabled for "
+                    "this deployment.",
+                    detail=(
+                        "Public trust and the deployment CA bundle are used."
+                        if verify_tls else
+                        "HTTPS traffic is vulnerable to interception or "
+                        "server impersonation."),
+                    remediation=(
+                        "" if verify_tls else
+                        "Enable verify_tls and import private CA certificates "
+                        "with ./itp credentials ca add."))
             if not connector.capabilities["doctor"]:
                 self._result(
                     f"connector.{connector.id}.doctor", "Connectors",

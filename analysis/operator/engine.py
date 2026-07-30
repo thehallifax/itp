@@ -332,13 +332,40 @@ class OperatorStatusEngine:
             latest_summary = (
                 latest_record[1].get("summary") or {}
                 if latest_record[1] else {})
+            configuration_state = readiness.get(
+                "state", "configured" if enabled else "disabled")
+            failure_reason = (
+                failures[0][1].get("reason") if failures else None)
+            if configuration_state == "disabled":
+                operational_status = "disabled"
+            elif configuration_state in {
+                    "pending configuration", "pending credentials"}:
+                operational_status = configuration_state
+            elif latest_record[1] and latest_record[1].get("status") == "skipped":
+                operational_status = "skipped prerequisite"
+            elif failure_reason:
+                lowered = failure_reason.casefold()
+                if "not trusted" in lowered or "certificate" in lowered:
+                    operational_status = "TLS trust failure"
+                elif "authentication" in lowered or "http 401" in lowered:
+                    operational_status = "authentication failure"
+                elif any(value in lowered for value in (
+                        "dns", "connection", "unreachable", "timed out")):
+                    operational_status = "unreachable"
+                else:
+                    operational_status = "failed"
+            elif latest_record[1] and latest_record[1].get("status") == "success":
+                operational_status = "successful"
+            else:
+                operational_status = "not yet collected"
             connectors.append({
                 "connector": metadata.id,
                 "display_name": metadata.display_name,
                 "enabled": enabled,
-                "configuration_state": readiness.get(
-                    "state", "configured" if enabled else "disabled"),
+                "configuration_state": configuration_state,
+                "status": operational_status,
                 "missing": list(readiness.get("missing") or ()),
+                "tls_verification": readiness.get("tls_verification"),
                 "freshness": self._freshness(enabled, latest, metadata.id),
                 "last_run": (
                     latest_record[0]["pipeline_run"]["completed_at"]
@@ -450,13 +477,17 @@ def render_status(payload):
     for value in payload["connectors"]:
         lines.append(
             f"  {value['display_name']}: "
-            f"{value.get('configuration_state', 'configured')}; "
+            f"{value.get('status', value.get('configuration_state', 'configured'))}; "
             f"{value['freshness']}"
             + (f" — last success {value['last_successful_collection']}"
                if value["last_successful_collection"] else ""))
         if value.get("missing"):
             lines.append(
                 "    Missing: " + ", ".join(value["missing"]))
+        if value.get("tls_verification") is False:
+            lines.append(
+                "    WARNING: PaperCut TLS certificate verification is "
+                "disabled for this deployment.")
         if value.get("last_run"):
             lines.append(f"    Last run: {value['last_run']}")
         if value.get("last_failure"):

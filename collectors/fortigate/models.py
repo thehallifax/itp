@@ -1,4 +1,6 @@
 """FortiGate API configuration, results, and classified failures."""
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 
@@ -33,6 +35,7 @@ class FortiGateConfig:
     customer: str
     site: str
     verify_tls: bool = True
+    ca_bundle: str | None = None
     timeout_seconds: float = 20
     discovery_interval_seconds: int = 21600
     collection_interval_seconds: int = 60

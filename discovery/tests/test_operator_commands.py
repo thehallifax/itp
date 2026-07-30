@@ -201,6 +201,22 @@ def test_status_reports_missing_identifiers_without_secret_values(tmp_path):
     assert "pending credentials" in rendered
     assert "Missing: ALPHA_API_TOKEN" in rendered
     assert "secret-value" not in rendered
+    assert result["connectors"][0]["status"] == "pending credentials"
+    assert result["connectors"][1]["status"] == "disabled"
+
+
+def test_status_surfaces_papercut_tls_policy(tmp_path):
+    result = OperatorStatusEngine(
+        tmp_path, config(beta=False), registry=Registry(),
+        runtime_dir=tmp_path / "runtime", now_fn=lambda: NOW,
+        readiness=(
+            {"id": "alpha", "state": "configured", "missing": [],
+             "tls_verification": False},
+            {"id": "beta", "state": "disabled", "missing": []},
+            {"id": "gamma", "state": "disabled", "missing": []},
+        )).run()
+    assert result["connectors"][0]["tls_verification"] is False
+    assert "TLS certificate verification is disabled" in render_status(result)
 
 
 def test_scheduler_one_shot_isolates_connector_failures(caplog):

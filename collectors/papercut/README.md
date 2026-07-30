@@ -27,8 +27,13 @@ collectors:
     site: main-campus
 ```
 
-Use a certificate trusted by the collector container. Disabling TLS validation
-is supported for controlled testing but is not recommended in production.
+`verify_tls` defaults to `true`. In this mode the connector uses normal public
+trust plus any deployment CA bundle installed with `itp credentials ca`.
+Setting `verify_tls: false` disables certificate verification only for
+PaperCut. It is intended only for trusted internal networks and creates a
+traffic-interception and server-impersonation risk. Doctor, status, collector
+test, and the collector log report the disabled policy explicitly. It does not
+change TLS verification for any other HTTPS connector.
 The connector reads `/api/health/` and `/api/health/devices`; a failure of the
 optional device-detail request is reported as a partial collection.
 

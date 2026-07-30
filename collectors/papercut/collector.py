@@ -10,6 +10,7 @@ from collectors.inventory import InventoryManager
 from collectors.registry import CollectorRegistry
 from collectors.writer import InfluxWriter
 from collectors.configuration import parse_bool_default, parse_int
+from collectors.tls import deployment_ca_bundle
 from .client import PaperCutClient
 from .models import PaperCutConfig, PaperCutError
 from .normalizer import normalize
@@ -66,6 +67,9 @@ def validate_settings(config):
         customer=str(raw.get("customer") or
                      config.get("customer") or "unknown"),
         site=site, verify_tls=parse_bool_default(raw.get("verify_tls"), True),
+        ca_bundle=(
+            str(raw.get("ca_bundle") or "").strip()
+            or deployment_ca_bundle(config)),
         timeout_seconds=timeout,
         discovery_interval_seconds=discovery_interval,
         collection_interval_seconds=collection_interval,
@@ -90,6 +94,10 @@ class PaperCutCollector(BaseCollector):
                  inventory_path="/app/runtime/inventory/devices.json", *,
                  client=None, writer=None):
         self.settings = validate_settings(config)
+        if not self.settings.verify_tls:
+            LOG.warning(
+                "PaperCut TLS certificate verification is disabled for this "
+                "deployment.")
         self.discovery_interval = self.settings.discovery_interval_seconds
         self.collection_interval = self.settings.collection_interval_seconds
         self.inventory = InventoryManager(
@@ -98,6 +106,7 @@ class PaperCutCollector(BaseCollector):
             self.settings.base_url, self.settings.authorization_key,
             self.settings.timeout_seconds,
             verify_tls=self.settings.verify_tls,
+            ca_bundle=self.settings.ca_bundle,
             max_retries=self.settings.max_retries)
         self.writer = writer or InfluxWriter.from_config(config)
 
@@ -198,10 +207,23 @@ class PaperCutCollector(BaseCollector):
             "influx_write_completed": False,
             "points_written": 0,
             "partial": bool(snapshot["partial"]),
+            "tls_verification": {
+                "enabled": self.settings.verify_tls,
+                "trust": (
+                    "public-and-deployment-ca"
+                    if self.settings.verify_tls and self.settings.ca_bundle
+                    else "public"
+                    if self.settings.verify_tls else "disabled"),
+                "warning": (
+                    "" if self.settings.verify_tls else
+                    "PaperCut TLS certificate verification is disabled for "
+                    "this deployment."),
+            },
             "diagnostics": {
                 "endpoint_reachable": True,
                 "authentication_successful": True,
                 "valid_json": True,
+                "tls_verification_enabled": self.settings.verify_tls,
                 "partial_collection": bool(snapshot["partial"])},
             "findings": len(conditions)}
 

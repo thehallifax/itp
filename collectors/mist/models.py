@@ -1,4 +1,6 @@
 """Mist collector data and error models."""
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 
@@ -26,3 +28,5 @@ class MistConfig:
     discovery_interval_seconds: int = 21600
     collection_interval_seconds: int = 120
     timeout_seconds: float = 20
+    verify_tls: bool = True
+    ca_bundle: str | None = None

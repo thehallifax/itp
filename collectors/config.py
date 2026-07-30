@@ -124,6 +124,9 @@ def load_config(path):
     if value.get("site_id"):
         writer.setdefault("site_id", value["site_id"])
         writer.setdefault("site_name", value.get("site_name", ""))
+    ca_bundle = os.getenv("ITP_CA_BUNDLE", "").strip()
+    if ca_bundle:
+        value.setdefault("tls", {})["ca_bundle"] = ca_bundle
     collectors = value.get("collectors", {})
     if not isinstance(collectors, dict): raise ValueError("collectors configuration must be a mapping")
     for name, settings in collectors.items():
