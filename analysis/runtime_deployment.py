@@ -26,6 +26,7 @@ import yaml
 
 from collectors.configuration import ConfigurationResolver, parse_bool_default
 from collectors.connector_registry import ConnectorMetadataRegistry
+from collectors.registry import CollectorRegistry
 from collectors.writer import atomic_write
 
 
@@ -1031,6 +1032,8 @@ class RuntimeDeploymentManager:
 
     def collector_readiness(self, deployment):
         config = yaml.safe_load(deployment.collectors.read_text()) or {}
+        runtime_mode = self._read_env(deployment.env_file).get(
+            "ITP_RUNTIME_MODE", "central").strip().casefold()
         environment = {}
         for path in sorted(deployment.secrets_dir.glob("*.env")):
             environment.update(self._read_env(path))
@@ -1065,9 +1068,18 @@ class RuntimeDeploymentManager:
                     state, missing = "pending credentials", missing_credentials
                 else:
                     state, missing = "configured", []
+                eligible, execution = CollectorRegistry.execution_eligible(
+                    connector.id,
+                    (config.get("collectors") or {}).get(connector.id) or {},
+                    runtime_mode)
+                if state == "configured" and not eligible:
+                    state = "execution mode mismatch"
             result.append({
                 "id": connector.id, "display_name": connector.display_name,
                 "state": state, "missing": missing,
+                "execution_mode": (
+                    execution if item["enabled"] else None),
+                "runtime_mode": runtime_mode,
                 "tls_verification": (
                     parse_bool_default(
                         (config.get("collectors", {}).get("papercut") or {}).get(

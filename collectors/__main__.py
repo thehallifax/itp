@@ -547,7 +547,8 @@ async def _run(args):
         {args.name}
         if args.command in ("discover", "collect", "inspect") else None)
     collectors = _enabled_collectors(
-        config, include_ineligible=args.command == "run",
+        config, include_ineligible=(
+            args.command == "run" or selected_names is not None),
         names=selected_names)
     if args.command in ("discover", "collect", "inspect"):
         if args.name not in CollectorRegistry.names(): raise ValueError(f"unknown collector: {args.name}")

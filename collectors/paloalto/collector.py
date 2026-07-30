@@ -144,7 +144,7 @@ def validate_settings(config, *, require_key=True):
 @CollectorRegistry.register
 class PaloAltoCollector(BaseCollector):
     name = "paloalto"
-    execution = "edge"
+    execution = "either"
 
     def __init__(self, config, inventory_path="/app/runtime/inventory/devices.json", *,
                  client=None, writer=None):

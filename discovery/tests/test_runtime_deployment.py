@@ -373,7 +373,9 @@ def test_credentials_and_readiness_are_runtime_derived(tmp_path):
     (deployment.secrets_dir / "snmp.env").write_text(
         "NETWORK_SNMP_COMMUNITY=fictional\n")
     states = {item["id"]: item for item in runtime.collector_readiness(deployment)}
-    assert states["snmp"]["state"] == "configured"
+    assert states["snmp"]["state"] == "execution mode mismatch"
+    assert states["snmp"]["execution_mode"] == "edge"
+    assert states["snmp"]["runtime_mode"] == "central"
 
 
 def test_runtime_readiness_reports_incomplete_connectors_without_values(

@@ -1,11 +1,14 @@
 import asyncio
 import json
 import ssl
+import subprocess
+import sys
 
 import httpx
 import pytest
 
 from collectors.__main__ import _enabled_collectors
+from collectors.base import ExecutionModeMismatch, RuntimePlacementCollector
 from collectors.config import load_config
 from collectors.fortigate.client import FortiGateClient
 from collectors.fortigate.collector import FortiGateCollector
@@ -63,6 +66,61 @@ def test_selected_connector_does_not_initialize_unrelated_collectors(monkeypatch
     assert [item.name for item in _enabled_collectors(
         cfg, names={"fortigate"})] == ["fortigate"]
     assert created == ["fortigate"]
+
+
+@pytest.mark.parametrize("execution,runtime", [
+    ("edge", "central"), ("central", "edge")])
+def test_incompatible_execution_modes_are_structured(execution, runtime):
+    collector = RuntimePlacementCollector("example", execution, runtime)
+    with pytest.raises(ExecutionModeMismatch) as caught:
+        collector.collect()
+    assert caught.value.diagnostic_payload() == {
+        "category": "execution_mode_mismatch",
+        "message": (
+            f"Collector requires execution mode '{execution}' but deployment "
+            f"is running in '{runtime}' mode."),
+        "collector_execution_mode": execution,
+        "deployment_execution_mode": runtime,
+        "remediation": (
+            "Run the collector in a compatible runtime or change its explicit "
+            "execution setting to a supported mode."),
+    }
+
+
+@pytest.mark.parametrize("execution,runtime", [
+    ("edge", "edge"), ("central", "central"),
+    ("either", "central"), ("either", "edge")])
+def test_compatible_execution_modes_are_eligible(execution, runtime):
+    from collectors.registry import CollectorRegistry
+    eligible, resolved = CollectorRegistry.execution_eligible(
+        "fortigate", {"execution": execution}, runtime)
+    assert eligible is True
+    assert resolved == execution
+
+
+def test_cli_json_reports_execution_mode_mismatch_without_generic_value_error(
+        tmp_path):
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        "collectors:\n"
+        "  fortigate:\n"
+        "    enabled: true\n"
+        "    execution: edge\n")
+    result = subprocess.run([
+        sys.executable, "-m", "collectors",
+        "--config", str(config_path),
+        "inspect", "fortigate", "--json",
+    ], cwd=__import__("pathlib").Path(__file__).resolve().parents[2],
+       env={**__import__("os").environ, "ITP_RUNTIME_MODE": "central"},
+       text=True, capture_output=True, check=False)
+    assert result.returncode == 1
+    payload = json.loads(next(
+        line for line in result.stdout.splitlines()
+        if line.startswith("{")))
+    assert payload["diagnostic"]["category"] == "execution_mode_mismatch"
+    assert payload["diagnostic"]["collector_execution_mode"] == "edge"
+    assert payload["diagnostic"]["deployment_execution_mode"] == "central"
+    assert "ValueError" not in result.stdout + result.stderr
 
 
 def test_auth_header_normalization_and_token_redaction():

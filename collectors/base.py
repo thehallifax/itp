@@ -10,6 +10,32 @@ class CollectorSkipped(RuntimeError):
         super().__init__(self.reason)
 
 
+class ExecutionModeMismatch(CollectorSkipped):
+    """A connector's configured placement excludes the active runtime."""
+
+    category = "execution_mode_mismatch"
+
+    def __init__(self, collector, execution_mode, runtime_mode):
+        self.collector = str(collector)
+        self.execution_mode = str(execution_mode)
+        self.runtime_mode = str(runtime_mode)
+        message = (
+            f"Collector requires execution mode '{self.execution_mode}' but "
+            f"deployment is running in '{self.runtime_mode}' mode.")
+        super().__init__(message)
+
+    def diagnostic_payload(self):
+        return {
+            "category": self.category,
+            "message": str(self),
+            "collector_execution_mode": self.execution_mode,
+            "deployment_execution_mode": self.runtime_mode,
+            "remediation": (
+                "Run the collector in a compatible runtime or change its "
+                "explicit execution setting to a supported mode."),
+        }
+
+
 class RuntimePlacementCollector:
     """Observable placeholder for an enabled runtime-ineligible collector."""
 
@@ -21,12 +47,12 @@ class RuntimePlacementCollector:
         self.collection_interval = 30
 
     def _skip(self):
-        raise CollectorSkipped(
-            f"configured_for_{self.execution}_runtime;"
-            f"current_runtime={self.current_runtime}")
+        raise ExecutionModeMismatch(
+            self.name, self.execution, self.current_runtime)
 
     discover = _skip
     collect = _skip
+    inspect = _skip
 
 
 class BaseCollector(ABC):

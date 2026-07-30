@@ -338,11 +338,23 @@ class OperatorStatusEngine:
                 failures[0][1].get("reason") if failures else None)
             if configuration_state == "disabled":
                 operational_status = "disabled"
+            elif configuration_state == "execution mode mismatch":
+                operational_status = "skipped execution mode mismatch"
             elif configuration_state in {
                     "pending configuration", "pending credentials"}:
                 operational_status = configuration_state
             elif latest_record[1] and latest_record[1].get("status") == "skipped":
-                operational_status = "skipped prerequisite"
+                skip_reason = str(
+                    latest_record[1].get("reason") or "").casefold()
+                if "execution mode" in skip_reason or \
+                        latest_record[1].get(
+                            "exception_type") == "execution_mode_mismatch":
+                    operational_status = "skipped execution mode mismatch"
+                elif "runtime policy" in skip_reason or \
+                        "placement" in skip_reason:
+                    operational_status = "skipped runtime policy"
+                else:
+                    operational_status = "skipped prerequisite"
             elif failure_reason:
                 lowered = failure_reason.casefold()
                 if "not trusted" in lowered or "certificate" in lowered:
@@ -365,6 +377,8 @@ class OperatorStatusEngine:
                 "configuration_state": configuration_state,
                 "status": operational_status,
                 "missing": list(readiness.get("missing") or ()),
+                "execution_mode": readiness.get("execution_mode"),
+                "runtime_mode": readiness.get("runtime_mode"),
                 "tls_verification": readiness.get("tls_verification"),
                 "freshness": self._freshness(enabled, latest, metadata.id),
                 "last_run": (

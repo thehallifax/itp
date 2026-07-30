@@ -61,6 +61,7 @@ from analysis.virtualisation.config import validate_virtualisation
 from analysis.virtualisation.renderer import render as render_virtualisation
 from analysis.virtualisation.telemetry import points as virtualisation_points
 from collectors.config import load_config
+from collectors.base import ExecutionModeMismatch
 from collectors.configuration import ConfigurationResolver
 from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.file_permissions import restrict_owner_access
@@ -765,14 +766,26 @@ def runtime_collection(runtime_manager, deployment, config, connector=None):
         enabled_metadata.append(metadata)
         state = readiness[metadata.id]
         if state["state"] != "configured":
-            reason = state["state"]
+            diagnostic = {}
+            if state["state"] == "execution mode mismatch":
+                mismatch = ExecutionModeMismatch(
+                    metadata.id, state["execution_mode"],
+                    state["runtime_mode"])
+                reason = str(mismatch)
+                diagnostic = mismatch.diagnostic_payload()
+            else:
+                reason = state["state"]
             if state["missing"]:
                 reason += ": " + ", ".join(state["missing"])
             additional.append({
                 "connector": metadata.id,
                 "display_name": metadata.display_name,
-                "status": "skipped", "duration_ms": 0, "summary": {},
-                "exception_type": "", "reason": reason})
+                "status": "skipped", "duration_ms": 0,
+                "summary": (
+                    {"diagnostic": diagnostic} if diagnostic else {}),
+                "exception_type": (
+                    "execution_mode_mismatch" if diagnostic else ""),
+                "reason": reason})
             continue
         configured.append((metadata, None))
         started = time.monotonic()

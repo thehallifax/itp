@@ -139,7 +139,7 @@ connectors:
     notes: Native read-only cloud API collector; regional endpoint selection is manual.
 
   - id: paloalto
-    runtime_modes: [edge]
+    runtime_modes: [central, edge]
     display_name: Palo Alto PAN-OS
     vendor: Palo Alto Networks
     domains: [firewall, internet]

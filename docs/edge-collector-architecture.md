@@ -44,6 +44,7 @@ batch and receipt time; ambiguous failures remain retryable.
 ```yaml
 collectors:
   mist: {enabled: true, execution: central}
+  paloalto: {enabled: true, execution: either}
   fortigate: {enabled: true, execution: edge}
   snmp: {enabled: true, execution: edge}
 ```
@@ -51,6 +52,11 @@ collectors:
 `ITP_RUNTIME_MODE` accepts `central` or `edge` and defaults to `central` to preserve the
 existing Mist deployment. Missing execution metadata uses the collector's registered
 default. Unsupported values fail early.
+
+Palo Alto uses only the remote PAN-OS management XML API, so it can execute in
+either runtime when that runtime can reach the management endpoint. A genuine
+placement mismatch is recorded as `execution_mode_mismatch` with both modes
+and remediation; it is a connector skip rather than a generic failure.
 
 SNMP remains an edge fallback and interface-counter enrichment path. API identity is
 preferred; serial is the strongest FortiGate identity, with a deterministic hostname or

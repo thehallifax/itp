@@ -219,6 +219,23 @@ def test_status_surfaces_papercut_tls_policy(tmp_path):
     assert "TLS certificate verification is disabled" in render_status(result)
 
 
+def test_status_distinguishes_execution_mode_mismatch(tmp_path):
+    result = OperatorStatusEngine(
+        tmp_path, config(beta=False), registry=Registry(),
+        runtime_dir=tmp_path / "runtime", now_fn=lambda: NOW,
+        readiness=(
+            {"id": "alpha", "state": "execution mode mismatch", "missing": [],
+             "execution_mode": "edge", "runtime_mode": "central"},
+            {"id": "beta", "state": "disabled", "missing": []},
+            {"id": "gamma", "state": "disabled", "missing": []},
+        )).run()
+    alpha = result["connectors"][0]
+    assert alpha["status"] == "skipped execution mode mismatch"
+    assert alpha["execution_mode"] == "edge"
+    assert alpha["runtime_mode"] == "central"
+    assert "skipped execution mode mismatch" in render_status(result)
+
+
 def test_scheduler_one_shot_isolates_connector_failures(caplog):
     class Good:
         name = "good"

@@ -2,6 +2,9 @@
 
 The `paloalto` collector reads directly from a PAN-OS firewall through the HTTPS
 XML API. It is read-only and performs synchronous `type=op` requests only.
+It has no edge-agent, local shell, SNMP, or Telegraf dependency and therefore
+supports both `central` and `edge` runtime placement. The selected runtime must
+have network access to the PAN-OS management API.
 
 ## Supported scope
 

@@ -15,6 +15,7 @@ from collectors.paloalto.mapper import map_snapshot
 from collectors.paloalto.models import (CapabilityResult, PaloAltoCredentialError,
                                         Snapshot)
 from collectors.paloalto import parser
+from collectors.registry import CollectorRegistry
 
 
 SYSTEM = """<response status="success"><result><system>
@@ -28,6 +29,14 @@ HA_HEALTHY = """<response status="success"><result><enabled>yes</enabled>
 </local-info><peer-info><state>passive</state><serial>0099999999</serial>
 <configuration-synchronized>yes</configuration-synchronized></peer-info></group>
 </result></response>"""
+
+
+@pytest.mark.parametrize("runtime", ["central", "edge"])
+def test_paloalto_supports_both_runtime_placements(runtime):
+    eligible, execution = CollectorRegistry.execution_eligible(
+        "paloalto", {}, runtime)
+    assert eligible is True
+    assert execution == "either"
 HA_DEGRADED = """<response status="success"><result><enabled>yes</enabled>
 <group><local-info><state>suspended</state></local-info><peer-info><state>down</state>
 </peer-info></group></result></response>"""

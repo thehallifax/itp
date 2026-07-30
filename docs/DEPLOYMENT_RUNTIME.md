@@ -212,6 +212,12 @@ never renders credential values. `status` reports connector configuration,
 freshness, last run, last success or failure, record count, shared collector
 service state, and the independent discovery state.
 
+Collectors that cannot run in the selected placement report
+`execution_mode_mismatch`, including the collector mode, deployment mode, and
+safe remediation. Disabled, prerequisite, execution-mode, and runtime-policy
+skips remain distinct. Palo Alto supports both central and edge placement
+because it communicates directly with the PAN-OS management XML API.
+
 ### Private certificate authorities
 
 HTTPS connectors use the operating system's public CA trust plus any

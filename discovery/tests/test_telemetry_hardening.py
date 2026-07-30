@@ -109,7 +109,9 @@ def test_framework_health_contains_success_skip_and_diagnostics_contract():
         "connector": "fortigate",
         "status": "skipped",
         "duration_ms": 0,
-        "reason": "configured_for_edge_runtime;current_runtime=central",
+        "reason": (
+            "Collector requires execution mode 'edge' but deployment is "
+            "running in 'central' mode."),
         "value": None,
     }, runtime="central", execution_mode="edge").point()
     assert point["tags"] == {
@@ -122,7 +124,7 @@ def test_framework_health_contains_success_skip_and_diagnostics_contract():
         "status": "skipped",
     }
     assert point["fields"]["skip_reason"].startswith(
-        "configured_for_edge_runtime")
+        "Collector requires execution mode")
     assert point["fields"]["success"] is False
 
 
@@ -141,7 +143,7 @@ def test_scheduler_emits_health_for_runtime_mismatch():
     assert health["tags"]["runtime"] == "central"
     assert health["tags"]["site_id"] == "site:canonical"
     assert health["fields"]["skip_reason"].startswith(
-        "configured_for_edge_runtime")
+        "Collector requires execution mode")
 
 
 def test_inventory_rewrites_source_site_before_persistence(tmp_path):
@@ -162,6 +164,7 @@ def test_runtime_capabilities_and_dashboard_site_contracts():
     registry = ConnectorMetadataRegistry.load(ROOT)
     assert registry.get("fortigate").runtime_modes == ("edge",)
     assert registry.get("mist").runtime_modes == ("central",)
+    assert registry.get("paloalto").runtime_modes == ("central", "edge")
     for relative in (
             "dashboards/Collectors/collector-health.json",
             "dashboards/Printing/papercut-overview.json",
