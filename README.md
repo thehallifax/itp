@@ -23,8 +23,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy
 
 This process-only execution-policy override does not permanently change the
 machine or user policy. On systems where local scripts are already allowed,
-the shorter `.\itp.ps1 deploy` command is equivalent. The launcher can offer
-to install Python 3.12 through WinGet when no supported Python is available.
+the shorter `.\itp.ps1 deploy` command is equivalent. When Python is absent,
+an interactive deployment can install it with consent through WinGet or a
+SHA-256 and Authenticode-verified Python Software Foundation installer.
 
 ### macOS or Linux
 
@@ -61,6 +62,12 @@ Useful commands:
 Use `./itp deploy --verbose` on macOS/Linux or
 `.\itp.ps1 deploy --verbose` on Windows when diagnosing Docker build or startup
 output.
+
+Windows prerequisite diagnostics are read-only:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 prerequisites
+```
 
 ## Supported collectors
 

@@ -20,9 +20,16 @@ provide it.
 Python does not need to be installed manually before an interactive
 deployment. ITP tries `py -3`, then `python`, then `python3`, and validates
 that the resolved interpreter is Python 3.9 or later. If none is supported,
-the launcher explains the requirement and asks for consent to install
-`Python.Python.3.12` through WinGet. Pressing Enter accepts the default Yes;
-declining makes no installation changes.
+the launcher uses this provider order:
+
+1. exact WinGet package `Python.Python.3.12`, when WinGet is available;
+2. pinned CPython 3.12.10 installer from `www.python.org`;
+3. manual instructions if installation is declined or safely blocked.
+
+Each automated provider requires consent. Pressing Enter accepts the default
+Yes; declining makes no installation changes. The python.org fallback does not
+depend on WinGet, Microsoft Store, Desktop App Installer, Chocolatey, Scoop, or
+administrator rights.
 
 Start Docker Desktop and verify the Linux-container engine before cloning ITP:
 
@@ -33,13 +40,11 @@ docker compose version
 docker info
 ```
 
-Automatic Python installation depends on WinGet. WinGet may be unavailable on
-older Windows builds, unregistered first-login environments, stripped-down
-server installations, or managed systems without App Installer. In that case,
-install Python from https://www.python.org/downloads/windows/, enable
-`Add python.exe to PATH`, open a new PowerShell window, and retry. If
-`python.exe` opens the Microsoft Store, disable the conflicting Windows App
-Execution Alias.
+WinGet may be unavailable on unregistered first-login environments,
+stripped-down installations, or managed systems without App Installer. ITP
+then offers the verified official installer directly. If `python.exe` opens
+the Microsoft Store, ITP ignores it unless it resolves to a supported
+interpreter.
 
 ## Clean installation
 
@@ -64,17 +69,43 @@ The PowerShell launcher invokes the shared bootstrap automatically. It creates
 Docker and Compose, and starts the deployment. Running
 `py scripts\bootstrap.py` separately is not required.
 
-If Python is missing, an interactive deployment offers the exact WinGet
-package `Python.Python.3.12`. Installation never starts without consent. After
-WinGet succeeds, ITP refreshes the current process from the Machine and User
-`PATH` values, checks the standard per-user Python 3.12 and WinGet link
-locations, validates the interpreter, and continues deployment without asking
-the user to reopen PowerShell.
+If Python is missing, installation never starts without consent. WinGet remains
+the preferred provider. If it is unavailable or fails, ITP identifies CPython
+3.12.10, the native architecture, and `www.python.org` before asking again.
 
-Non-interactive invocations never wait for consent and never install software.
-Preinstall Python 3.9 or later before using such an invocation. If WinGet
-reports success but Python cannot be resolved safely, ITP exits non-zero and
-asks the user to open a new PowerShell window and rerun the command.
+The direct installer is pinned for AMD64 and ARM64. ITP downloads it over
+validated HTTPS into a unique user temporary directory, rejects redirects away
+from `www.python.org`, verifies the pinned SHA-256, and requires Windows
+Authenticode status `Valid` with a Python Software Foundation signer. The
+installer is then run in passive per-user mode with Python, pip, the launcher,
+and user PATH integration enabled. The temporary installer is removed after
+success or failure.
+
+After either provider succeeds, ITP refreshes the current process from Machine
+and User `PATH`, checks the expected per-user installation and launcher
+locations, validates the interpreter and pip, and continues deployment without
+requiring a new PowerShell session where possible.
+
+Non-interactive invocations never prompt, download, or install software.
+Preinstall Python 3.9 or later before using such an invocation. If an installer
+reports success but Python cannot be resolved safely, ITP lists the locations
+checked, exits non-zero, and provides the exact rerun command.
+
+## Prerequisite diagnostics
+
+Run the read-only diagnostic before deployment or when enterprise controls are
+suspected:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 prerequisites
+```
+
+It reports Windows and PowerShell versions, native and process architecture,
+execution-policy scopes, Git, Docker, Compose, daemon reachability, Python,
+launcher, pip, WinGet, Desktop App Installer, the direct installer available
+for the architecture, reachability of its exact python.org endpoint, and
+whether missing prerequisites are blocking or automatically repairable. It
+does not download or install anything.
 
 Deployment configuration, generated credentials, dashboards, and local runtime
 state are stored below:
@@ -149,9 +180,10 @@ the filesystem, then remove the cloned repository if it is no longer needed.
 - Only Linux containers are supported.
 - WSL or Git Bash is required for POSIX-only maintenance scripts.
 - Windows App Execution Aliases can interfere with Python discovery.
-- Automatic Python installation requires WinGet and interactive consent.
-- Corporate execution policy, endpoint protection, proxy, or firewall rules
-  may require administrator-approved configuration.
+- Automatic Python installation requires interactive consent.
+- AppLocker, WDAC, Group Policy, endpoint protection, authenticated proxies,
+  TLS inspection, or firewall rules may block download, trust validation, or
+  installer execution. ITP does not bypass those enterprise controls.
 
 See [Platform prerequisites](platform-prerequisites.md) and
 [Deployment runtime](DEPLOYMENT_RUNTIME.md) for further diagnostics and

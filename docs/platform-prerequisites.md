@@ -23,10 +23,13 @@ Install:
 
 ITP tries `py -3`, then `python`, and finally `python3`, validating Python 3.9
 or later rather than relying on command presence. During an interactive
-deployment, it can install the exact WinGet package `Python.Python.3.12` after
-the user consents. It then refreshes the current Machine and User `PATH` and
-continues without reopening PowerShell where the interpreter can be resolved.
-Non-interactive invocations never prompt or install software.
+deployment, it can install Python after the user consents. It first tries exact
+WinGet package `Python.Python.3.12`, then a pinned CPython 3.12.10 installer
+from `www.python.org`. The direct installer requires both its pinned SHA-256
+and a valid Python Software Foundation Authenticode signature. It installs for
+the current user, refreshes Machine and User `PATH`, verifies pip, and continues
+without reopening PowerShell where possible. Non-interactive invocations never
+prompt, download, or install software.
 
 Verify:
 
@@ -37,13 +40,18 @@ docker compose version
 docker info
 ```
 
-Automatic installation requires WinGet. It may be unavailable on older
-Windows builds, unregistered first-login environments, stripped-down servers,
-or managed systems where App Installer is unavailable. Install Python from
+WinGet and Desktop App Installer are optional because the verified python.org
+fallback is independent of them. When both automatic providers are declined or
+blocked, install Python from
 [python.org](https://www.python.org/downloads/windows/) and enable
-`Add python.exe to PATH` when automatic installation is unavailable. Disable
-Windows App Execution Aliases if they redirect `python.exe` or `python3.exe`
-to the Microsoft Store.
+`Add python.exe to PATH`. Disable Windows App Execution Aliases if they
+redirect `python.exe` or `python3.exe` to the Microsoft Store.
+
+Run read-only prerequisite diagnostics with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 prerequisites
+```
 
 Windows may block local scripts. The canonical first-run command uses a
 process-only override without changing persistent machine or user policy:

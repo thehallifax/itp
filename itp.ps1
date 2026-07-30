@@ -18,6 +18,18 @@ if (-not (Test-Path -LiteralPath $WindowsBootstrap -PathType Leaf)) {
 
 . $WindowsBootstrap
 
+if ($args.Count -gt 0 -and $args[0] -eq "prerequisites") {
+    try {
+        Invoke-ITPPrerequisiteDiagnostics
+        exit $script:ITPPrerequisiteExitCode
+    }
+    catch {
+        [Console]::Error.WriteLine(
+            "ITP prerequisite diagnostics failed safely: $($_.Exception.Message)")
+        exit 1
+    }
+}
+
 try {
     $Selected = Initialize-ITPPython -Arguments @args
 }

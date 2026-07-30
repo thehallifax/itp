@@ -448,8 +448,21 @@ def test_windows_launcher_is_thin_and_preserves_exit_code():
     assert '"--accept-package-agreements", "--accept-source-agreements"' in helper
     assert 'GetEnvironmentVariable("Path", $Scope)' in helper
     assert "IsInputRedirected" in helper
-    assert "WinGet is unavailable" in helper
-    assert "could not resolve a supported" in helper
+    assert "python-3.12.10-amd64.exe" in helper
+    assert "python-3.12.10-arm64.exe" in helper
+    assert "67b5635e80ea51072b87941312d00ec8927c4db9ba18938f7ad2d27b328b95fb" in helper
+    assert "377ac8fd478987940088e879441e702a71b53164d2a1e6f1d51ff77a7e470258" in helper
+    assert "Get-AuthenticodeSignature" in helper
+    assert "Python Software Foundation" in helper
+    assert "Invoke-Expression" not in helper
+    assert "InstallAllUsers=0" in helper
+    assert "Include_pip=1" in helper
+    assert "MaximumRedirection" in helper
+    assert "www.python.org" in helper
+    assert "Invoke-ITPPrerequisiteDiagnostics" in text
+    assert text.index("Invoke-ITPPrerequisiteDiagnostics") < \
+        text.index("Initialize-ITPPython")
+    assert "Locations checked" in helper
 
 
 def test_windows_bootstrap_has_cross_platform_reviewable_harness():
@@ -459,12 +472,16 @@ def test_windows_bootstrap_has_cross_platform_reviewable_harness():
             "py must take precedence",
             "python fallback must be selected",
             "unsupported Python must not be selected",
-            "declined installation must stop cleanly",
-            "missing WinGet must be actionable",
-            "non-interactive deployment must not prompt",
-            "PATH must refresh from both scopes",
-            "successful install with no interpreter must fail clearly",
-            "launcher must forward all arguments"):
+            "declined direct installation must stop",
+            "direct provider fallback",
+            "non-interactive execution must not prompt or install",
+            "PATH refresh scopes",
+            "cross-host redirect must be rejected",
+            "invalid installer verification must block",
+            "success cleanup",
+            "installer exit handling",
+            "launcher must forward all arguments",
+            "missing Git and Docker must block"):
         assert scenario in harness
 
 
