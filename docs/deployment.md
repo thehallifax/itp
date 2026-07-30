@@ -30,6 +30,10 @@ On Windows PowerShell, use the equivalent launcher:
 .\itp.ps1 status
 ```
 
+The PowerShell launcher performs the same runtime bootstrap as `./itp`; do not
+run `scripts\bootstrap.py` separately. See the
+[Windows installation guide](INSTALL_WINDOWS.md).
+
 If local script execution is blocked:
 
 ```powershell

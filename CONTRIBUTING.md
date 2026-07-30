@@ -23,10 +23,14 @@ dependencies only.
 On Windows PowerShell:
 
 ```powershell
-py -3 scripts/bootstrap-dev.py
+py scripts\bootstrap-dev.py
 .\.venv\Scripts\Activate.ps1
 python -m pytest -q
 ```
+
+Use `python scripts\bootstrap-dev.py` when the Python launcher is unavailable.
+`scripts\validate-fresh-clone.sh` requires Git Bash, WSL, or another POSIX
+shell; it is not a native PowerShell command.
 
 If installation fails, the bootstrap prints pip's captured error and explains
 whether Python `venv`, filesystem permissions, or package-index access needs

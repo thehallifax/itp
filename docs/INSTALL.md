@@ -25,8 +25,8 @@ After deployment:
 
 On Windows PowerShell, run `.\itp.ps1 deploy`. See
 [Platform prerequisites](platform-prerequisites.md), the
-[macOS guide](INSTALL_MACOS.md), or the [Linux guide](INSTALL_LINUX.md) for
-operating-system details.
+[Windows guide](INSTALL_WINDOWS.md), [macOS guide](INSTALL_MACOS.md), or
+[Linux guide](INSTALL_LINUX.md) for operating-system details.
 
 ## Contributor installation
 
@@ -43,3 +43,14 @@ python -m pytest
 
 It installs the `dev` extra from `pyproject.toml`, including pytest, and is safe
 to rerun after dependency changes.
+
+On Windows PowerShell:
+
+```powershell
+py scripts\bootstrap-dev.py
+.\.venv\Scripts\Activate.ps1
+python -m pytest
+```
+
+Use `python scripts\bootstrap-dev.py` when `py` is unavailable. The
+fresh-clone shell validator requires Git Bash or WSL on Windows.

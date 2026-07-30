@@ -9,6 +9,10 @@ development dependency group to the same environment. Activate `.venv` only
 for contributor commands such as pytest. Runtime deployments do not install
 development-only packages.
 
+On Windows, use `py scripts\bootstrap-dev.py` and activate with
+`.\.venv\Scripts\Activate.ps1`; use `python` instead of `py` only when the
+Python launcher is unavailable.
+
 ## Windows
 
 Install:

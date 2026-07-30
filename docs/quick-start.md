@@ -30,6 +30,10 @@ On Windows PowerShell, use:
 .\itp.ps1 deploy
 ```
 
+The Windows launcher performs runtime bootstrap automatically. See the
+[Windows installation guide](INSTALL_WINDOWS.md) for prerequisites,
+PowerShell policy guidance, and contributor setup.
+
 ## Verify the deployment
 
 ```sh

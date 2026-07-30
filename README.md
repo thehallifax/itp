@@ -8,11 +8,22 @@ Deployment identity, telemetry validation, collector execution health, and
 dashboard scoping are framework-owned, so vendor site names cannot fragment
 operational views.
 
-## Deploy in one command
+## Deploy
 
-Install Docker Desktop or Docker Engine with Compose v2, then:
+The platform launcher creates `.venv` and installs runtime dependencies
+automatically.
 
-```bash
+### Windows PowerShell
+
+```powershell
+git clone https://github.com/thehallifax/infrastructure-telemetry-platform.git
+cd infrastructure-telemetry-platform
+.\itp.ps1 deploy
+```
+
+### macOS or Linux
+
+```sh
 git clone https://github.com/thehallifax/infrastructure-telemetry-platform.git
 cd infrastructure-telemetry-platform
 ./itp deploy
@@ -22,15 +33,16 @@ The wizard creates an ignored deployment under `runtime/deployments/`, writes
 owner-only credentials, starts the stack, and reports Grafana, InfluxDB, health,
 and remaining collector setup.
 The default bind address is `127.0.0.1`, so Grafana is initially available only
-on the deployment host. Retrieve its generated login with:
+on the deployment host. Retrieve its generated login with
+`.\itp.ps1 credentials grafana` on Windows or
+`./itp credentials grafana` on macOS/Linux.
 
-```bash
-./itp credentials grafana
-```
+The examples below use the macOS/Linux launcher. On Windows PowerShell, replace
+`./itp` with `.\itp.ps1`.
 
 Useful commands:
 
-```bash
+```sh
 ./itp doctor
 ./itp status
 ./itp collector list
@@ -41,8 +53,9 @@ Useful commands:
 ./itp logs
 ```
 
-Use `./itp deploy --verbose` (or `ITP_VERBOSE=1 ./itp deploy`) when diagnosing
-Docker build or startup output.
+Use `./itp deploy --verbose` on macOS/Linux or
+`.\itp.ps1 deploy --verbose` on Windows when diagnosing Docker build or startup
+output.
 
 ## Supported collectors
 
@@ -72,15 +85,26 @@ ITP is Alpha software. Validate collectors and backup runtime data before
 production use. See [LICENSE](LICENSE) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For contributor work, the developer bootstrap creates or updates `.venv` and
-installs the tracked `dev` dependency group, including pytest:
+installs the `dev` dependency group declared by `pyproject.toml`.
 
-```bash
-python3 scripts/bootstrap-dev.py
-source .venv/bin/activate
-./itp config validate
-./scripts/validate-fresh-clone.sh
-python -m pytest -q
+Windows PowerShell:
+
+```powershell
+py scripts\bootstrap-dev.py
+.\.venv\Scripts\Activate.ps1
+python -m pytest
 ```
 
-Windows contributors use `py -3 scripts/bootstrap-dev.py` followed by
-`.\.venv\Scripts\Activate.ps1`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Use `python scripts\bootstrap-dev.py` if the Windows Python launcher is
+unavailable.
+
+macOS/Linux:
+
+```sh
+python3 scripts/bootstrap-dev.py
+source .venv/bin/activate
+python -m pytest
+```
+
+The POSIX fresh-clone validator requires a POSIX shell; Windows contributors
+can run it from Git Bash or WSL. See [CONTRIBUTING.md](CONTRIBUTING.md).
