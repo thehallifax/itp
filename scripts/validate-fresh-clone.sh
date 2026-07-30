@@ -9,8 +9,12 @@ if [ -z "$python_bin" ]; then
   elif [ -x "$repository/.venv/bin/python" ]; then
     python_bin="$repository/.venv/bin/python"
   else
-    python_bin=$(command -v python3)
+    python_bin=$(command -v python3 || true)
   fi
+fi
+if [ -z "$python_bin" ]; then
+  echo "Python 3.9 or later is required. Install Python, then rerun this validation." >&2
+  exit 1
 fi
 workspace=$(mktemp -d "${TMPDIR:-/tmp}/itp-fresh-clone.XXXXXX")
 trap 'rm -rf "$workspace"' EXIT HUP INT TERM
@@ -24,6 +28,16 @@ trap 'rm -rf "$workspace"' EXIT HUP INT TERM
 )
 
 cd "$workspace"
+initial_python=$python_bin
+"$initial_python" scripts/bootstrap-dev.py
+if [ -x "$workspace/.venv/bin/python" ]; then
+  python_bin="$workspace/.venv/bin/python"
+elif [ -x "$workspace/.venv/Scripts/python.exe" ]; then
+  python_bin="$workspace/.venv/Scripts/python.exe"
+else
+  echo "Fresh-clone developer bootstrap did not create a usable Python environment" >&2
+  exit 1
+fi
 "$python_bin" -m pytest discovery/tests/test_telemetry_hardening.py -q
 "$python_bin" scripts/itp.py init \
   --non-interactive \

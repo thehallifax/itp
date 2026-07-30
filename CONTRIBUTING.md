@@ -8,13 +8,29 @@ the canonical platform contracts.
 ITP supports Python 3.9 or later.
 
 ```sh
-python3 -m venv .venv
+python3 scripts/bootstrap-dev.py
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-dev.txt
+./itp config validate
+./scripts/validate-fresh-clone.sh
 python -m pytest -q
 ```
+
+The bootstrap is idempotent and installs the `dev` extra declared in
+`pyproject.toml`. `requirements-dev.txt` mirrors that declaration for tooling
+that requires requirements files. Normal `./itp` operation installs runtime
+dependencies only.
+
+On Windows PowerShell:
+
+```powershell
+py -3 scripts/bootstrap-dev.py
+.\.venv\Scripts\Activate.ps1
+python -m pytest -q
+```
+
+If installation fails, the bootstrap prints pip's captured error and explains
+whether Python `venv`, filesystem permissions, or package-index access needs
+attention.
 
 For stack-level validation:
 

@@ -69,6 +69,22 @@ def test_existing_current_environment_skips_sync(tmp_path):
     assert len(calls) == 1
 
 
+def test_development_environment_requires_pytest_and_satisfies_runtime(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\n")
+    environment, digest = _current_environment(tmp_path)
+
+    def runner(command, **kwargs):
+        return SimpleNamespace(returncode=0)
+
+    assert not bootstrap.dependencies_current(
+        environment, digest, development=True, run=runner)
+    bootstrap.marker_path(environment).write_text(json.dumps(
+        bootstrap.marker_payload(digest, development=True)))
+    assert bootstrap.dependencies_current(
+        environment, digest, development=True, run=runner)
+    assert bootstrap.dependencies_current(environment, digest, run=runner)
+
+
 def test_changed_dependencies_require_sync(tmp_path):
     dependency = tmp_path / "pyproject.toml"
     dependency.write_text("[project]\n")
@@ -120,6 +136,38 @@ def test_corrupt_environment_is_recovered_and_installed(
     assert all("--disable-pip-version-check" in command
                for command in pip_commands)
     assert all("--quiet" in command for command in pip_commands)
+
+
+def test_developer_bootstrap_installs_declared_dev_extra(tmp_path, monkeypatch):
+    root = tmp_path / "repository"
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts/itp.py").write_text("")
+    (root / "pyproject.toml").write_text("[project]\n")
+    commands = []
+
+    class Builder:
+        def __init__(self, **kwargs):
+            pass
+
+        def create(self, environment):
+            python = _python_path(Path(environment))
+            python.parent.mkdir(parents=True)
+            python.write_text("")
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=0 if "pip" in command else 1)
+
+    monkeypatch.setattr(bootstrap.venv, "EnvBuilder", Builder)
+    bootstrap.ensure_environment(
+        root, development=True, run=runner, output=lambda value: None)
+
+    install = [
+        command for command in commands
+        if "pip" in command and "--upgrade" not in command][0]
+    assert install[-1] == f"{root}[dev]"
+    marker = bootstrap.read_marker(root / ".venv")
+    assert marker["dependency_group"] == "development"
 
 
 def test_missing_venv_support_has_actionable_error(tmp_path, monkeypatch):

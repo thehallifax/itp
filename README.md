@@ -15,10 +15,6 @@ Install Docker Desktop or Docker Engine with Compose v2, then:
 ```bash
 git clone https://github.com/thehallifax/infrastructure-telemetry-platform.git
 cd infrastructure-telemetry-platform
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 ./itp deploy
 ```
 
@@ -75,10 +71,16 @@ tree.
 ITP is Alpha software. Validate collectors and backup runtime data before
 production use. See [LICENSE](LICENSE) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Contributor setup installs the additional development dependencies and runs
-the test suite:
+For contributor work, the developer bootstrap creates or updates `.venv` and
+installs the tracked `dev` dependency group, including pytest:
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python3 scripts/bootstrap-dev.py
+source .venv/bin/activate
+./itp config validate
+./scripts/validate-fresh-clone.sh
 python -m pytest -q
 ```
+
+Windows contributors use `py -3 scripts/bootstrap-dev.py` followed by
+`.\.venv\Scripts\Activate.ps1`. See [CONTRIBUTING.md](CONTRIBUTING.md).

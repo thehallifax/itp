@@ -8,19 +8,13 @@ and Docker Compose v2.
 ```sh
 git clone https://github.com/<organisation>/<repository> infrastructure-telemetry-platform
 cd infrastructure-telemetry-platform
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-dev.txt
-python -m pytest -q
 ./itp deploy
 ```
 
 Deploy creates ignored runtime configuration, provisions managed resources,
-starts the stack, and prints the Grafana URL. The launcher can bootstrap its
-own environment for normal operation, while the explicit environment above
-makes dependency installation and tests independently verifiable.
+starts the stack, and prints the Grafana URL. The launcher bootstraps runtime
+dependencies without installing contributor-only test packages. Developers
+should follow [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 On a clean deployment, Infrastructure Overview opens with a generated Setup
 Status checklist. **Monitoring not started** means the platform is operating

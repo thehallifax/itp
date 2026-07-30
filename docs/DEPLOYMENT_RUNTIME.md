@@ -20,10 +20,6 @@ vendor-supported Docker release that provides Compose v2.
 ```bash
 git clone https://github.com/thehallifax/infrastructure-telemetry-platform.git
 cd infrastructure-telemetry-platform
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 ./itp deploy
 ```
 

@@ -277,10 +277,11 @@ def marker_path(environment):
     return Path(environment) / MARKER_NAME
 
 
-def marker_payload(digest, version=None):
+def marker_payload(digest, version=None, *, development=False):
     version = version or sys.version_info
     return {
         "bootstrap_schema": BOOTSTRAP_SCHEMA,
+        "dependency_group": "development" if development else "runtime",
         "dependency_file": DEPENDENCY_FILE,
         "dependency_hash": digest,
         "python": f"{version.major}.{version.minor}",
@@ -295,13 +296,25 @@ def read_marker(environment):
         return {}
 
 
-def dependencies_current(environment, digest, *, run=subprocess.run):
+def dependencies_current(
+        environment, digest, *, development=False, run=subprocess.run):
     python = environment_python(environment)
-    expected = marker_payload(digest)
-    if not python.is_file() or read_marker(environment) != expected:
+    actual = read_marker(environment)
+    expected = marker_payload(digest, development=development)
+    compatible_groups = (
+        {"development"} if development else {"runtime", "development"})
+    if not python.is_file() or any((
+            actual.get("bootstrap_schema") != expected["bootstrap_schema"],
+            actual.get("dependency_file") != expected["dependency_file"],
+            actual.get("dependency_hash") != expected["dependency_hash"],
+            actual.get("python") != expected["python"],
+            actual.get("dependency_group") not in compatible_groups)):
         return False
+    imports = "import httpx, yaml, pysnmp"
+    if development:
+        imports += ", pytest"
     check = run(
-        [str(python), "-c", "import httpx, yaml, pysnmp"],
+        [str(python), "-c", imports],
         text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         check=False)
@@ -317,7 +330,8 @@ def _safe_remove_environment(environment, root):
 
 
 def ensure_environment(
-        root, *, run=subprocess.run, output=None, verbose=False):
+        root, *, development=False, run=subprocess.run, output=None,
+        verbose=False):
     root = Path(root).resolve()
     dependency = root / DEPENDENCY_FILE
     script = root / "scripts/itp.py"
@@ -362,8 +376,11 @@ def ensure_environment(
             "the virtual environment is incomplete; remove .venv and rerun the "
             "ITP command")
 
-    if not dependencies_current(environment, digest, run=run):
-        output("ITP bootstrap: installing dependencies")
+    if not dependencies_current(
+            environment, digest, development=development, run=run):
+        dependency_label = (
+            "development dependencies" if development else "dependencies")
+        output(f"ITP bootstrap: installing {dependency_label}")
         environment_variables = {
             **os.environ,
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
@@ -386,7 +403,10 @@ def ensure_environment(
             ]
             if not verbose:
                 install_arguments.append("--quiet")
-            install_arguments.append(str(root))
+            project_requirement = str(root)
+            if development:
+                project_requirement += "[dev]"
+            install_arguments.append(project_requirement)
             result = run(
                 install_arguments, cwd=root, env=environment_variables,
                 text=True, encoding="utf-8", errors="replace",
@@ -411,7 +431,8 @@ def ensure_environment(
         try:
             marker_path(environment).write_text(
                 json.dumps(
-                    marker_payload(digest), indent=2, sort_keys=True) + "\n")
+                    marker_payload(digest, development=development),
+                    indent=2, sort_keys=True) + "\n")
         except OSError as exc:
             raise BootstrapError(
                 "dependencies installed but bootstrap state could not be written "

@@ -4,6 +4,11 @@ ITP supports Python 3.9 or later. The launchers create `.venv` and install the
 tracked runtime dependencies automatically; do not activate the environment or
 install packages globally.
 
+Contributors use `python3 scripts/bootstrap-dev.py`, which adds the tracked
+development dependency group to the same environment. Activate `.venv` only
+for contributor commands such as pytest. Runtime deployments do not install
+development-only packages.
+
 ## Windows
 
 Install:
