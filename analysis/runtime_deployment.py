@@ -16,6 +16,7 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -46,6 +47,18 @@ def _port_available(address: str, port: int) -> bool:
 
 def _secret() -> str:
     return secrets.token_urlsafe(36)
+
+
+def retry_command(*arguments: str, system: str | None = None) -> str:
+    """Return an execution-policy-safe retry command for the current host."""
+    suffix = " ".join(str(value) for value in arguments)
+    if (system or platform.system()).casefold() == "windows":
+        command = (
+            r"powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            r"-File .\itp.ps1")
+    else:
+        command = "./itp"
+    return f"{command} {suffix}".rstrip()
 
 
 def normalize_onboarding_value(value: str, normalizer: str = "") -> str:
@@ -163,7 +176,9 @@ class RuntimeDeploymentManager:
 
     def __init__(self, root: Path, *, input_fn=input, output_fn=print,
                  secret_input=getpass.getpass, runner=subprocess.run,
-                 registry=None, port_fn=_port_available):
+                 registry=None, port_fn=_port_available,
+                 urlopen=urllib.request.urlopen, clock=time.monotonic,
+                 sleep=time.sleep):
         self.root = Path(root).resolve()
         self.runtime = self.root / "runtime"
         self.deployments = self.runtime / "deployments"
@@ -173,6 +188,9 @@ class RuntimeDeploymentManager:
         self.secret_input = secret_input
         self.runner = runner
         self.port_available = port_fn
+        self.urlopen = urlopen
+        self.clock = clock
+        self.sleep = sleep
         self.registry = registry or ConnectorMetadataRegistry.load(self.root)
 
     def list(self) -> list[dict]:
@@ -275,7 +293,8 @@ class RuntimeDeploymentManager:
         try:
             ZoneInfo(timezone)
         except (ValueError, ZoneInfoNotFoundError) as exc:
-            raise RuntimeDeploymentError("timezone must be a valid IANA name") from exc
+            raise RuntimeDeploymentError(
+                "timezone must be a valid IANA name, for example Australia/Perth") from exc
         if not non_interactive:
             self.output("Dashboard access:")
             self.output("127.0.0.1 = available only on this machine")
@@ -439,46 +458,235 @@ class RuntimeDeploymentManager:
                 values[key] = value
         return values
 
-    def bootstrap_influx(self, deployment, timeout=90, capture=False):
+    @staticmethod
+    def _valid_token(token):
+        return (
+            isinstance(token, str)
+            and len(token) >= 20
+            and not any(character.isspace() for character in token)
+            and all(32 < ord(character) < 127 for character in token)
+        )
+
+    @classmethod
+    def _parse_admin_token(cls, body, content_type=""):
+        """Accept current plain-text and older JSON admin-token responses."""
+        try:
+            text = bytes(body).decode("utf-8-sig").strip()
+        except (TypeError, UnicodeDecodeError) as exc:
+            raise RuntimeDeploymentError(
+                "InfluxDB returned a non-UTF-8 administrator token response") from exc
+        token = ""
+        response_type = "plain text"
+        if text.startswith("{"):
+            response_type = "JSON"
+            try:
+                payload = json.loads(text)
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise RuntimeDeploymentError(
+                    "InfluxDB returned malformed JSON during administrator "
+                    "token creation") from exc
+            if not isinstance(payload, dict):
+                raise RuntimeDeploymentError(
+                    "InfluxDB returned an unexpected JSON administrator token response")
+            token = str(payload.get("token") or "")
+        else:
+            token = text
+        if not cls._valid_token(token):
+            raise RuntimeDeploymentError(
+                f"InfluxDB returned a blank or malformed {response_type} "
+                "administrator token response")
+        return token, response_type
+
+    @staticmethod
+    def _prepare_token_destination(deployment):
+        deployment.path.mkdir(parents=True, exist_ok=True)
+        deployment.generated.mkdir(parents=True, exist_ok=True)
+        if not deployment.env_file.is_file():
+            raise RuntimeDeploymentError(
+                "generated deployment environment is missing before InfluxDB "
+                f"bootstrap: {deployment.env_file}")
+        try:
+            with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", prefix=".token-preflight.",
+                    dir=deployment.generated, delete=True) as handle:
+                handle.write("writable\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError as exc:
+            raise RuntimeDeploymentError(
+                "InfluxDB token destination is not writable: "
+                f"{deployment.generated}") from exc
+
+    @classmethod
+    def _persist_admin_token(cls, deployment, environment, token):
+        if not cls._valid_token(token):
+            raise RuntimeDeploymentError(
+                "refusing to persist an invalid InfluxDB administrator token")
+        updated = dict(environment)
+        updated["INFLUXDB_TOKEN"] = token
+        try:
+            atomic_write(
+                deployment.env_file,
+                "".join(f"{key}={value}\n" for key, value in updated.items()))
+            os.chmod(deployment.env_file, 0o600)
+            persisted = cls._read_env(deployment.env_file).get(
+                "INFLUXDB_TOKEN", "")
+        except OSError as exc:
+            raise RuntimeDeploymentError(
+                "InfluxDB created the administrator token, but atomic "
+                "persistence failed; the token may now require recovery") from exc
+        if persisted != token:
+            raise RuntimeDeploymentError(
+                "InfluxDB created the administrator token, but persisted-token "
+                "verification failed; the token may now require recovery")
+        return updated
+
+    @staticmethod
+    def _already_exists_error(error):
+        try:
+            body = error.read().decode("utf-8", errors="replace")
+        except (AttributeError, KeyError, OSError, ValueError):
+            body = ""
+        return error.code == 409 or "already exists" in body.casefold()
+
+    @staticmethod
+    def _influx_context(deployment, endpoint, *, status="unknown",
+                        response_type="unknown", admin_exists=False,
+                        persisted=False):
+        container = f"itp-{deployment.deployment_id}-influxdb3-core-1"
+        container_state = "unknown"
+        health_state = "unknown"
+        try:
+            result = deployment.run_compose(
+                "ps", "influxdb3-core", "--format", "json",
+                check=False, capture=True)
+            text = (result.stdout or "").strip()
+            if text:
+                row = json.loads(text.splitlines()[0])
+                container = str(row.get("Name") or container)
+                container_state = str(row.get("State") or "unknown")
+                health_state = str(row.get("Health") or "unknown")
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+        return (
+            f"deployment={deployment.deployment_id}; runtime={deployment.path}; "
+            f"container={container}; state={container_state}; "
+            f"health={health_state}; endpoint={endpoint}; HTTP={status}; "
+            f"response_type={response_type}; admin_exists={str(admin_exists).lower()}; "
+            f"token_destination_exists={str(deployment.env_file.exists()).lower()}; "
+            f"token_persisted={str(persisted).lower()}")
+
+    def _existing_token_error(self, deployment, endpoint, *,
+                              non_interactive=False):
+        retry = retry_command("deploy", "--force", "--verbose")
+        reset = retry_command(
+            "deploy", "--force", "--reset-influx", "--verbose")
+        mode = (
+            "Non-interactive recovery cannot reset data."
+            if non_interactive else
+            f"For a confirmed disposable deployment, rerun with: {reset}")
+        return RuntimeDeploymentError(
+            "InfluxDB reports that operator token _admin already exists, but "
+            f"no token is persisted at {deployment.env_file}. An earlier "
+            "bootstrap created the token without saving it. ITP will not delete "
+            "the existing volume automatically. "
+            f"{mode} For an established deployment, recover or regenerate the "
+            "operator token using the supported InfluxDB administrator-token "
+            f"workflow, update the deployment environment, then retry with: {retry}. "
+            + self._influx_context(
+                deployment, endpoint, status=409,
+                response_type="error", admin_exists=True, persisted=False))
+
+    def bootstrap_influx(self, deployment, timeout=90, capture=False,
+                         non_interactive=False):
         """Provision the real InfluxDB token and deployment database."""
+        self._prepare_token_destination(deployment)
         environment = self._read_env(deployment.env_file)
+        if "INFLUXDB_PORT" not in environment:
+            raise RuntimeDeploymentError(
+                "generated deployment environment does not define INFLUXDB_PORT")
         deployment.run_compose(
             "up", "-d", "influxdb3-core", capture=capture)
         port = int(environment["INFLUXDB_PORT"])
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
+        endpoint = (
+            f"http://127.0.0.1:{port}/api/v3/configure/token/admin")
+        deadline = self.clock() + timeout
+        while self.clock() < deadline:
             try:
-                with urllib.request.urlopen(
+                with self.urlopen(
                         f"http://127.0.0.1:{port}/health", timeout=2) as response:
                     if response.status == 200:
                         break
-            except OSError:
-                time.sleep(1)
+            except (OSError, URLError):
+                self.sleep(1)
         else:
             raise RuntimeDeploymentError(
-                "InfluxDB did not become healthy during credential bootstrap")
+                "InfluxDB did not become healthy during credential bootstrap. "
+                + self._influx_context(deployment, endpoint))
 
         token = environment.get("INFLUXDB_TOKEN", "")
+        if token and not self._valid_token(token):
+            raise RuntimeDeploymentError(
+                "persisted InfluxDB administrator token is malformed; refusing "
+                "to request a replacement token")
         if not token:
             request = urllib.request.Request(
-                f"http://127.0.0.1:{port}/api/v3/configure/token/admin",
+                endpoint,
                 data=b"", method="POST",
                 headers={"Accept": "application/json",
                          "Content-Type": "application/json"})
-            try:
-                with urllib.request.urlopen(request, timeout=5) as response:
-                    token = str(json.loads(response.read()).get("token") or "")
-            except (OSError, ValueError) as exc:
+            last_error = None
+            while self.clock() < deadline:
+                try:
+                    with self.urlopen(request, timeout=5) as response:
+                        status = int(getattr(response, "status", 0))
+                        if not 200 <= status < 300:
+                            raise RuntimeDeploymentError(
+                                "InfluxDB administrator-token endpoint returned "
+                                f"HTTP {status}")
+                        content_type = response.headers.get(
+                            "Content-Type", "") if response.headers else ""
+                        try:
+                            token, response_type = self._parse_admin_token(
+                                response.read(), content_type)
+                        except RuntimeDeploymentError as exc:
+                            raise RuntimeDeploymentError(
+                                f"{exc}. The token may have been created but not "
+                                "persisted. " + self._influx_context(
+                                    deployment, endpoint, status=status,
+                                    response_type=content_type or "unknown",
+                                    persisted=False)) from exc
+                    try:
+                        environment = self._persist_admin_token(
+                            deployment, environment, token)
+                    except RuntimeDeploymentError as exc:
+                        raise RuntimeDeploymentError(
+                            f"{exc}. " + self._influx_context(
+                                deployment, endpoint, status=status,
+                                response_type=response_type,
+                                persisted=False)) from exc
+                    break
+                except HTTPError as exc:
+                    if self._already_exists_error(exc):
+                        raise self._existing_token_error(
+                            deployment, endpoint,
+                            non_interactive=non_interactive) from exc
+                    if 500 <= exc.code < 600:
+                        last_error = f"HTTP {exc.code}"
+                        self.sleep(1)
+                        continue
+                    raise RuntimeDeploymentError(
+                        "InfluxDB administrator-token endpoint returned "
+                        f"HTTP {exc.code}. " + self._influx_context(
+                            deployment, endpoint, status=exc.code,
+                            response_type="error")) from exc
+                except (URLError, TimeoutError, ConnectionError, OSError) as exc:
+                    last_error = type(exc).__name__
+                    self.sleep(1)
+            else:
                 raise RuntimeDeploymentError(
-                    "InfluxDB administrator token bootstrap failed") from exc
-            if len(token) < 20 or any(character.isspace() for character in token):
-                raise RuntimeDeploymentError(
-                    "InfluxDB returned an invalid administrator token")
-            environment["INFLUXDB_TOKEN"] = token
-            atomic_write(
-                deployment.env_file,
-                "".join(f"{key}={value}\n" for key, value in environment.items()))
-            os.chmod(deployment.env_file, 0o600)
+                    "InfluxDB administrator-token endpoint did not become ready "
+                    f"within {timeout} seconds (last result: {last_error or 'no response'})")
 
         result = deployment.run_compose(
             "exec", "-T", "influxdb3-core", "influxdb3", "create", "database",
@@ -488,6 +696,40 @@ class RuntimeDeploymentManager:
                 (result.stderr or "") + (result.stdout or "")).casefold():
             raise RuntimeDeploymentError(
                 "InfluxDB database initialisation failed")
+
+    def reset_influx(self, deployment, *, non_interactive=False,
+                     confirmation=""):
+        """Reset only the profile InfluxDB volume after explicit confirmation."""
+        if non_interactive:
+            raise RuntimeDeploymentError(
+                "InfluxDB reset is unavailable in non-interactive mode")
+        expected = f"RESET {deployment.deployment_id}"
+        entered = confirmation or self.input(
+            "This permanently deletes this deployment's InfluxDB telemetry. "
+            f"Type {expected} to continue: ").strip()
+        if entered != expected:
+            raise RuntimeDeploymentError(
+                "InfluxDB reset was not confirmed; no volume was deleted")
+        deployment.run_compose(
+            "stop", "influxdb3-core", check=False, capture=True)
+        deployment.run_compose(
+            "rm", "-f", "-s", "influxdb3-core",
+            check=False, capture=True)
+        volume = f"itp-{deployment.deployment_id}_influxdb_data"
+        result = self.runner(
+            ["docker", "volume", "rm", volume],
+            cwd=self.root, check=False, text=True, encoding="utf-8",
+            errors="replace", capture_output=True)
+        if result.returncode and "no such volume" not in (
+                (result.stdout or "") + (result.stderr or "")).casefold():
+            raise RuntimeDeploymentError(
+                f"unable to remove disposable InfluxDB volume {volume}")
+        environment = self._read_env(deployment.env_file)
+        environment["INFLUXDB_TOKEN"] = ""
+        atomic_write(
+            deployment.env_file,
+            "".join(f"{key}={value}\n" for key, value in environment.items()))
+        os.chmod(deployment.env_file, 0o600)
 
     def add_collector(self, deployment, name):
         connector = self.registry.get(name)

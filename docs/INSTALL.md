@@ -4,6 +4,9 @@ ITP requires Git, Docker Desktop or Docker Engine, Docker Compose v2, and
 Python 3.9 or later. On an interactive Windows deployment, the launcher can
 install Python with explicit consent. It prefers WinGet and otherwise uses a
 pinned, SHA-256 and Authenticode-verified installer from `www.python.org`.
+After Python is available, the Windows launcher checks WSL, Virtual Machine
+Platform, virtualization, restart state, and Docker Desktop. It can enable the
+required Windows features with consent but does not install Docker Desktop.
 
 From a clean clone:
 

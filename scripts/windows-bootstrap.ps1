@@ -507,6 +507,548 @@ function Initialize-ITPPython {
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy")
 }
 
+function Test-ITPRunningOnWindows {
+    param([string]$PlatformOverride)
+    if ($PlatformOverride) {
+        return $PlatformOverride -eq "Windows"
+    }
+    return $env:OS -eq "Windows_NT"
+}
+
+function Get-ITPOptionalFeatureState {
+    param([string]$Name)
+    if (-not (Get-Command Get-WindowsOptionalFeature -ErrorAction SilentlyContinue)) {
+        return "Unknown"
+    }
+    try {
+        $Feature = Get-WindowsOptionalFeature -Online -FeatureName $Name `
+            -ErrorAction Stop
+        return "$($Feature.State)"
+    }
+    catch {
+        return "Unknown"
+    }
+}
+
+function Test-ITPPendingReboot {
+    if (-not (Test-ITPRunningOnWindows)) {
+        return $false
+    }
+    $Keys = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
+    )
+    foreach ($Key in $Keys) {
+        if (Test-Path -LiteralPath $Key) { return $true }
+    }
+    try {
+        $Value = Get-ItemProperty `
+            -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" `
+            -Name PendingFileRenameOperations -ErrorAction SilentlyContinue
+        return $null -ne $Value.PendingFileRenameOperations
+    }
+    catch {
+        return $false
+    }
+}
+
+function Invoke-ITPCommandCapture {
+    param(
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [string[]]$Arguments = @()
+    )
+    try {
+        $Output = & $Executable @Arguments 2>&1 | Out-String
+        return [PSCustomObject]@{
+            ExitCode = $LASTEXITCODE
+            Output = $Output.Trim()
+        }
+    }
+    catch {
+        return [PSCustomObject]@{
+            ExitCode = 1
+            Output = $_.Exception.Message
+        }
+    }
+}
+
+function Get-ITPWindowsPlatformState {
+    param(
+        [string]$PlatformOverride,
+        [string]$ArchitectureOverride,
+        [Nullable[bool]]$InteractiveOverride = $null,
+        [scriptblock]$CommandResolver = {
+            param($Name)
+            Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+        },
+        [scriptblock]$CommandRunner = {
+            param($Executable, $Arguments)
+            Invoke-ITPCommandCapture -Executable $Executable -Arguments $Arguments
+        },
+        $EvidenceOverride
+    )
+    if (-not (Test-ITPRunningOnWindows -PlatformOverride $PlatformOverride)) {
+        return [PSCustomObject]@{
+            Applicable = $false
+            Platform = [PSCustomObject]@{ Name = "Non-Windows" }
+        }
+    }
+    if ($EvidenceOverride) {
+        return $EvidenceOverride
+    }
+
+    $OperatingSystem = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+        Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+    } else { $null }
+    $Processor = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+        Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    } else { $null }
+    $Computer = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+        Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+    } else { $null }
+    $Architecture = try {
+        Get-ITPNativeArchitecture -ArchitectureOverride $ArchitectureOverride
+    } catch { "Unsupported" }
+    $ProcessArchitecture = try {
+        [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+    } catch { $env:PROCESSOR_ARCHITECTURE }
+
+    $WslFeature = Get-ITPOptionalFeatureState "Microsoft-Windows-Subsystem-Linux"
+    $VirtualMachinePlatform = Get-ITPOptionalFeatureState "VirtualMachinePlatform"
+    $HyperV = Get-ITPOptionalFeatureState "Microsoft-Hyper-V-All"
+    $HypervisorPlatform = Get-ITPOptionalFeatureState "HypervisorPlatform"
+    $Wsl = & $CommandResolver "wsl"
+    $WslVersion = ""
+    $WslKernel = ""
+    $DefaultWslVersion = ""
+    if ($Wsl) {
+        $VersionResult = & $CommandRunner $Wsl.Source @("--version")
+        if ($VersionResult.ExitCode -eq 0) {
+            $VersionLine = $VersionResult.Output -split "`r?`n" |
+                Where-Object { $_ -match '(?i)^WSL version:' } |
+                Select-Object -First 1
+            $KernelLine = $VersionResult.Output -split "`r?`n" |
+                Where-Object { $_ -match '(?i)^Kernel version:' } |
+                Select-Object -First 1
+            $WslVersion = "$VersionLine".Split(":", 2)[-1].Trim()
+            $WslKernel = "$KernelLine".Split(":", 2)[-1].Trim()
+        }
+        $StatusResult = & $CommandRunner $Wsl.Source @("--status")
+        $StatusOutput = "$($StatusResult.Output)".Replace("`0", "")
+        $DefaultLine = $StatusOutput -split "`r?`n" |
+            Where-Object { $_ -match '(?i)^Default Version:' } |
+            Select-Object -First 1
+        if ($DefaultLine) {
+            $DefaultWslVersion = "$DefaultLine".Split(":", 2)[-1].Trim()
+        }
+        if ($StatusResult.ExitCode -eq 0 -and $WslFeature -eq "Unknown") {
+            $WslFeature = "Enabled"
+        }
+        if ($StatusResult.ExitCode -eq 0 -and $DefaultWslVersion -eq "2" -and
+                $VirtualMachinePlatform -eq "Unknown") {
+            $VirtualMachinePlatform = "Enabled"
+        }
+    }
+
+    $DockerDesktopPaths = @()
+    if ($env:ProgramW6432) {
+        $DockerDesktopPaths += Join-Path $env:ProgramW6432 `
+            "Docker\Docker\Docker Desktop.exe"
+    }
+    if ($env:ProgramFiles) {
+        $DockerDesktopPaths += Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
+    }
+    if ($env:LOCALAPPDATA) {
+        $DockerDesktopPaths += Join-Path $env:LOCALAPPDATA "Docker\Docker Desktop.exe"
+    }
+    $DockerDesktopPath = $DockerDesktopPaths |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+        Select-Object -First 1
+    $DockerDesktopRegistry = $false
+    foreach ($RegistryPath in @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*")) {
+        try {
+            if (Get-ItemProperty $RegistryPath -ErrorAction SilentlyContinue |
+                    Where-Object { $_.DisplayName -eq "Docker Desktop" } |
+                    Select-Object -First 1) {
+                $DockerDesktopRegistry = $true
+                break
+            }
+        }
+        catch {
+            # A missing registry view is normal.
+        }
+    }
+    $DockerDesktopRunning = $false
+    try {
+        $DockerDesktopRunning = $null -ne (
+            Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue |
+                Select-Object -First 1)
+    }
+    catch {
+        $DockerDesktopRunning = $false
+    }
+    $Docker = & $CommandResolver "docker"
+    $DockerCliAvailable = $null -ne $Docker
+    $DockerDaemon = $false
+    $Compose = $false
+    $DockerBackend = "Unknown"
+    $DockerVersion = ""
+    if ($Docker) {
+        $VersionResult = & $CommandRunner $Docker.Source @("--version")
+        $DockerVersion = $VersionResult.Output
+        $InfoResult = & $CommandRunner $Docker.Source @("info")
+        $DockerDaemon = $InfoResult.ExitCode -eq 0
+        if ($InfoResult.Output -match '(?i)wsl') { $DockerBackend = "WSL" }
+        elseif ($InfoResult.Output -match '(?i)hyper-v') { $DockerBackend = "Hyper-V" }
+        $ComposeResult = & $CommandRunner $Docker.Source @("compose", "version")
+        $Compose = $ComposeResult.ExitCode -eq 0
+    }
+    $Interactive = Test-ITPInteractiveDeployment -Arguments @("deploy") `
+        -InteractiveOverride $InteractiveOverride
+    $Caption = if ($OperatingSystem) { "$($OperatingSystem.Caption)" } else { "Windows" }
+    $Version = if ($OperatingSystem) { "$($OperatingSystem.Version)" } else { "" }
+    $Build = if ($OperatingSystem) { "$($OperatingSystem.BuildNumber)" } else { "" }
+    $Edition = if ($OperatingSystem -and $OperatingSystem.OperatingSystemSKU) {
+        "$($OperatingSystem.OperatingSystemSKU)"
+    } else { $Caption }
+
+    return [PSCustomObject]@{
+        Applicable = $true
+        Platform = [PSCustomObject]@{
+            Name = $Caption
+            Edition = $Edition
+            Version = $Version
+            Build = $Build
+            LTSC = $Caption -match '(?i)LTSC|Long-Term Servicing'
+            NativeArchitecture = $Architecture
+            ProcessArchitecture = $ProcessArchitecture
+            Supported = ($Version -match '^10\.' -and [int]$Build -ge 19041 -and
+                $Caption -notmatch '(?i)Windows Server' -and
+                $Architecture -in @("AMD64", "ARM64"))
+        }
+        Virtualization = [PSCustomObject]@{
+            CpuCapable = if ($Processor) {
+                [bool]($Processor.VMMonitorModeExtensions -or
+                    $Processor.SecondLevelAddressTranslationExtensions)
+            } else { $null }
+            FirmwareEnabled = if ($Processor) {
+                [bool]$Processor.VirtualizationFirmwareEnabled
+            } else { $null }
+            HyperVAvailable = $HyperV -eq "Enabled"
+            HypervisorPresent = if ($Computer) {
+                [bool]$Computer.HypervisorPresent
+            } else { $null }
+        }
+        WindowsFeatures = [PSCustomObject]@{
+            WSL = $WslFeature
+            WSLVersion = $WslVersion
+            WSLKernelVersion = $WslKernel
+            DefaultWSLVersion = $DefaultWslVersion
+            VirtualMachinePlatform = $VirtualMachinePlatform
+            HyperV = $HyperV
+            WindowsHypervisorPlatform = $HypervisorPlatform
+        }
+        Docker = [PSCustomObject]@{
+            DesktopInstalled = ($null -ne $DockerDesktopPath -or
+                $DockerDesktopRegistry)
+            DesktopRunning = $DockerDesktopRunning
+            DesktopPath = "$DockerDesktopPath"
+            CliAvailable = $DockerCliAvailable
+            Version = $DockerVersion
+            DaemonReachable = $DockerDaemon
+            ComposeV2 = $Compose
+            Backend = $DockerBackend
+        }
+        RebootRequired = Test-ITPPendingReboot
+        Interactive = $Interactive
+    }
+}
+
+function Get-ITPWindowsReadiness {
+    param([Parameter(Mandatory = $true)]$State)
+    if (-not $State.Applicable) {
+        return [PSCustomObject]@{
+            RepairableItems = @()
+            BlockingItems = @()
+            Ready = $false
+        }
+    }
+    $Repairable = @()
+    $Blocking = @()
+    if ($State.WindowsFeatures.WSL -ne "Enabled") {
+        $Repairable += "windows_feature.wsl"
+    }
+    if ($State.WindowsFeatures.VirtualMachinePlatform -ne "Enabled") {
+        $Repairable += "windows_feature.virtual_machine_platform"
+    }
+    if (-not $State.Platform.Supported) {
+        $Blocking += "platform.unsupported"
+    }
+    if ($State.Virtualization.CpuCapable -eq $false) {
+        $Blocking += "virtualization.cpu_unavailable"
+    }
+    if ($State.Virtualization.FirmwareEnabled -eq $false) {
+        $Blocking += "virtualization.firmware_disabled"
+    }
+    if ($State.RebootRequired) {
+        $Blocking += "system.restart_required"
+    }
+    if (-not $State.Docker.DesktopInstalled) {
+        $Blocking += "docker.desktop_missing"
+    }
+    elseif (-not $State.Docker.CliAvailable) {
+        $Blocking += "docker.cli_unavailable"
+    }
+    elseif (-not $State.Docker.DaemonReachable) {
+        $Blocking += $(if ($State.Docker.DesktopRunning -eq $false) {
+            "docker.desktop_stopped"
+        } else {
+            "docker.daemon_unavailable"
+        })
+    }
+    elseif (-not $State.Docker.ComposeV2) {
+        $Blocking += "docker.compose_v2_unavailable"
+    }
+    return [PSCustomObject]@{
+        RepairableItems = $Repairable
+        BlockingItems = $Blocking
+        Ready = $Repairable.Count -eq 0 -and $Blocking.Count -eq 0
+    }
+}
+
+function Resolve-ITPWindowsCanonicalPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $Value = $Path.Replace("/", "\")
+    if ($Value -notmatch '^(?<drive>[A-Za-z]):\\(?<tail>.*)$') {
+        throw "Windows repository path must be an absolute drive path: $Path"
+    }
+    $Parts = New-Object System.Collections.Generic.List[string]
+    foreach ($Part in ($Matches.tail -split '\\+')) {
+        if (-not $Part -or $Part -eq ".") { continue }
+        if ($Part -eq "..") {
+            if ($Parts.Count -gt 0) { $Parts.RemoveAt($Parts.Count - 1) }
+            continue
+        }
+        $Parts.Add($Part)
+    }
+    $Suffix = $Parts -join "\"
+    return ("{0}:\{1}" -f $Matches.drive.ToUpperInvariant(), $Suffix).TrimEnd("\")
+}
+
+function Test-ITPWindowsRepositoryLocation {
+    param([Parameter(Mandatory = $true)][string]$RepositoryPath)
+    $Resolved = Resolve-ITPWindowsCanonicalPath $RepositoryPath
+    $Protected = @(
+        "C:\Windows",
+        "C:\Program Files",
+        "C:\Program Files (x86)",
+        "C:\ProgramData"
+    )
+    foreach ($EnvironmentPath in @(
+            $env:windir, $env:SystemRoot, $env:ProgramFiles,
+            ${env:ProgramFiles(x86)}, $env:ProgramData)) {
+        if ($EnvironmentPath -and $EnvironmentPath -match '^[A-Za-z]:[\\/]') {
+            $Protected += Resolve-ITPWindowsCanonicalPath $EnvironmentPath
+        }
+    }
+    foreach ($RootPath in ($Protected | Sort-Object -Unique)) {
+        $CanonicalRoot = Resolve-ITPWindowsCanonicalPath $RootPath
+        if ($Resolved.Equals(
+                $CanonicalRoot, [StringComparison]::OrdinalIgnoreCase) -or
+                $Resolved.StartsWith(
+                    $CanonicalRoot + "\", [StringComparison]::OrdinalIgnoreCase)) {
+            throw (
+                "ITP cannot run from protected Windows location: $Resolved. " +
+                "This location is unsuitable for generated configuration and " +
+                "container bind mounts. Move or reclone the repository to C:\ITP " +
+                "or a user-owned directory, then rerun: powershell.exe -NoProfile " +
+                "-ExecutionPolicy Bypass -File .\itp.ps1 deploy")
+        }
+    }
+    $Warning = (
+        $Resolved -match '(?i)\\(Downloads|Desktop|OneDrive)(\\|$)' -or
+        $Resolved -match '(?i)\\AppData\\Local\\Temp(\\|$)')
+    return [PSCustomObject]@{
+        Path = $Resolved
+        Warning = $Warning
+    }
+}
+
+function Initialize-ITPWindowsPlatform {
+    param(
+        [string[]]$Arguments,
+        [string]$PlatformOverride,
+        [scriptblock]$StateProvider = {
+            Get-ITPWindowsPlatformState
+        },
+        [scriptblock]$ConsentReader = {
+            Read-Host "Continue? [Y/n]"
+        },
+        [scriptblock]$FeatureRunner = {
+            $Wsl = Get-Command wsl.exe -CommandType Application `
+                -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $Wsl) {
+                throw (
+                    "WSL tooling is unavailable. Enable Windows Subsystem for Linux " +
+                    "and Virtual Machine Platform through Windows Features, restart, " +
+                    "then rerun the deployment.")
+            }
+            try {
+                $Process = Start-Process -FilePath $Wsl.Source `
+                    -ArgumentList @("--install", "--no-distribution") `
+                    -Verb RunAs -PassThru -Wait
+                return $Process.ExitCode
+            }
+            catch {
+                if ($_.Exception.Message -match '(?i)canceled|cancelled') {
+                    throw "Administrator approval was declined. No Windows features were changed."
+                }
+                throw (
+                    "Windows feature enablement was blocked. Run an elevated PowerShell " +
+                    "session or ask an administrator to review Group Policy: " +
+                    $_.Exception.Message)
+            }
+        },
+        [Nullable[bool]]$InteractiveOverride = $null,
+        [string]$RepositoryPath
+    )
+    if ($Arguments.Count -eq 0 -or $Arguments[0] -ne "deploy" -or
+            -not (Test-ITPRunningOnWindows -PlatformOverride $PlatformOverride)) {
+        return [PSCustomObject]@{
+            Continue = $true
+            RestartRequired = $false
+            ExitCode = 0
+        }
+    }
+    if (-not $RepositoryPath) {
+        $RepositoryPath = if ($PlatformOverride) {
+            "C:\ITP"
+        } else {
+            Split-Path $PSScriptRoot -Parent
+        }
+    }
+    $Location = Test-ITPWindowsRepositoryLocation -RepositoryPath $RepositoryPath
+    if ($Location.Warning) {
+        [Console]::Error.WriteLine(
+            "WARNING: Repository location may be unsuitable for a durable deployment: " +
+            $Location.Path)
+        [Console]::Error.WriteLine(
+            "Prefer C:\ITP or another user-owned, non-synchronised directory.")
+    }
+    $State = & $StateProvider
+    $Readiness = Get-ITPWindowsReadiness -State $State
+    if (-not $State.Platform.Supported) {
+        throw (
+            "This Windows version, edition, build, or architecture is unsupported. " +
+            "ITP requires a supported Windows 10 build 19041 or later, or Windows 11; " +
+            "Windows Server is not supported by this Docker Desktop workflow.")
+    }
+    if ($State.Virtualization.CpuCapable -eq $false) {
+        throw (
+            "This processor does not report the virtualization capabilities required " +
+            "for WSL 2. No Windows features were changed.")
+    }
+    if ($State.Virtualization.FirmwareEnabled -eq $false) {
+        throw (
+            "Hardware virtualization is disabled in firmware. Enable AMD-V, SVM, " +
+            "or Intel VT-x in system firmware, restart Windows, and rerun the deployment.")
+    }
+    if ($State.RebootRequired) {
+        [Console]::Error.WriteLine(
+            "Windows reports a pending restart. Restart before Docker validation, then rerun:")
+        [Console]::Error.WriteLine(
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy")
+        return [PSCustomObject]@{
+            Continue = $false
+            RestartRequired = $true
+            ExitCode = 3010
+        }
+    }
+    if ($Readiness.RepairableItems.Count -gt 0) {
+        $Interactive = Test-ITPInteractiveDeployment -Arguments $Arguments `
+            -InteractiveOverride $InteractiveOverride
+        if (-not $Interactive) {
+            throw (
+                "Windows platform preparation requires explicit interactive consent. " +
+                "Enable Windows Subsystem for Linux and Virtual Machine Platform, " +
+                "restart Windows, then rerun the deployment.")
+        }
+        [Console]::Error.WriteLine("Windows platform preparation")
+        [Console]::Error.WriteLine("")
+        [Console]::Error.WriteLine(
+            "The following Windows features are required before Docker Desktop can run:")
+        foreach ($Item in $Readiness.RepairableItems) {
+            $Label = switch ($Item) {
+                "windows_feature.wsl" { "Windows Subsystem for Linux" }
+                "windows_feature.virtual_machine_platform" { "Virtual Machine Platform" }
+                default { $Item }
+            }
+            [Console]::Error.WriteLine("- $Label")
+        }
+        [Console]::Error.WriteLine("")
+        [Console]::Error.WriteLine(
+            "These changes require administrator approval and a Windows restart.")
+        $Consent = "$(& $ConsentReader)".Trim()
+        if ($Consent -and $Consent -notmatch '^(?i:y|yes)$') {
+            throw "Windows platform preparation was declined. No Windows features were changed."
+        }
+        $ExitCode = & $FeatureRunner
+        if ($ExitCode -notin @(0, 3010)) {
+            throw "Windows platform preparation failed with exit code $ExitCode."
+        }
+        [Console]::Error.WriteLine("")
+        [Console]::Error.WriteLine(
+            "Windows platform preparation completed successfully.")
+        [Console]::Error.WriteLine(
+            "A restart is required before Docker Desktop can run.")
+        [Console]::Error.WriteLine("After restarting, rerun:")
+        [Console]::Error.WriteLine(
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy")
+        return [PSCustomObject]@{
+            Continue = $false
+            RestartRequired = $true
+            ExitCode = 3010
+        }
+    }
+    if (-not $State.Docker.DesktopInstalled) {
+        throw (
+            "Docker Desktop is not installed. Install Docker Desktop using Linux " +
+            "containers, then rerun: powershell.exe -NoProfile -ExecutionPolicy " +
+            "Bypass -File .\itp.ps1 deploy")
+    }
+    if (-not $State.Docker.CliAvailable) {
+        throw (
+            "Docker Desktop is installed, but the Docker CLI is unavailable. " +
+            "Repair Docker Desktop or its PATH integration, then rerun the deployment.")
+    }
+    if (-not $State.Docker.DaemonReachable) {
+        if ($State.Docker.DesktopRunning -eq $false) {
+            throw (
+                "Docker Desktop is installed but not running. Start Docker Desktop, " +
+                "wait for the Linux container engine, then rerun the deployment.")
+        }
+        throw (
+            "Docker Desktop is running, but the Docker daemon is unavailable. " +
+            "Check the Docker Desktop engine status and selected Linux-container " +
+            "backend, then rerun the deployment.")
+    }
+    if (-not $State.Docker.ComposeV2) {
+        throw (
+            "Docker Compose v2 is unavailable. Update or repair Docker Desktop, " +
+            "then rerun the deployment.")
+    }
+    return [PSCustomObject]@{
+        Continue = $true
+        RestartRequired = $false
+        ExitCode = 0
+    }
+}
+
 function New-ITPPrerequisiteCheck {
     param($State, $Name, $Detail, $Classification)
     [PSCustomObject]@{
@@ -522,6 +1064,12 @@ function Get-ITPPrerequisiteDiagnostics {
         [string]$PlatformOverride,
         [string]$ArchitectureOverride,
         [Nullable[bool]]$InteractiveOverride = $null,
+        [scriptblock]$PlatformStateProvider = {
+            param($Platform, $Architecture, $Interactive)
+            Get-ITPWindowsPlatformState -PlatformOverride $Platform `
+                -ArchitectureOverride $Architecture `
+                -InteractiveOverride $Interactive
+        },
         [scriptblock]$CommandResolver = {
             param($Name)
             Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue |
@@ -562,9 +1110,20 @@ function Get-ITPPrerequisiteDiagnostics {
             ExitCode = 0
             Ready = $false
             Applicable = $false
+            platform = [PSCustomObject]@{ Name = "Non-Windows" }
+            windowsFeatures = $null
+            virtualization = $null
+            docker = $null
+            rebootRequired = $false
+            repairableItems = @()
+            blockingItems = @()
+            interactive = $false
         }
     }
 
+    $PlatformState = & $PlatformStateProvider `
+        $PlatformOverride $ArchitectureOverride $InteractiveOverride
+    $PlatformReadiness = Get-ITPWindowsReadiness -State $PlatformState
     $OsCaption = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
         Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
     } else { $null }
@@ -662,22 +1221,163 @@ function Get-ITPPrerequisiteDiagnostics {
         -InteractiveOverride $InteractiveOverride
     $Checks += New-ITPPrerequisiteCheck "INFO" "Interaction" `
         $(if ($InteractiveState) { "Interactive consent is available" } else { "Non-interactive; automatic software installation is disabled" }) "required"
-    $Blocking = @($Checks | Where-Object { $_.State -eq "FAIL" -and $_.Classification -eq "blocking" })
+    $CheckBlocking = @($Checks |
+        Where-Object { $_.State -eq "FAIL" -and $_.Classification -eq "blocking" } |
+        ForEach-Object {
+            switch ($_.Name) {
+                "Native architecture" { "platform.architecture_unsupported" }
+                "Docker CLI" { "docker.cli_unavailable" }
+                "Docker daemon" { "docker.daemon_unavailable" }
+                "Docker Compose v2" { "docker.compose_v2_unavailable" }
+                "Python" { "python.unavailable" }
+                "pip" { "python.pip_unavailable" }
+                "python.org endpoint" { "python.download_unavailable" }
+                default { "prerequisite.$(($_.Name -replace '[^A-Za-z0-9]+', '_').Trim('_').ToLowerInvariant())" }
+            }
+        })
+    if (-not $InteractiveState -and $PlatformReadiness.RepairableItems.Count -gt 0) {
+        $CheckBlocking += "interaction.required_for_windows_preparation"
+    }
+    $Blocking = @($CheckBlocking + $PlatformReadiness.BlockingItems |
+        Sort-Object -Unique)
     return [PSCustomObject]@{
         Checks = $Checks
         ExitCode = $(if ($Blocking.Count -eq 0) { 0 } else { 1 })
         Ready = $Blocking.Count -eq 0
         Applicable = $true
+        platform = $PlatformState.Platform
+        windowsFeatures = $PlatformState.WindowsFeatures
+        virtualization = $PlatformState.Virtualization
+        docker = $PlatformState.Docker
+        rebootRequired = [bool]$PlatformState.RebootRequired
+        repairableItems = @($PlatformReadiness.RepairableItems)
+        blockingItems = @($Blocking)
+        interactive = [bool]$PlatformState.Interactive
+    }
+}
+
+function Write-ITPPrerequisiteSection {
+    param([string]$Name)
+    Write-Output "=================================================="
+    Write-Output $Name
+    Write-Output "=================================================="
+}
+
+function Write-ITPPrerequisiteValue {
+    param([string]$State, [string]$Name, $Value)
+    Write-Output ("{0} {1}: {2}" -f $State, $Name, $Value)
+}
+
+function Get-ITPPrerequisiteItemLabel {
+    param([string]$Identifier)
+    switch ($Identifier) {
+        "windows_feature.wsl" { return "Windows Subsystem for Linux" }
+        "windows_feature.virtual_machine_platform" { return "Virtual Machine Platform" }
+        "platform.unsupported" { return "Unsupported Windows version, edition, build, or architecture" }
+        "virtualization.cpu_unavailable" { return "CPU virtualization capability is unavailable" }
+        "virtualization.firmware_disabled" { return "Virtualization is disabled in firmware" }
+        "system.restart_required" { return "Windows restart required" }
+        "docker.desktop_missing" { return "Docker Desktop is not installed" }
+        "docker.cli_unavailable" { return "Docker CLI is unavailable" }
+        "docker.desktop_stopped" { return "Docker Desktop is installed but stopped" }
+        "docker.daemon_unavailable" { return "Docker daemon is unavailable" }
+        "docker.compose_v2_unavailable" { return "Docker Compose v2 is unavailable" }
+        "interaction.required_for_windows_preparation" {
+            return "Interactive consent is required for Windows preparation"
+        }
+        default { return $Identifier }
     }
 }
 
 function Invoke-ITPPrerequisiteDiagnostics {
-    param([Nullable[bool]]$InteractiveOverride = $null)
+    param(
+        [Nullable[bool]]$InteractiveOverride = $null,
+        [switch]$Json
+    )
     $Result = Get-ITPPrerequisiteDiagnostics -InteractiveOverride $InteractiveOverride
+    if ($Json) {
+        Write-Output ($Result | ConvertTo-Json -Depth 8)
+        $script:ITPPrerequisiteExitCode = $Result.ExitCode
+        return
+    }
     Write-Output "ITP Windows prerequisite diagnostics"
-    foreach ($Check in $Result.Checks) {
-        Write-Output ("[{0}] {1} - {2} ({3})" -f `
-            $Check.State, $Check.Name, $Check.Detail, $Check.Classification)
+    if (-not $Result.Applicable) {
+        foreach ($Check in $Result.Checks) {
+            Write-Output ("[{0}] {1} - {2} ({3})" -f `
+                $Check.State, $Check.Name, $Check.Detail, $Check.Classification)
+        }
+    } else {
+        Write-ITPPrerequisiteSection "Platform"
+        Write-ITPPrerequisiteValue $(if ($Result.platform.Supported) { "PASS" } else { "FAIL" }) `
+            "Windows" "$($Result.platform.Name) version $($Result.platform.Version) build $($Result.platform.Build)"
+        Write-ITPPrerequisiteValue "INFO" "Edition" $Result.platform.Edition
+        Write-ITPPrerequisiteValue "INFO" "LTSC" $Result.platform.LTSC
+        Write-ITPPrerequisiteValue "PASS" "Native architecture" $Result.platform.NativeArchitecture
+        Write-ITPPrerequisiteValue "INFO" "Process architecture" $Result.platform.ProcessArchitecture
+        Write-Output ""
+
+        Write-ITPPrerequisiteSection "Virtualization"
+        Write-ITPPrerequisiteValue $(if ($Result.virtualization.CpuCapable -eq $false) { "FAIL" } elseif ($null -eq $Result.virtualization.CpuCapable) { "INFO" } else { "PASS" }) `
+            "CPU virtualization capability" $Result.virtualization.CpuCapable
+        Write-ITPPrerequisiteValue $(if ($Result.virtualization.FirmwareEnabled -eq $false) { "FAIL" } elseif ($null -eq $Result.virtualization.FirmwareEnabled) { "INFO" } else { "PASS" }) `
+            "Firmware virtualization" $Result.virtualization.FirmwareEnabled
+        Write-ITPPrerequisiteValue "INFO" "Hyper-V available" $Result.virtualization.HyperVAvailable
+        Write-ITPPrerequisiteValue "INFO" "Hypervisor present" $Result.virtualization.HypervisorPresent
+        Write-Output ""
+
+        Write-ITPPrerequisiteSection "Windows Features"
+        Write-ITPPrerequisiteValue $(if ($Result.windowsFeatures.WSL -eq "Enabled") { "PASS" } else { "FAIL" }) `
+            "Windows Subsystem for Linux" $Result.windowsFeatures.WSL
+        Write-ITPPrerequisiteValue $(if ($Result.windowsFeatures.VirtualMachinePlatform -eq "Enabled") { "PASS" } else { "FAIL" }) `
+            "Virtual Machine Platform" $Result.windowsFeatures.VirtualMachinePlatform
+        Write-ITPPrerequisiteValue "INFO" "WSL version" $Result.windowsFeatures.WSLVersion
+        Write-ITPPrerequisiteValue "INFO" "WSL kernel" $Result.windowsFeatures.WSLKernelVersion
+        Write-ITPPrerequisiteValue "INFO" "Default WSL version" $Result.windowsFeatures.DefaultWSLVersion
+        Write-ITPPrerequisiteValue "INFO" "Hyper-V feature" $Result.windowsFeatures.HyperV
+        Write-ITPPrerequisiteValue "INFO" "Windows Hypervisor Platform" `
+            $Result.windowsFeatures.WindowsHypervisorPlatform
+        Write-Output ""
+
+        Write-ITPPrerequisiteSection "Applications"
+        foreach ($Check in $Result.Checks | Where-Object {
+                $_.Name -in @("Git", "Python", "pip", "WinGet",
+                    "Microsoft Desktop App Installer") }) {
+            Write-ITPPrerequisiteValue $Check.State $Check.Name $Check.Detail
+        }
+        Write-ITPPrerequisiteValue $(if ($Result.docker.DesktopInstalled) { "PASS" } else { "FAIL" }) `
+            "Docker Desktop installed" $Result.docker.DesktopInstalled
+        Write-ITPPrerequisiteValue $(if ($Result.docker.DesktopRunning) { "PASS" } else { "INFO" }) `
+            "Docker Desktop running" $Result.docker.DesktopRunning
+        Write-ITPPrerequisiteValue $(if ($Result.docker.CliAvailable) { "PASS" } else { "FAIL" }) `
+            "Docker CLI" $Result.docker.CliAvailable
+        Write-ITPPrerequisiteValue $(if ($Result.docker.DaemonReachable) { "PASS" } else { "FAIL" }) `
+            "Docker daemon" $Result.docker.DaemonReachable
+        Write-ITPPrerequisiteValue $(if ($Result.docker.ComposeV2) { "PASS" } else { "FAIL" }) `
+            "Docker Compose v2" $Result.docker.ComposeV2
+        Write-ITPPrerequisiteValue "INFO" "Docker backend" $Result.docker.Backend
+        Write-Output ""
+
+        Write-ITPPrerequisiteSection "System State"
+        Write-ITPPrerequisiteValue $(if ($Result.rebootRequired) { "WARNING" } else { "PASS" }) `
+            "Pending restart" $Result.rebootRequired
+        Write-ITPPrerequisiteValue "INFO" "Interactive" $Result.interactive
+        Write-Output ""
+
+        Write-ITPPrerequisiteSection "Deployment"
+        Write-Output "Automatically repairable:"
+        if ($Result.repairableItems.Count -eq 0) { Write-Output "- None" }
+        else {
+            $Result.repairableItems | ForEach-Object {
+                Write-Output "- $(Get-ITPPrerequisiteItemLabel $_) ($_)"
+            }
+        }
+        Write-Output "Blocking:"
+        if ($Result.blockingItems.Count -eq 0) { Write-Output "- None" }
+        else {
+            $Result.blockingItems | ForEach-Object {
+                Write-Output "- $(Get-ITPPrerequisiteItemLabel $_) ($_)"
+            }
+        }
     }
     Write-Output ""
     Write-Output $(if (-not $Result.Applicable) {

@@ -1,14 +1,17 @@
 import os
 import subprocess
+import urllib.error
 from dataclasses import dataclass
 
 import pytest
 import yaml
 
 from analysis.runtime_deployment import (
+    RuntimeDeployment,
     RuntimeDeploymentError,
     RuntimeDeploymentManager,
     normalize_onboarding_value,
+    retry_command,
     slugify,
 )
 from collectors.connector_registry import ConnectorMetadataRegistry
@@ -46,6 +49,30 @@ def manager(tmp_path, **kwargs):
         tmp_path, registry=Registry(), output_fn=lambda _value: None,
         port_fn=lambda _address, _port: True,
         **kwargs)
+
+
+class HttpResponse:
+    def __init__(self, body=b"", *, status=200, content_type="text/plain"):
+        self.status = status
+        self.body = body
+        self.headers = {"Content-Type": content_type}
+
+    def read(self):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+
+def install_compose_mock(monkeypatch, calls):
+    def run_compose(_deployment, *arguments, **_kwargs):
+        calls.append(arguments)
+        return subprocess.CompletedProcess(arguments, 0, "", "")
+
+    monkeypatch.setattr(RuntimeDeployment, "run_compose", run_compose)
 
 
 def test_slug_and_non_interactive_first_deployment(tmp_path):
@@ -316,3 +343,217 @@ def test_deploy_verbose_and_doctor_prompt_modes_are_deterministic():
         non_interactive=False, input_fn=lambda _prompt: "")
     assert not deployment_doctor_requested(
         non_interactive=False, input_fn=lambda _prompt: "n")
+
+
+@pytest.mark.parametrize(("body", "content_type"), [
+    (b"apiv3_012345678901234567890123456789\r\n", "text/plain"),
+    (b"\xef\xbb\xbfapiv3_012345678901234567890123456789\r\n",
+     "application/json"),
+    (b'{"token":"apiv3_012345678901234567890123456789"}',
+     "application/json"),
+])
+def test_influx_bootstrap_parses_windows_and_supported_response_formats(
+        tmp_path, monkeypatch, body, content_type):
+    calls = []
+    requests = []
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if isinstance(request, str):
+            return HttpResponse(status=200)
+        return HttpResponse(body, status=201, content_type=content_type)
+
+    runtime = manager(tmp_path, urlopen=urlopen, sleep=lambda _value: None)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    install_compose_mock(monkeypatch, calls)
+    runtime.bootstrap_influx(deployment)
+    environment = runtime._read_env(deployment.env_file)
+    assert environment["INFLUXDB_TOKEN"].startswith("apiv3_")
+    assert any("/api/v3/configure/token/admin" in request.full_url
+               for request in requests if not isinstance(request, str))
+    assert any(arguments[:4] == (
+        "exec", "-T", "influxdb3-core", "influxdb3") for arguments in calls)
+
+
+@pytest.mark.parametrize(("body", "content_type", "message"), [
+    (b"", "text/plain", "blank or malformed"),
+    (b"{broken", "application/json", "malformed JSON"),
+    (b'{"unexpected":true}', "application/json", "blank or malformed"),
+])
+def test_influx_bootstrap_rejects_blank_and_malformed_responses(
+        tmp_path, monkeypatch, body, content_type, message):
+    def urlopen(request, timeout):
+        if isinstance(request, str):
+            return HttpResponse(status=200)
+        return HttpResponse(body, status=201, content_type=content_type)
+
+    runtime = manager(tmp_path, urlopen=urlopen)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    install_compose_mock(monkeypatch, [])
+    with pytest.raises(RuntimeDeploymentError, match=message):
+        runtime.bootstrap_influx(deployment)
+    assert runtime._read_env(deployment.env_file)["INFLUXDB_TOKEN"] == ""
+
+
+def test_influx_bootstrap_preflights_directory_and_writability(
+        tmp_path, monkeypatch):
+    runtime = manager(tmp_path, urlopen=lambda *_args, **_kwargs:
+                      pytest.fail("must not request a token"))
+    deployment = runtime.create(name="Example", non_interactive=True)
+    deployment.env_file.unlink()
+    with pytest.raises(RuntimeDeploymentError, match="environment is missing"):
+        runtime.bootstrap_influx(deployment)
+
+    deployment = runtime.create(
+        name="Example", non_interactive=True, force=True)
+    monkeypatch.setattr(
+        "analysis.runtime_deployment.tempfile.NamedTemporaryFile",
+        lambda **_kwargs: (_ for _ in ()).throw(PermissionError("denied")))
+    with pytest.raises(RuntimeDeploymentError, match="not writable"):
+        runtime.bootstrap_influx(deployment)
+
+
+def test_influx_token_returned_but_atomic_persistence_fails_clearly(
+        tmp_path, monkeypatch):
+    def urlopen(request, timeout):
+        return (HttpResponse(status=200) if isinstance(request, str) else
+                HttpResponse(
+                    b"apiv3_012345678901234567890123456789", status=201))
+
+    runtime = manager(tmp_path, urlopen=urlopen)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    install_compose_mock(monkeypatch, [])
+    monkeypatch.setattr(
+        "analysis.runtime_deployment.atomic_write",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            PermissionError("denied")))
+    with pytest.raises(RuntimeDeploymentError, match="atomic persistence failed"):
+        runtime.bootstrap_influx(deployment)
+
+
+def test_influx_endpoint_delay_and_http_failures_are_bounded(
+        tmp_path, monkeypatch):
+    calls = {"count": 0}
+
+    def delayed(request, timeout):
+        calls["count"] += 1
+        if isinstance(request, str):
+            return HttpResponse(status=200)
+        if calls["count"] == 2:
+            raise urllib.error.HTTPError(
+                request.full_url, 503, "Starting", {},
+                __import__("io").BytesIO(b"service unavailable"))
+        return HttpResponse(
+            b"apiv3_012345678901234567890123456789", status=201)
+
+    runtime = manager(tmp_path, urlopen=delayed, sleep=lambda _value: None)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    install_compose_mock(monkeypatch, [])
+    runtime.bootstrap_influx(deployment)
+    assert calls["count"] == 3
+
+    def forbidden(request, timeout):
+        if isinstance(request, str):
+            return HttpResponse(status=200)
+        raise urllib.error.HTTPError(
+            request.full_url, 403, "Forbidden", {}, None)
+
+    runtime.urlopen = forbidden
+    deployment.env_file.write_text(
+        deployment.env_file.read_text().replace(
+            "INFLUXDB_TOKEN=apiv3_012345678901234567890123456789",
+            "INFLUXDB_TOKEN="))
+    with pytest.raises(RuntimeDeploymentError, match="HTTP 403"):
+        runtime.bootstrap_influx(deployment)
+
+
+def test_existing_influx_token_is_reused_without_creation(
+        tmp_path, monkeypatch):
+    requests = []
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        return HttpResponse(status=200)
+
+    runtime = manager(tmp_path, urlopen=urlopen)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    deployment.env_file.write_text(
+        deployment.env_file.read_text().replace(
+            "INFLUXDB_TOKEN=\n",
+            "INFLUXDB_TOKEN=apiv3_012345678901234567890123456789\n"))
+    install_compose_mock(monkeypatch, [])
+    runtime.bootstrap_influx(deployment)
+    runtime.bootstrap_influx(deployment)
+    assert all(isinstance(request, str) for request in requests)
+
+
+@pytest.mark.parametrize("non_interactive", [False, True])
+def test_existing_unpersisted_influx_token_has_safe_recovery(
+        tmp_path, monkeypatch, non_interactive):
+    def urlopen(request, timeout):
+        if isinstance(request, str):
+            return HttpResponse(status=200)
+        raise urllib.error.HTTPError(
+            request.full_url, 409, "Conflict", {},
+            __import__("io").BytesIO(b"token name already exists, _admin"))
+
+    runtime = manager(tmp_path, urlopen=urlopen)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    install_compose_mock(monkeypatch, [])
+    with pytest.raises(RuntimeDeploymentError) as failure:
+        runtime.bootstrap_influx(
+            deployment, non_interactive=non_interactive)
+    text = str(failure.value)
+    assert "_admin already exists" in text
+    assert "will not delete" in text
+    assert ("Non-interactive recovery" in text) is non_interactive
+
+
+def test_influx_reset_requires_explicit_interactive_confirmation(
+        tmp_path, monkeypatch):
+    runner_calls = []
+
+    def runner(command, **_kwargs):
+        runner_calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    runtime = manager(tmp_path, runner=runner)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    compose_calls = []
+    install_compose_mock(monkeypatch, compose_calls)
+    with pytest.raises(RuntimeDeploymentError, match="not confirmed"):
+        runtime.reset_influx(deployment, confirmation="yes")
+    assert runner_calls == []
+    with pytest.raises(RuntimeDeploymentError, match="non-interactive"):
+        runtime.reset_influx(
+            deployment, non_interactive=True,
+            confirmation=f"RESET {deployment.deployment_id}")
+    assert runner_calls == []
+    runtime.reset_influx(
+        deployment, confirmation=f"RESET {deployment.deployment_id}")
+    assert ("rm", "-f", "-s", "influxdb3-core") in compose_calls
+    assert runner_calls == [[
+        "docker", "volume", "rm",
+        f"itp-{deployment.deployment_id}_influxdb_data"]]
+
+
+def test_retry_commands_are_platform_appropriate():
+    assert retry_command(
+        "deploy", "--force", "--verbose", system="Windows") == (
+        r"powershell.exe -NoProfile -ExecutionPolicy Bypass "
+        r"-File .\itp.ps1 deploy --force --verbose")
+    assert retry_command(
+        "deploy", "--force", "--verbose", system="Darwin") == (
+        "./itp deploy --force --verbose")
+    assert retry_command(
+        "deploy", "--force", "--verbose", system="Linux") == (
+        "./itp deploy --force --verbose")
+
+
+def test_runtime_timezone_validation_is_iana_and_actionable(tmp_path):
+    deployment = manager(tmp_path).create(
+        name="Perth", timezone="Australia/Perth", non_interactive=True)
+    assert deployment.load()["timezone"] == "Australia/Perth"
+    with pytest.raises(RuntimeDeploymentError, match="Australia/Perth"):
+        manager(tmp_path / "invalid").create(
+            name="Invalid", timezone="Not/AZone", non_interactive=True)

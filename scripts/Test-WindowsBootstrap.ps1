@@ -288,6 +288,236 @@ catch {
 }
 Assert-True $Unresolved "successful install with unresolved interpreter must be actionable"
 
+function New-WindowsState {
+    param(
+        [string]$WSL = "Enabled",
+        [string]$VirtualMachinePlatform = "Enabled",
+        [bool]$PendingReboot = $false,
+        [bool]$DockerInstalled = $true,
+        [bool]$DockerDesktopRunning = $true,
+        [bool]$DockerCli = $true,
+        [bool]$DockerDaemon = $true,
+        [bool]$Compose = $true,
+        $CpuCapable = $true,
+        $FirmwareEnabled = $true,
+        [bool]$PlatformSupported = $true
+    )
+    return [PSCustomObject]@{
+        Applicable = $true
+        Platform = [PSCustomObject]@{
+            Name = "Windows 11 Enterprise"
+            Edition = "Enterprise"
+            Version = "10.0.26100"
+            Build = "26100"
+            LTSC = $false
+            NativeArchitecture = "AMD64"
+            ProcessArchitecture = "X64"
+            Supported = $PlatformSupported
+        }
+        Virtualization = [PSCustomObject]@{
+            CpuCapable = $CpuCapable
+            FirmwareEnabled = $FirmwareEnabled
+            HyperVAvailable = $true
+            HypervisorPresent = $true
+        }
+        WindowsFeatures = [PSCustomObject]@{
+            WSL = $WSL
+            WSLVersion = "2.5.9"
+            WSLKernelVersion = "6.6.87"
+            DefaultWSLVersion = "2"
+            VirtualMachinePlatform = $VirtualMachinePlatform
+            HyperV = "Enabled"
+            WindowsHypervisorPlatform = "Enabled"
+        }
+        Docker = [PSCustomObject]@{
+            DesktopInstalled = $DockerInstalled
+            DesktopRunning = $DockerDesktopRunning
+            DesktopPath = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+            CliAvailable = $DockerCli
+            Version = "Docker version 28"
+            DaemonReachable = $DockerDaemon
+            ComposeV2 = $Compose
+            Backend = "WSL"
+        }
+        RebootRequired = $PendingReboot
+        Interactive = $true
+    }
+}
+
+# Windows feature readiness and preparation are deterministic and resumable.
+$ProtectedLocation = $false
+try {
+    Test-ITPWindowsRepositoryLocation `
+        -RepositoryPath "c:/safe/../Windows/System32/ITP"
+}
+catch {
+    $ProtectedLocation = (
+        $_.Exception.Message -match "C:\\Windows\\System32\\ITP" -and
+        $_.Exception.Message -match "C:\\ITP" -and
+        $_.Exception.Message -match "powershell.exe -NoProfile")
+}
+Assert-True $ProtectedLocation `
+    "canonical traversal into a protected Windows directory must be blocked"
+$SafeLocation = Test-ITPWindowsRepositoryLocation `
+    -RepositoryPath "C:\Users\Example\Source\ITP"
+Assert-Equal $SafeLocation.Path "C:\Users\Example\Source\ITP" `
+    "safe user-owned Windows directory must be accepted"
+$WarningLocation = Test-ITPWindowsRepositoryLocation `
+    -RepositoryPath "C:\Users\Example\Downloads\ITP"
+Assert-True $WarningLocation.Warning `
+    "Downloads deployment must produce a non-blocking warning"
+
+$HealthyState = New-WindowsState
+$HealthyReadiness = Get-ITPWindowsReadiness -State $HealthyState
+Assert-True $HealthyReadiness.Ready "WSL installed and Docker running must be ready"
+$script:FeatureRuns = 0
+$Resume = Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+    -PlatformOverride "Windows" -StateProvider { $HealthyState }.GetNewClosure() `
+    -FeatureRunner { $script:FeatureRuns++; return 0 }
+Assert-True $Resume.Continue "resume after reboot must continue to Docker validation"
+Assert-Equal $script:FeatureRuns 0 "completed Windows features must not repeat"
+
+$MissingFeatures = New-WindowsState -WSL "Disabled" `
+    -VirtualMachinePlatform "Disabled" -DockerInstalled $false `
+    -DockerCli $false -DockerDaemon $false -Compose $false
+$MissingReadiness = Get-ITPWindowsReadiness -State $MissingFeatures
+Assert-Equal ($MissingReadiness.RepairableItems -join ",") `
+    "windows_feature.wsl,windows_feature.virtual_machine_platform" `
+    "missing WSL and Virtual Machine Platform must be repairable"
+$script:FeatureRuns = 0
+$Prepared = Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+    -PlatformOverride "Windows" `
+    -StateProvider { $MissingFeatures }.GetNewClosure() `
+    -InteractiveOverride $true -ConsentReader { "" } -FeatureRunner {
+        $script:FeatureRuns++
+        return 0
+    }
+Assert-True $Prepared.RestartRequired "feature preparation must require restart"
+Assert-Equal $Prepared.ExitCode 3010 `
+    "feature preparation must return the Windows restart-required exit code"
+Assert-Equal $script:FeatureRuns 1 "feature preparation must run once after consent"
+
+$PreparationDeclined = $false
+try {
+    Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+        -PlatformOverride "Windows" `
+        -StateProvider { $MissingFeatures }.GetNewClosure() `
+        -InteractiveOverride $true -ConsentReader { "n" } `
+        -FeatureRunner { throw "must not run" }
+}
+catch { $PreparationDeclined = $_.Exception.Message -match "declined" }
+Assert-True $PreparationDeclined "Windows feature consent declined must not modify system"
+
+$PreparationNonInteractive = $false
+try {
+    Initialize-ITPWindowsPlatform -Arguments @("deploy", "--non-interactive") `
+        -PlatformOverride "Windows" `
+        -StateProvider { $MissingFeatures }.GetNewClosure() `
+        -InteractiveOverride $false -ConsentReader { throw "must not prompt" } `
+        -FeatureRunner { throw "must not run" }
+}
+catch {
+    $PreparationNonInteractive = $_.Exception.Message -match "explicit interactive consent"
+}
+Assert-True $PreparationNonInteractive "non-interactive Windows preparation must not modify system"
+
+$AdminRequired = $false
+try {
+    Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+        -PlatformOverride "Windows" `
+        -StateProvider { $MissingFeatures }.GetNewClosure() `
+        -InteractiveOverride $true -ConsentReader { "" } `
+        -FeatureRunner { throw "Administrator approval was declined" }
+}
+catch { $AdminRequired = $_.Exception.Message -match "Administrator approval" }
+Assert-True $AdminRequired "administrator-required path must be actionable"
+
+$FeatureFailure = $false
+try {
+    Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+        -PlatformOverride "Windows" `
+        -StateProvider { $MissingFeatures }.GetNewClosure() `
+        -InteractiveOverride $true -ConsentReader { "" } `
+        -FeatureRunner { return 55 }
+}
+catch { $FeatureFailure = $_.Exception.Message -match "exit code 55" }
+Assert-True $FeatureFailure "elevated command failure must preserve its exit code"
+
+$PendingState = New-WindowsState -PendingReboot $true
+$script:FeatureRuns = 0
+$PendingResult = Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+    -PlatformOverride "Windows" -StateProvider { $PendingState }.GetNewClosure() `
+    -FeatureRunner { $script:FeatureRuns++; return 0 }
+Assert-True $PendingResult.RestartRequired "pending reboot must stop before Docker"
+Assert-Equal $PendingResult.ExitCode 3010 `
+    "existing pending reboot must return the restart-required exit code"
+Assert-Equal $script:FeatureRuns 0 "pending reboot must not repeat feature changes"
+
+foreach ($DockerCase in @(
+        @{ State = (New-WindowsState -DockerInstalled $false); Match = "not installed"; Label = "Docker missing" },
+        @{ State = (New-WindowsState -DockerDesktopRunning $false -DockerDaemon $false); Match = "not running"; Label = "Docker Desktop stopped" },
+        @{ State = (New-WindowsState -DockerDaemon $false); Match = "daemon is unavailable"; Label = "Docker daemon unavailable" },
+        @{ State = (New-WindowsState -Compose $false); Match = "Compose v2"; Label = "Docker Compose missing" })) {
+    $Targeted = $false
+    try {
+        $CaseState = $DockerCase.State
+        Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+            -PlatformOverride "Windows" `
+            -StateProvider { $CaseState }.GetNewClosure()
+    }
+    catch { $Targeted = $_.Exception.Message -match $DockerCase.Match }
+    Assert-True $Targeted "$($DockerCase.Label) must have targeted guidance"
+}
+
+$FirmwareBlocked = $false
+$FirmwareState = New-WindowsState -FirmwareEnabled $false
+try {
+    Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+        -PlatformOverride "Windows" `
+        -StateProvider { $FirmwareState }.GetNewClosure()
+}
+catch { $FirmwareBlocked = $_.Exception.Message -match "disabled in firmware" }
+Assert-True $FirmwareBlocked "firmware virtualization failure must be targeted"
+
+$CpuBlocked = $false
+$CpuState = New-WindowsState -CpuCapable $false
+try {
+    Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+        -PlatformOverride "Windows" `
+        -StateProvider { $CpuState }.GetNewClosure() `
+        -ConsentReader { throw "must not prompt" } `
+        -FeatureRunner { throw "must not elevate" }
+}
+catch { $CpuBlocked = $_.Exception.Message -match "processor" }
+Assert-True $CpuBlocked "unavailable CPU virtualization must block before elevation"
+
+$UnsupportedBlocked = $false
+$UnsupportedState = New-WindowsState -WSL "Disabled" `
+    -VirtualMachinePlatform "Disabled" -PlatformSupported $false
+try {
+    Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+        -PlatformOverride "Windows" `
+        -StateProvider { $UnsupportedState }.GetNewClosure() `
+        -ConsentReader { throw "must not prompt" } `
+        -FeatureRunner { throw "must not elevate" }
+}
+catch { $UnsupportedBlocked = $_.Exception.Message -match "unsupported" }
+Assert-True $UnsupportedBlocked "unsupported Windows must block before elevation"
+
+$ServerBlocked = $false
+$ServerState = New-WindowsState -WSL "Disabled" `
+    -VirtualMachinePlatform "Disabled" -PlatformSupported $false
+$ServerState.Platform.Name = "Windows Server 2022"
+try {
+    Initialize-ITPWindowsPlatform -Arguments @("deploy") `
+        -PlatformOverride "Windows" `
+        -StateProvider { $ServerState }.GetNewClosure() `
+        -ConsentReader { throw "must not prompt" } `
+        -FeatureRunner { throw "must not elevate" }
+}
+catch { $ServerBlocked = $_.Exception.Message -match "Windows Server" }
+Assert-True $ServerBlocked "Windows Server must block before elevation"
+
 # Prerequisite diagnostics are read-only and have deterministic exit semantics.
 $NonWindowsDiagnostics = Get-ITPPrerequisiteDiagnostics -PlatformOverride "macOS" `
     -ReachabilityProbe { throw "must not access network" }
@@ -301,6 +531,50 @@ $BlockingDiagnostics = Get-ITPPrerequisiteDiagnostics -PlatformOverride "Windows
 Assert-Equal $BlockingDiagnostics.ExitCode 1 "missing Git and Docker must block"
 $PythonCheck = $BlockingDiagnostics.Checks | Where-Object { $_.Name -eq "Python" }
 Assert-Equal $PythonCheck.State "WARNING" "interactive missing Python is repairable"
+
+$NonInteractiveState = New-WindowsState -WSL "Disabled" `
+    -VirtualMachinePlatform "Disabled"
+$NonInteractiveDiagnostics = Get-ITPPrerequisiteDiagnostics `
+    -PlatformOverride "Windows" -ArchitectureOverride "AMD64" `
+    -InteractiveOverride $false `
+    -PlatformStateProvider {
+        param($Platform, $Architecture, $Interactive)
+        $NonInteractiveState
+    }.GetNewClosure() `
+    -CommandResolver (New-Resolver @{
+        git = "/usr/bin/true"
+        docker = "/usr/bin/true"
+        python = "/usr/bin/true"
+    }) `
+    -Probe (New-Probe @{ "/usr/bin/true|" = "3.12.10" }) `
+    -ReachabilityProbe { [PSCustomObject]@{ Success = $true; Detail = "HTTP 200" } }
+Assert-Equal $NonInteractiveDiagnostics.ExitCode 1 `
+    "non-interactive feature preparation must be blocking"
+Assert-True ($NonInteractiveDiagnostics.blockingItems -contains `
+    "interaction.required_for_windows_preparation") `
+    "non-interactive diagnostics must expose a stable blocking identifier"
+
+$JsonState = New-WindowsState
+$JsonDiagnostics = Get-ITPPrerequisiteDiagnostics -PlatformOverride "Windows" `
+    -ArchitectureOverride "AMD64" -InteractiveOverride $true `
+    -PlatformStateProvider {
+        param($Platform, $Architecture, $Interactive)
+        $JsonState
+    }.GetNewClosure() `
+    -CommandResolver (New-Resolver @{ git = "/usr/bin/true"; docker = "/usr/bin/true" }) `
+    -Probe (New-Probe @{}) `
+    -ReachabilityProbe { [PSCustomObject]@{ Success = $true; Detail = "HTTP 200" } }
+$JsonPayload = $JsonDiagnostics | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+Assert-Equal $JsonPayload.platform.Build "26100" "JSON platform state"
+Assert-Equal $JsonPayload.windowsFeatures.WSL "Enabled" "JSON WSL state"
+Assert-Equal $JsonPayload.virtualization.FirmwareEnabled $true "JSON virtualization state"
+Assert-Equal $JsonPayload.docker.Backend "WSL" "JSON Docker backend"
+Assert-Equal $JsonPayload.rebootRequired $false "JSON reboot state"
+Assert-True ($null -ne $JsonPayload.repairableItems) "JSON repairable items"
+Assert-True ($null -ne $JsonPayload.blockingItems) "JSON blocking items"
+Assert-True (($JsonPayload.repairableItems | Where-Object {
+            $_ -notmatch '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+        }).Count -eq 0) "JSON repairable items must use stable identifiers"
 
 $Launcher = Get-Content -Raw (Join-Path $PSScriptRoot "..\itp.ps1")
 if ($Launcher -notmatch '\$Bootstrap @args') {

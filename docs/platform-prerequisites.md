@@ -53,6 +53,32 @@ Run read-only prerequisite diagnostics with:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 prerequisites
 ```
 
+Use `prerequisites --json` for the structured platform, Windows feature,
+virtualization, Docker, reboot, repairable-item, and blocking-item contract.
+
+### Windows platform preparation
+
+The repository must be outside protected Windows locations such as
+`C:\Windows`, Program Files, and ProgramData. `C:\ITP` or a user-owned source
+directory is recommended. Canonical path resolution prevents `..`, separator,
+or case variations from bypassing this preflight.
+
+After Python is available, an interactive deployment checks Windows Subsystem
+for Linux and Virtual Machine Platform. When either is missing, ITP explains
+the required changes and asks for consent before running:
+
+```powershell
+wsl.exe --install --no-distribution
+```
+
+Windows requests administrator approval. A restart is normally required. After
+restarting, rerun the normal deployment command; completed Python and feature
+work is detected and not repeated.
+
+ITP does not install Docker Desktop. It distinguishes Docker Desktop missing,
+Docker CLI missing, Docker Desktop installed but stopped, and Compose v2
+missing, with a specific operator action for each state.
+
 Windows may block local scripts. The canonical first-run command uses a
 process-only override without changing persistent machine or user policy:
 

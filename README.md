@@ -60,7 +60,8 @@ Useful commands:
 ```
 
 Use `./itp deploy --verbose` on macOS/Linux or
-`.\itp.ps1 deploy --verbose` on Windows when diagnosing Docker build or startup
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy --verbose`
+on Windows when diagnosing Docker build or startup
 output.
 
 Windows prerequisite diagnostics are read-only:
@@ -68,6 +69,12 @@ Windows prerequisite diagnostics are read-only:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 prerequisites
 ```
+
+On Windows, deployment can enable WSL and Virtual Machine Platform after
+explicit consent. Feature changes require administrator approval and usually a
+restart. ITP resumes automatically after the restart; Docker Desktop itself
+must still be installed and started by the operator. Add `--json` to the
+prerequisite command for structured output.
 
 ## Supported collectors
 

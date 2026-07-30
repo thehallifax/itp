@@ -50,7 +50,11 @@ from analysis.operator import (
     render_status,
     start_background,
 )
-from analysis.runtime_deployment import RuntimeDeploymentError, RuntimeDeploymentManager
+from analysis.runtime_deployment import (
+    RuntimeDeploymentError,
+    RuntimeDeploymentManager,
+    retry_command,
+)
 from analysis.sites import SiteRegistry
 from analysis.virtualisation import VirtualisationEngine
 from analysis.virtualisation.config import validate_virtualisation
@@ -651,6 +655,7 @@ def main():
         runtime_setup.add_argument("--collector", action="append", default=None)
         runtime_setup.add_argument("--non-interactive", action="store_true")
         runtime_setup.add_argument("--force", action="store_true")
+        runtime_setup.add_argument("--reset-influx", action="store_true")
         runtime_setup.add_argument("--no-start", action="store_true")
         runtime_setup.add_argument("--verbose", action="store_true")
         runtime_setup.add_argument("--doctor", action="store_true")
@@ -825,7 +830,7 @@ def main():
         if args.group == "deploy" and not args.no_start:
             phase(
                 1, "Checking Docker", runtime_manager.verify_docker,
-                "./itp deploy --verbose")
+                retry_command("deploy", "--verbose"))
         deployment = phase(
             2, "Creating deployment configuration",
             lambda: runtime_manager.create(
@@ -838,7 +843,7 @@ def main():
                 collectors=args.collector,
                 non_interactive=args.non_interactive,
                 force=args.force),
-            "./itp deploy --verbose")
+            retry_command("deploy", "--verbose"))
         load_runtime_env(deployment.env_file)
         deployment_config = load_config(deployment.collectors)
         enabled_collectors = sorted(
@@ -854,24 +859,32 @@ def main():
             deployment.generated / "dashboard/provisioning/dashboards.yml",
             registry_validation_mode="runtime").generate()
         if args.group == "deploy" and not args.no_start:
+            if args.reset_influx:
+                phase(
+                    3, "Resetting disposable InfluxDB telemetry",
+                    lambda: runtime_manager.reset_influx(
+                        deployment, non_interactive=args.non_interactive),
+                    retry_command(
+                        "deploy", "--force", "--reset-influx", "--verbose"))
             deployment.run_compose(
                 "config", "--quiet", capture=not verbose)
             phase(
                 3, "Preparing InfluxDB",
                 lambda: runtime_manager.bootstrap_influx(
-                    deployment, capture=not verbose),
-                "./itp deploy --force --verbose")
+                    deployment, capture=not verbose,
+                    non_interactive=args.non_interactive),
+                retry_command("deploy", "--force", "--verbose"))
             phase(
                 4, "Building ITP collectors",
                 lambda: deployment.run_compose(
                     "build", capture=not verbose),
-                "./itp deploy --force --verbose")
+                retry_command("deploy", "--force", "--verbose"))
             phase(
                 5, "Starting platform services",
                 lambda: deployment.run_compose(
                     "up", "-d", "--remove-orphans",
                     capture=not verbose),
-                "./itp deploy --force --verbose")
+                retry_command("deploy", "--force", "--verbose"))
             print("[6/6] Verifying service health")
             deadline = time.monotonic() + 180
             healthy = False

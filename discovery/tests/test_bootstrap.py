@@ -462,6 +462,22 @@ def test_windows_launcher_is_thin_and_preserves_exit_code():
     assert "Invoke-ITPPrerequisiteDiagnostics" in text
     assert text.index("Invoke-ITPPrerequisiteDiagnostics") < \
         text.index("Initialize-ITPPython")
+    assert text.index("Initialize-ITPPython") < \
+        text.index("Initialize-ITPWindowsPlatform")
+    assert text.index("Initialize-ITPWindowsPlatform") < \
+        text.index("$Bootstrap @args")
+    assert "exit $PlatformPreparation.ExitCode" in text
+    assert 'Invoke-ITPPrerequisiteDiagnostics -Json:' in text
+    assert "wsl.exe" in helper
+    assert '"--install", "--no-distribution"' in helper
+    assert "Get-WindowsOptionalFeature" in helper
+    assert "VirtualMachinePlatform" in helper
+    assert "Microsoft-Windows-Subsystem-Linux" in helper
+    assert "Docker Desktop is not installed" in helper
+    assert "Docker Desktop is installed but not running" in helper
+    assert "rebootRequired" in helper
+    assert "repairableItems" in helper
+    assert "blockingItems" in helper
     assert "Locations checked" in helper
 
 
@@ -481,7 +497,14 @@ def test_windows_bootstrap_has_cross_platform_reviewable_harness():
             "success cleanup",
             "installer exit handling",
             "launcher must forward all arguments",
-            "missing Git and Docker must block"):
+            "missing Git and Docker must block",
+            "WSL installed and Docker running must be ready",
+            "missing WSL and Virtual Machine Platform must be repairable",
+            "feature preparation must run once after consent",
+            "resume after reboot must continue to Docker validation",
+            "pending reboot must stop before Docker",
+            "must have targeted guidance",
+            "JSON WSL state"):
         assert scenario in harness
 
 

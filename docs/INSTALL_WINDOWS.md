@@ -56,6 +56,15 @@ cd infrastructure-telemetry-platform
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy
 ```
 
+Use a user-owned repository directory such as `C:\ITP`. The launcher blocks
+protected locations including the Windows directory, System32, Program Files,
+and ProgramData before configuration or containers are created. Downloads,
+Desktop, OneDrive, and temporary directories produce a warning because
+synchronisation and cleanup can disrupt container bind mounts.
+
+Timezone values use IANA names. For Western Australia, enter
+`Australia/Perth`.
+
 The execution-policy override applies only to this launched PowerShell process
 and does not permanently change machine or user policy. When local script
 execution is already allowed, use the shorter command:
@@ -86,6 +95,67 @@ and User `PATH`, checks the expected per-user installation and launcher
 locations, validates the interpreter and pip, and continues deployment without
 requiring a new PowerShell session where possible.
 
+## Windows platform preparation
+
+After Python bootstrap and before Docker validation, ITP inspects:
+
+- CPU and firmware virtualization;
+- Windows Subsystem for Linux;
+- WSL version, kernel, and default version where available;
+- Virtual Machine Platform, Hyper-V, and Windows Hypervisor Platform;
+- pending Windows restart state;
+- Docker Desktop, CLI, daemon, Compose v2, and detected backend.
+
+If WSL or Virtual Machine Platform is missing, an interactive deployment lists
+the required features and asks `[Y/n]`. No feature is changed without consent.
+After consent, ITP runs Microsoft's supported:
+
+```powershell
+wsl.exe --install --no-distribution
+```
+
+through an administrator approval prompt. It does not install a Linux
+distribution or Docker Desktop. Group Policy or enterprise controls may block
+the elevation or feature change.
+
+Feature preparation requires a Windows restart. ITP exits cleanly and prints:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy
+```
+
+The launcher returns Windows restart-required exit code `3010`; it does not
+report deployment success before the post-restart run completes.
+
+After restarting, the launcher detects that Python and the Windows features
+are already ready and continues directly to Docker validation. It does not
+repeat completed installation or feature work.
+
+Docker Desktop installation is deliberately manual. If it is absent, install
+Docker Desktop with Linux containers and rerun deployment. If it is installed
+but stopped, start it and wait for the daemon before rerunning.
+
+### Recover an interrupted InfluxDB credential bootstrap
+
+ITP persists the generated `_admin` token atomically in the deployment runtime
+before starting the remaining services. A normal rerun reuses that token and
+does not request another one.
+
+If an older interrupted deployment created `_admin` without saving it, ITP
+does not delete its InfluxDB volume. For an established deployment, use the
+supported InfluxDB operator-token recovery process and update the generated
+deployment environment.
+
+Only for a confirmed disposable deployment with no required telemetry, run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy --force --reset-influx --verbose
+```
+
+The command requires typing `RESET <deployment-id>` before it removes only
+that deployment's InfluxDB volume. Reset is unavailable in non-interactive
+mode.
+
 Non-interactive invocations never prompt, download, or install software.
 Preinstall Python 3.9 or later before using such an invocation. If an installer
 reports success but Python cannot be resolved safely, ITP lists the locations
@@ -106,6 +176,18 @@ launcher, pip, WinGet, Desktop App Installer, the direct installer available
 for the architecture, reachability of its exact python.org endpoint, and
 whether missing prerequisites are blocking or automatically repairable. It
 does not download or install anything.
+
+Diagnostics are grouped into Platform, Virtualization, Windows Features,
+Applications, System State, and Deployment. Structured output is available:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 prerequisites --json
+```
+
+The JSON contract includes `platform`, `windowsFeatures`, `virtualization`,
+`docker`, `rebootRequired`, `repairableItems`, and `blockingItems`. Readiness
+item arrays contain stable identifiers such as `windows_feature.wsl` and
+`docker.desktop_missing`.
 
 Deployment configuration, generated credentials, dashboards, and local runtime
 state are stored below:
@@ -181,6 +263,9 @@ the filesystem, then remove the cloned repository if it is no longer needed.
 - WSL or Git Bash is required for POSIX-only maintenance scripts.
 - Windows App Execution Aliases can interfere with Python discovery.
 - Automatic Python installation requires interactive consent.
+- Windows feature preparation requires interactive consent, administrator
+  approval, and a restart.
+- Docker Desktop installation remains an operator action.
 - AppLocker, WDAC, Group Policy, endpoint protection, authenticated proxies,
   TLS inspection, or firewall rules may block download, trust validation, or
   installer execution. ITP does not bypass those enterprise controls.
