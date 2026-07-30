@@ -156,15 +156,15 @@ class DashboardPackRegistry:
 
     def _runtime_root(self):
         """Return the canonical state root, independent of dashboard placement."""
-        profile_runtime = (
-            self.config.get("deployment_id")
-            and __import__("os").getenv("ITP_RUNTIME_DIR"))
-        if profile_runtime:
-            return Path(profile_runtime)
-        return (
-            self.output_root.parent.parent
-            if self.output_root.parent.name == "dashboard"
-            else self.output_root.parent)
+        dashboard_root = (
+            self.output_root.parent
+            if self.output_root.name == "managed"
+            else self.output_root)
+        if dashboard_root.name != "dashboard":
+            return self.output_root.parent
+        if dashboard_root.parent.name == "generated":
+            return dashboard_root.parent.parent
+        return dashboard_root.parent
 
     def _managed_dashboard(self, path, declaration, capabilities):
         try: dashboard = json.loads(path.read_text())

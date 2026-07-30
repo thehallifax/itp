@@ -20,8 +20,37 @@ from analysis.runtime_deployment import (
     slugify,
 )
 from collectors.connector_registry import ConnectorMetadataRegistry
+from scripts.itp import runtime_stack_action
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_runtime_start_and_restart_rebuild_current_source_image():
+    calls = []
+    deployment = SimpleNamespace(
+        run_compose=lambda *arguments: calls.append(arguments))
+
+    runtime_stack_action(deployment, "start")
+    assert calls == [("up", "-d", "--build", "--remove-orphans")]
+
+    calls.clear()
+    runtime_stack_action(deployment, "restart")
+    assert calls == [
+        ("down",),
+        ("up", "-d", "--build", "--remove-orphans")]
+
+
+def test_collector_writes_managed_dashboards_to_grafana_provisioned_tree():
+    compose = (ROOT / "docker-compose.yml").read_text()
+    assert (
+        "DASHBOARD_MANAGED_OUTPUT=/app/runtime/"
+        "${ITP_PROFILE:-legacy}/generated/dashboard/managed"
+    ) in compose
+    assert (
+        "DASHBOARD_PROVISIONING=/app/runtime/"
+        "${ITP_PROFILE:-legacy}/generated/dashboard/provisioning/"
+        "dashboards.yml"
+    ) in compose
 
 
 @dataclass

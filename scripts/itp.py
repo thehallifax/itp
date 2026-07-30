@@ -825,6 +825,19 @@ def runtime_collection(runtime_manager, deployment, config, connector=None):
         scope_metadata=tuple(enabled_metadata))
 
 
+def runtime_stack_action(deployment, action):
+    """Apply one runtime lifecycle action using the current source image."""
+    if action == "stop":
+        deployment.run_compose("down")
+    elif action in {"start", "restart"}:
+        if action == "restart":
+            deployment.run_compose("down")
+        deployment.run_compose(
+            "up", "-d", "--build", "--remove-orphans")
+    else:
+        raise ValueError(f"unsupported runtime stack action: {action}")
+
+
 def main():
     parser = argparse.ArgumentParser(prog="./itp", description=__doc__)
     commands = parser.add_subparsers(dest="group", required=True)
@@ -1428,13 +1441,7 @@ def main():
             config = load_config(selected.collectors)
             runtime_dir = selected.path
             if args.group in {"start", "stop", "restart"}:
-                if args.group == "start":
-                    selected.run_compose("up", "-d", "--remove-orphans")
-                elif args.group == "stop":
-                    selected.run_compose("down")
-                else:
-                    selected.run_compose("down")
-                    selected.run_compose("up", "-d", "--remove-orphans")
+                runtime_stack_action(selected, args.group)
                 result = {
                     "deployment": selected.deployment_id,
                     "action": args.group,

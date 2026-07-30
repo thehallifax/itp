@@ -131,8 +131,8 @@ services:
       - SITES_CONFIG=/app/config/sites.yml
       - ITP_CONNECTORS_CONFIG=/app/config/connectors.local.yml
       - INVENTORY_PATH=/app/runtime/${ITP_PROFILE:-legacy}/inventory/devices.json
-      - DASHBOARD_MANAGED_OUTPUT=/app/runtime/${ITP_PROFILE:-legacy}/dashboard/managed
-      - DASHBOARD_PROVISIONING=/app/runtime/${ITP_PROFILE:-legacy}/dashboard/provisioning/dashboards.yml
+      - DASHBOARD_MANAGED_OUTPUT=/app/runtime/${ITP_PROFILE:-legacy}/generated/dashboard/managed
+      - DASHBOARD_PROVISIONING=/app/runtime/${ITP_PROFILE:-legacy}/generated/dashboard/provisioning/dashboards.yml
     volumes:
       - ${ITP_DISCOVERY_CONFIG:-./discovery/config.yml}:/app/config.yml:ro
       - ${ITP_CONNECTORS_CONFIG:-./config/connectors.local.example.yml}:/app/config/connectors.local.yml:ro
