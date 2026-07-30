@@ -776,15 +776,19 @@ def main():
     except Exception as exc:
         if getattr(args, "json", False):
             category = str(getattr(exc, "category", "failed"))
-            detail = str(exc) if hasattr(exc, "category") else (
-                f"{type(exc).__name__}: connector operation failed")
+            if hasattr(exc, "diagnostic_payload"):
+                diagnostic = exc.diagnostic_payload()
+            else:
+                detail = str(exc) if hasattr(exc, "category") else (
+                    f"{type(exc).__name__}: connector operation failed")
+                diagnostic = {
+                    "category": category,
+                    "message": detail,
+                }
             print(json.dumps({
                 "collector": getattr(args, "name", ""),
                 "success": False,
-                "diagnostic": {
-                    "category": category,
-                    "message": detail,
-                },
+                "diagnostic": diagnostic,
             }, sort_keys=True))
         logging.error("collector=framework phase=%s result=failed error=%s", args.command, exc)
         raise SystemExit(1)

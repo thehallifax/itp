@@ -1,5 +1,7 @@
 """Defensive read-only client for the PaperCut System Health JSON API."""
 import asyncio
+import json
+import re
 import socket
 import ssl
 from urllib.parse import urlsplit, urlunsplit
@@ -15,6 +17,7 @@ from .models import (
     PaperCutDNSError,
     PaperCutError,
     PaperCutHostnameMismatchError,
+    PaperCutInvalidRequestError,
     PaperCutMalformedResponseError,
     PaperCutRedirectError,
     PaperCutTimeoutError,
@@ -28,6 +31,15 @@ from collectors.tls import connector_tls_context
 
 
 class PaperCutClient:
+    """PaperCut System Health JSON client.
+
+    Contract: GET the documented ``/api/health/`` and component paths, send
+    the System Health authorization key as the raw ``Authorization`` header,
+    request JSON with ``Accept: application/json``, send no request body or
+    Content-Type, and do not follow redirects implicitly.
+    """
+    MAX_DIAGNOSTIC_BODY = 512
+
     def __init__(self, base_url, authorization_key="", timeout=20, *,
                  verify_tls=True, ca_bundle=None, max_retries=2, client=None,
                  sleep=asyncio.sleep):
@@ -43,7 +55,7 @@ class PaperCutClient:
         self.client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=timeout),
             verify=connector_tls_context(verify_tls, ca_bundle),
-            headers=self._headers)
+            headers=self._headers, follow_redirects=False)
 
     @staticmethod
     def normalize_url(value):
@@ -113,6 +125,12 @@ class PaperCutClient:
                         f"PaperCut System Health returned an HTTP "
                         f"{response.status_code} redirect{suffix}; configure the "
                         "System Health API origin")
+                if response.status_code == 400:
+                    diagnostic = self._http_diagnostic(
+                        response, "GET", path, self.authorization_key)
+                    raise PaperCutInvalidRequestError(
+                        "PaperCut System Health rejected the request (HTTP 400)",
+                        diagnostic=diagnostic)
                 if response.status_code < 300:
                     try:
                         payload = response.json()
@@ -130,12 +148,62 @@ class PaperCutClient:
                 if response.status_code not in transient:
                     raise PaperCutError(
                         f"PaperCut System Health request failed "
-                        f"(HTTP {response.status_code})")
+                        f"(HTTP {response.status_code})",
+                        diagnostic=self._http_diagnostic(
+                            response, "GET", path, self.authorization_key))
                 if attempt == self.max_retries:
                     raise PaperCutError(
                         "PaperCut System Health request failed after retries")
             self.retry_count += 1
             await self.sleep(min(2 ** attempt, 4))
+
+    @classmethod
+    def _http_diagnostic(cls, response, method, path, secret=""):
+        content_type = response.headers.get(
+            "content-type", "").split(";", 1)[0].strip().casefold()
+        raw = response.text
+        if "json" in content_type:
+            try:
+                value = response.json()
+
+                def sanitize(item):
+                    if isinstance(item, dict):
+                        return {
+                            str(key): (
+                                "[REDACTED]" if any(
+                                    word in str(key).casefold() for word in (
+                                        "authorization", "token", "secret",
+                                        "password", "api_key", "apikey"))
+                                else sanitize(child))
+                            for key, child in item.items()}
+                    if isinstance(item, list):
+                        return [sanitize(child) for child in item]
+                    return item
+
+                raw = json.dumps(
+                    sanitize(value), sort_keys=True, separators=(",", ":"))
+            except ValueError:
+                pass
+        elif "html" in content_type:
+            raw = re.sub(r"<[^>]+>", " ", raw)
+        if secret:
+            raw = raw.replace(secret, "[REDACTED]")
+        raw = re.sub(
+            r"(?i)(authorization|token|secret|password|api[_-]?key)"
+            r"(\s*[=:]\s*)([^,\s;\"'}]+)",
+            r"\1\2[REDACTED]", raw)
+        raw = " ".join(raw.split())
+        if len(raw) > cls.MAX_DIAGNOSTIC_BODY:
+            raw = raw[:cls.MAX_DIAGNOSTIC_BODY - 3] + "..."
+        location = urlsplit(response.headers.get("location", "")).path
+        return {
+            "http_status": response.status_code,
+            "method": str(method).upper(),
+            "path": "/" + str(path).lstrip("/"),
+            "content_type": content_type or "unknown",
+            "response": raw,
+            **({"redirect_target": location} if location else {}),
+        }
 
     @staticmethod
     def _connection_error(error):

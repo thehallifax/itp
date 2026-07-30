@@ -27,6 +27,27 @@ collectors:
     site: main-campus
 ```
 
+## HTTP request contract
+
+ITP sends an HTTP `GET` request to the application-server origin plus
+`/api/health/`, followed by a separate `GET /api/health/devices` request.
+The System Health authorization key is sent as its raw value in the
+`Authorization` header. Requests use `Accept: application/json`, have no
+request body or `Content-Type`, contain no query parameters, and do not follow
+redirects automatically. Configure `base_url` as the HTTPS application-server
+origin; a trailing `/api/health` is accepted and normalized to the same origin.
+
+The value in `PAPERCUT_AUTHORIZATION_KEY` must be the System Health interface
+authorization key from PaperCut's **Options > Advanced > System Health
+Monitoring** section. Do not include the literal `Authorization:` header name.
+
+For HTTP failures, `collector test papercut --json` reports the status, method,
+sanitized path, response content type, and a bounded response excerpt.
+Authorization values, cookies, headers, and unbounded HTML are never returned.
+An HTTP 400 is classified as `invalid_request`; use its sanitized response
+excerpt to distinguish an invalid key or server-side System Health
+configuration from a malformed endpoint.
+
 `verify_tls` defaults to `true`. In this mode the connector uses normal public
 trust plus any deployment CA bundle installed with `itp credentials ca`.
 Setting `verify_tls: false` disables certificate verification only for

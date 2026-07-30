@@ -15,7 +15,8 @@ from collectors.papercut.models import (
     PaperCutAuthenticationError, PaperCutAuthorizationError,
     PaperCutCertificateExpiredError, PaperCutConfig,
     PaperCutConnectionError, PaperCutHostnameMismatchError,
-    PaperCutMalformedResponseError, PaperCutRedirectError,
+    PaperCutInvalidRequestError, PaperCutMalformedResponseError,
+    PaperCutRedirectError,
     PaperCutUnknownIssuerError, PaperCutWrongEndpointError,
 )
 from collectors.papercut.normalizer import normalize
@@ -115,6 +116,84 @@ def test_client_uses_optional_authorization_without_exposing_it():
         asyncio.run(client.get())
     assert requests[0].headers["Authorization"] == "secret-value"
     assert "secret-value" not in str(caught.value)
+    asyncio.run(client.client.aclose())
+
+
+def test_system_health_request_contract_is_exact():
+    requests = []
+
+    async def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json=fixture("healthy.json")["health"])
+
+    client = PaperCutClient(
+        "https://print.example.invalid:9192/api/health",
+        "health-key", max_retries=0,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    asyncio.run(client.get())
+    request = requests[0]
+    assert request.method == "GET"
+    assert request.url.path == "/api/health/"
+    assert request.url.query == b""
+    assert request.headers["Authorization"] == "health-key"
+    assert request.headers["Accept"] == "application/json"
+    assert "Content-Type" not in request.headers
+    asyncio.run(client.client.aclose())
+
+
+@pytest.mark.parametrize("content_type,body,expected", [
+    ("text/plain", "Missing required auth parameter",
+     "Missing required auth parameter"),
+    ("application/json",
+     '{"error":"bad request","authorization":"secret-value"}',
+     '{"authorization":"[REDACTED]","error":"bad request"}'),
+])
+def test_http_400_returns_bounded_sanitized_diagnostic(
+        content_type, body, expected):
+    async def handler(request):
+        return httpx.Response(
+            400, text=body, headers={"Content-Type": content_type},
+            request=request)
+
+    client = PaperCutClient(
+        "https://print.example.invalid", "secret-value", max_retries=0,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(PaperCutInvalidRequestError) as caught:
+        asyncio.run(client.get())
+    diagnostic = caught.value.diagnostic_payload()
+    assert diagnostic == {
+        "category": "invalid_request",
+        "message": "PaperCut System Health rejected the request (HTTP 400)",
+        "http_status": 400,
+        "method": "GET",
+        "path": "/api/health/",
+        "content_type": content_type,
+        "response": expected,
+    }
+    assert "secret-value" not in json.dumps(diagnostic)
+    asyncio.run(client.client.aclose())
+
+
+def test_http_400_html_is_stripped_truncated_and_redacted():
+    body = (
+        "<html><body>Authorization=secret-value "
+        + ("failure " * 200) + "</body></html>")
+
+    async def handler(request):
+        return httpx.Response(
+            400, text=body, headers={"Content-Type": "text/html"},
+            request=request)
+
+    client = PaperCutClient(
+        "https://print.example.invalid", "secret-value", max_retries=0,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(PaperCutInvalidRequestError) as caught:
+        asyncio.run(client.get())
+    response = caught.value.diagnostic_payload()["response"]
+    assert len(response) <= PaperCutClient.MAX_DIAGNOSTIC_BODY
+    assert response.endswith("...")
+    assert "<html>" not in response
+    assert "secret-value" not in response
     asyncio.run(client.client.aclose())
 
 

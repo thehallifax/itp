@@ -29,6 +29,17 @@ class PaperCutConfig:
 class PaperCutError(RuntimeError):
     category = "invalid_response"
 
+    def __init__(self, message, *, diagnostic=None):
+        super().__init__(message)
+        self.diagnostic = dict(diagnostic or {})
+
+    def diagnostic_payload(self):
+        return {
+            "category": self.category,
+            "message": str(self),
+            **self.diagnostic,
+        }
+
 
 class PaperCutAuthenticationError(PaperCutError):
     category = "authentication"
@@ -88,3 +99,7 @@ class PaperCutUnsupportedResponseError(PaperCutError):
 
 class PaperCutApplicationError(PaperCutError):
     category = "application_error"
+
+
+class PaperCutInvalidRequestError(PaperCutError):
+    category = "invalid_request"

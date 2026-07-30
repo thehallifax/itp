@@ -241,6 +241,12 @@ does not affect other connectors, but it permits interception or server
 impersonation and is intended only for trusted internal networks. Prefer
 installing the private root and intermediate CA certificates.
 
+PaperCut System Health collection uses `GET /api/health/` with the raw System
+Health key in the `Authorization` header and `Accept: application/json`.
+Redirects are reported rather than followed. A rejected request includes only
+bounded, sanitized HTTP metadata in `collector test --json`; credential values,
+cookies, and complete HTML responses are excluded.
+
 Supported service log targets are:
 
 ```bash
