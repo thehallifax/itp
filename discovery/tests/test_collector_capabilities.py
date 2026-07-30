@@ -55,6 +55,28 @@ def test_runtime_collection_states(tmp_path, outcome, expected):
     assert availability["collection"] == expected
 
 
+def test_current_success_replaces_historical_capability_failure(tmp_path):
+    state = tmp_path / "scheduler/state.json"
+    _write(state, {"last_error_class": "HistoricalError",
+                   "connectors": {"paloalto": {
+                       "last_collection_outcome": "failed",
+                       "last_error_class": "HistoricalError"}}})
+    engine = CapabilityManifestEngine(_config(paloalto=True), tmp_path)
+    assert engine.build()["collectors"]["paloalto"][
+        "execution"]["state"] == "failed"
+
+    _write(state, {"last_error_class": None,
+                   "connectors": {"paloalto": {
+                       "last_collection_outcome": "success",
+                       "last_successful_collection": "2026-07-30T01:00:00Z",
+                       "last_error_class": None}}})
+    recovered = engine.build()["collectors"]["paloalto"]
+    assert recovered["execution"]["state"] != "failed"
+    assert recovered["capability_counts"]["failed"] == 0
+    assert recovered["last_collection"]["status"] == "success"
+    assert recovered["last_collection"]["safe_error_class"] is None
+
+
 @pytest.mark.parametrize("content", ["", "{", "[]"])
 def test_unavailable_scheduler_state_uses_safe_defaults(tmp_path, content):
     path = tmp_path / "scheduler/state.json"
@@ -170,3 +192,19 @@ def test_failed_required_capability_degrades_service():
         "explanation": "Latest collection failed."}]))
     assert result.status == "Critical"
     assert result.evidence[0]["capability"] == "availability"
+
+
+def test_service_health_recovers_when_current_capability_is_collected():
+    evaluator = next(value for value in ServiceEvaluator.registered()
+                     if value.definition.name == "Printing")
+    context = _service_context([{
+        "id": "availability", "support": "supported",
+        "collection": "collected", "services": ["Printing"],
+        "explanation": "Current collection succeeded."}])
+    context["assets"] = [{
+        "canonical_id": "printer:1", "hostname": "PRINTER-1",
+        "device_type": "printer", "online": True}]
+    result = evaluator.evaluate(context)
+    assert result.status == "Healthy"
+    assert not any(value.get("collection") == "failed"
+                   for value in result.evidence)

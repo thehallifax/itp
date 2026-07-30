@@ -1,5 +1,30 @@
 # Dashboard platform
 
+## Static packs and runtime snapshots
+
+Connector dashboards such as Palo Alto and PaperCut are static managed
+templates. They are regenerated when collector enablement, pack versions, or
+templates change.
+
+The Operations Wallboard, Infrastructure Overview, and Collector Health are
+state-derived platform dashboards. Their snapshot inputs live beneath the
+selected `ITP_RUNTIME_DIR`:
+
+- `inventory/source_runs.json`
+- `infrastructure/state.json`
+- `operations/operations.json`
+- `services/service-health.json`
+
+The scheduler refreshes these dashboards after the canonical analysis cycle
+and publishes them to
+`runtime/deployments/<deployment>/generated/dashboard/managed/`, the exact
+directory provisioned into Grafana. A normal cycle logs
+`dashboard.render.begin` followed by `dashboard.render.complete`. Generated JSON
+is validated before an atomic replacement. If rendering fails, the previous
+valid dashboard remains in place and `dashboard.render.failed` is logged.
+Grafana's managed file provider detects successful replacements on its normal
+polling interval.
+
 ITP dashboards are selected from collector manifests rather than a static
 vendor list. The registry reads `collectors/*/dashboard-manifest.yml`, merges
 capabilities for enabled collectors, and materializes selected dashboards under

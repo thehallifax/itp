@@ -70,6 +70,7 @@ class SchedulerStateStore:
             "next_runs": {"discovery": {}, "collection": {}},
             "last_skipped_run": None,
             "last_skip_reason": None,
+            "last_failure": None,
             "consecutive_discovery_failures": 0,
             "consecutive_collection_failures": 0,
             "active_phase": None,
@@ -156,13 +157,23 @@ class Scheduler:
         if status == "success":
             changes[f"last_successful_{phase}"] = now
             connector_state[failures] = 0
+            connector_state[f"last_{phase}_error_class"] = None
+            connector_state[f"last_{phase}_safe_error_summary"] = None
+            connector_state[f"current_{phase}_skip_reason"] = None
         elif status == "failed":
             connector_state[failures] += 1
-            changes["last_error_class"] = outcome["exception_type"] or None
-            changes["last_safe_error_summary"] = outcome["reason"] or None
+            connector_state[f"last_{phase}_error_class"] = (
+                outcome["exception_type"] or None)
+            connector_state[f"last_{phase}_safe_error_summary"] = (
+                outcome["reason"] or None)
+            connector_state[f"current_{phase}_skip_reason"] = None
+            connector_state["last_failure"] = now
+            changes["last_failure"] = now
         elif status == "skipped":
             changes["last_skipped_run"] = now
-            changes["last_skip_reason"] = outcome["reason"]
+            connector_state[f"current_{phase}_skip_reason"] = outcome["reason"]
+            connector_state[f"last_{phase}_error_class"] = None
+            connector_state[f"last_{phase}_safe_error_summary"] = None
         connector_state.update({
             f"last_{phase}_attempt": attempted_at,
             f"last_{phase}_outcome": status,
@@ -215,14 +226,41 @@ class Scheduler:
                     if isinstance(value, dict)
                     and str(value.get("state")) in allowed_endpoint_states
                 }
-        connector_state["last_error_class"] = (
-            outcome.get("exception_type") or None)
         if status == "success":
             connector_state[f"last_successful_{phase}"] = now
+        phase_names = ("discovery", "collection")
+        active_errors = [
+            (name, connector_state.get(f"last_{name}_error_class"),
+             connector_state.get(f"last_{name}_safe_error_summary"))
+            for name in phase_names
+            if connector_state.get(f"last_{name}_outcome") == "failed"]
+        connector_state["last_error_class"] = (
+            active_errors[0][1] if active_errors else None)
+        connector_state["last_safe_error_summary"] = (
+            active_errors[0][2] if active_errors else None)
         connector_states[connector] = connector_state
         changes["connectors"] = connector_states
         changes[failures] = sum(
             value.get(failures, 0) for value in connector_states.values())
+        root_errors = sorted(
+            (name, phase_name,
+             value.get(f"last_{phase_name}_error_class"),
+             value.get(f"last_{phase_name}_safe_error_summary"))
+            for name, value in connector_states.items()
+            for phase_name in phase_names
+            if value.get(f"last_{phase_name}_outcome") == "failed")
+        root_skips = sorted(
+            (name, phase_name,
+             value.get(f"current_{phase_name}_skip_reason"))
+            for name, value in connector_states.items()
+            for phase_name in phase_names
+            if value.get(f"last_{phase_name}_outcome") == "skipped")
+        changes["last_error_class"] = (
+            root_errors[0][2] if root_errors else None)
+        changes["last_safe_error_summary"] = (
+            root_errors[0][3] if root_errors else None)
+        changes["last_skip_reason"] = (
+            root_skips[0][2] if root_skips else None)
         self.state.write(**changes)
         if status == "success" and self.state.value[
                 "lifecycle_state"] == SchedulerLifecycle.DEGRADED.value \
@@ -602,10 +640,41 @@ class Scheduler:
             result = await asyncio.to_thread(self.operations_engine.run)
             if self.service_health_engine:
                 await asyncio.to_thread(self.service_health_engine.run)
-            if self.wallboard_engine:
-                await asyncio.to_thread(self.wallboard_engine.run)
-            if self.dashboard_registry:
-                await asyncio.to_thread(self.dashboard_registry.generate)
+            if self.dashboard_registry and hasattr(
+                    self.dashboard_registry, "refresh_state_derived"):
+                dashboard_started = time.monotonic()
+                deployment_id = str(
+                    getattr(self.dashboard_registry, "config", {}).get(
+                        "deployment_id") or "root")
+                output_path = (
+                    self.dashboard_registry.output_root /
+                    "operations/itp-operations-wallboard.json")
+                logger.info(
+                    "dashboard.render.begin deployment_id=%s "
+                    "dashboard=operations-wallboard",
+                    deployment_id)
+                try:
+                    await asyncio.to_thread(
+                        self.dashboard_registry.refresh_state_derived)
+                except Exception as exc:
+                    logger.error(
+                        "dashboard.render.failed deployment_id=%s "
+                        "dashboard=operations-wallboard error_class=%s "
+                        "safe_error_summary=state-derived dashboard "
+                        "render failed",
+                        deployment_id, type(exc).__name__)
+                    raise
+                logger.info(
+                    "dashboard.render.complete deployment_id=%s "
+                    "dashboard=operations-wallboard output_path=%s "
+                    "duration_ms=%d",
+                    deployment_id, output_path,
+                    int((time.monotonic() - dashboard_started) * 1000))
+            else:
+                if self.wallboard_engine:
+                    await asyncio.to_thread(self.wallboard_engine.run)
+                if self.dashboard_registry:
+                    await asyncio.to_thread(self.dashboard_registry.generate)
             if self.state_history_capture and infrastructure is not None:
                 try:
                     capture = await asyncio.to_thread(
@@ -626,8 +695,10 @@ class Scheduler:
             if self.health_path:
                 self.health_path.touch()
             return result
-        except Exception:
-            logger.exception("operations result=failed")
+        except Exception as exc:
+            logger.error(
+                "operations result=failed error_class=%s",
+                type(exc).__name__)
             return None
 
     async def run(self, discovery_only=False):

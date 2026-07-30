@@ -22,10 +22,10 @@ from collectors.writer import atomic_write
 
 class Freshness(str, Enum):
     FRESH = "Fresh"
+    AGING = "Aging"
     STALE = "Stale"
     UNKNOWN = "Unknown"
     NEVER_RUN = "Never Run"
-    FAILED = "Failed"
     DISABLED = "Disabled"
 
 
@@ -282,7 +282,8 @@ class OperatorStatusEngine:
         self.readiness = {
             value["id"]: value for value in (readiness or ())}
 
-    def _freshness(self, enabled, latest, connector_id):
+    def _freshness(self, enabled, connector_id):
+        """Describe observation age only; execution health is projected separately."""
         if not enabled:
             return Freshness.DISABLED.value
         records = [
@@ -291,11 +292,7 @@ class OperatorStatusEngine:
             if item.get("connector") == connector_id]
         if not records:
             return Freshness.NEVER_RUN.value
-        current_run, current = records[0]
-        if current.get("status") == "failed":
-            return Freshness.FAILED.value
-        if current.get("status") != "success":
-            return Freshness.UNKNOWN.value
+        current_run, _ = records[0]
         timestamp = _parse(current_run.get(
             "pipeline_run", {}).get("completed_at"))
         if timestamp is None:
@@ -303,9 +300,13 @@ class OperatorStatusEngine:
         age = (self.now().astimezone(timezone.utc) -
                timestamp.astimezone(timezone.utc)).total_seconds()
         settings = self.config.get("collectors", {}).get(connector_id, {})
-        threshold = max(60, int(settings.get(
-            "collection_interval_seconds", 300)) * 3)
-        return Freshness.FRESH.value if age <= threshold else Freshness.STALE.value
+        interval = max(60, int(settings.get(
+            "collection_interval_seconds", 300)))
+        if age <= interval * 2:
+            return Freshness.FRESH.value
+        if age <= interval * 3:
+            return Freshness.AGING.value
+        return Freshness.STALE.value
 
     def run(self):
         latest = self.store.latest()
@@ -334,16 +335,21 @@ class OperatorStatusEngine:
                 if latest_record[1] else {})
             configuration_state = readiness.get(
                 "state", "configured" if enabled else "disabled")
-            failure_reason = (
-                failures[0][1].get("reason") if failures else None)
+            current_status = (
+                latest_record[1].get("status") if latest_record[1] else None)
+            current_reason = (
+                latest_record[1].get("reason") if latest_record[1] else None)
             if configuration_state == "disabled":
                 operational_status = "disabled"
+                health = "Disabled"
             elif configuration_state == "execution mode mismatch":
                 operational_status = "skipped execution mode mismatch"
+                health = "Warning"
             elif configuration_state in {
                     "pending configuration", "pending credentials"}:
                 operational_status = configuration_state
-            elif latest_record[1] and latest_record[1].get("status") == "skipped":
+                health = "Warning"
+            elif current_status == "skipped":
                 skip_reason = str(
                     latest_record[1].get("reason") or "").casefold()
                 if "execution mode" in skip_reason or \
@@ -355,8 +361,9 @@ class OperatorStatusEngine:
                     operational_status = "skipped runtime policy"
                 else:
                     operational_status = "skipped prerequisite"
-            elif failure_reason:
-                lowered = failure_reason.casefold()
+                health = "Warning"
+            elif current_status == "failed":
+                lowered = str(current_reason or "").casefold()
                 if "not trusted" in lowered or "certificate" in lowered:
                     operational_status = "TLS trust failure"
                 elif "authentication" in lowered or "http 401" in lowered:
@@ -366,21 +373,25 @@ class OperatorStatusEngine:
                     operational_status = "unreachable"
                 else:
                     operational_status = "failed"
-            elif latest_record[1] and latest_record[1].get("status") == "success":
+                health = "Failed"
+            elif current_status == "success":
                 operational_status = "successful"
+                health = "Healthy"
             else:
                 operational_status = "not yet collected"
+                health = "Warning" if enabled else "Disabled"
             connectors.append({
                 "connector": metadata.id,
                 "display_name": metadata.display_name,
                 "enabled": enabled,
                 "configuration_state": configuration_state,
                 "status": operational_status,
+                "health": health,
                 "missing": list(readiness.get("missing") or ()),
                 "execution_mode": readiness.get("execution_mode"),
                 "runtime_mode": readiness.get("runtime_mode"),
                 "tls_verification": readiness.get("tls_verification"),
-                "freshness": self._freshness(enabled, latest, metadata.id),
+                "freshness": self._freshness(enabled, metadata.id),
                 "last_run": (
                     latest_record[0]["pipeline_run"]["completed_at"]
                     if latest_record[0] else None),
@@ -492,7 +503,8 @@ def render_status(payload):
         lines.append(
             f"  {value['display_name']}: "
             f"{value.get('status', value.get('configuration_state', 'configured'))}; "
-            f"{value['freshness']}"
+            f"health={value.get('health', 'Warning')}; "
+            f"freshness={value['freshness']}"
             + (f" — last success {value['last_successful_collection']}"
                if value["last_successful_collection"] else ""))
         if value.get("missing"):

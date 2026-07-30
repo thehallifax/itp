@@ -292,3 +292,43 @@ def test_compose_connector_environment_sources_are_explicit():
     assert paths[0] == "${ITP_ENV_FILE:-.env.example}"
     assert "${ITP_SECRETS_DIR:-./secrets}/collector.env" in paths
     assert "${ITP_SECRETS_DIR:-./secrets}/papercut.env" in paths
+def test_deployment_runtime_rebases_tracked_container_paths(
+        tmp_path, monkeypatch):
+    config = tmp_path / "config.yml"
+    config.write_text(yaml.safe_dump({
+        "collectors": {},
+        "infrastructure": {
+            "output_path": "/app/runtime/infrastructure",
+            "dashboard_path": "/app/runtime/dashboard"},
+        "operations": {
+            "output_path": "/app/runtime/operations"},
+        "services": {
+            "output_path": "/app/runtime/services"},
+        "wallboard": {
+            "dashboard_output":
+                "/app/runtime/dashboard/operations/operations-wallboard.json"},
+    }))
+    runtime = tmp_path / "runtime/example"
+    monkeypatch.setenv("ITP_RUNTIME_DIR", str(runtime))
+
+    value = load_config(config)
+
+    assert value["infrastructure"]["output_path"] == str(
+        runtime / "infrastructure")
+    assert value["operations"]["output_path"] == str(runtime / "operations")
+    assert value["services"]["output_path"] == str(runtime / "services")
+    assert value["wallboard"]["dashboard_output"] == str(
+        runtime /
+        "generated/dashboard/operations/operations-wallboard.json")
+
+
+def test_deployment_runtime_preserves_explicit_custom_paths(
+        tmp_path, monkeypatch):
+    config = tmp_path / "config.yml"
+    config.write_text(yaml.safe_dump({
+        "collectors": {},
+        "wallboard": {"dashboard_output": "/custom/wallboard.json"},
+    }))
+    monkeypatch.setenv("ITP_RUNTIME_DIR", str(tmp_path / "runtime/example"))
+    assert load_config(config)["wallboard"]["dashboard_output"] == \
+        "/custom/wallboard.json"

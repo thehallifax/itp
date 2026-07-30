@@ -1,5 +1,23 @@
 # Deployment runtime
 
+Runtime status sources, recovery rules, and the separation between health and
+freshness are defined in
+[Status and Health State](status-and-health.md).
+
+The collector container rebases tracked `/app/runtime/...` template paths onto
+`ITP_RUNTIME_DIR=/app/runtime/<deployment>`. Each analysis cycle writes
+inventory, infrastructure, operations, and service-health state before
+regenerating platform dashboard snapshots under
+`generated/dashboard/managed/`. This is the same deployment-owned tree mounted
+into Grafana for file provisioning. Dashboard JSON is validated and atomically
+replaced, so a render failure leaves the previous valid managed dashboard
+available. Grafana checks managed folders every 30 seconds and loads the
+replacement without UI edits.
+
+`./itp start` and `./itp restart` rebuild the deployment images before starting
+services. This ensures a source update cannot leave the scheduler running an
+older collector image.
+
 This is the authoritative deployment path for a new ITP installation.
 Operating-system details are in the [macOS](INSTALL_MACOS.md) and
 [Linux](INSTALL_LINUX.md) guides.

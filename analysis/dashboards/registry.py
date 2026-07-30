@@ -139,10 +139,7 @@ class DashboardPackRegistry:
 
     def _source(self, declaration):
         runtime = declaration.get("runtime_source")
-        runtime_root = (
-            self.output_root.parent.parent
-            if self.output_root.parent.name == "dashboard"
-            else self.output_root.parent)
+        runtime_root = self._runtime_root()
         if runtime and runtime.startswith("runtime/"):
             candidate = runtime_root / runtime.removeprefix("runtime/")
             if candidate.exists():
@@ -156,6 +153,18 @@ class DashboardPackRegistry:
         source = self.root / declaration["source"]
         if not source.exists(): raise ValueError(f"dashboard source does not exist: {declaration['source']}")
         return source
+
+    def _runtime_root(self):
+        """Return the canonical state root, independent of dashboard placement."""
+        profile_runtime = (
+            self.config.get("deployment_id")
+            and __import__("os").getenv("ITP_RUNTIME_DIR"))
+        if profile_runtime:
+            return Path(profile_runtime)
+        return (
+            self.output_root.parent.parent
+            if self.output_root.parent.name == "dashboard"
+            else self.output_root.parent)
 
     def _managed_dashboard(self, path, declaration, capabilities):
         try: dashboard = json.loads(path.read_text())
@@ -193,10 +202,7 @@ class DashboardPackRegistry:
         collector = declaration.get("collector")
         if collector in {"platform", "core"}:
             return
-        runtime = (
-            self.output_root.parent.parent
-            if self.output_root.parent.name == "dashboard"
-            else self.output_root.parent)
+        runtime = self._runtime_root()
         manifest = self._read(
             runtime / f"capabilities/{collector}.json", {})
         labels = {
@@ -233,10 +239,7 @@ class DashboardPackRegistry:
             return fallback
 
     def readiness(self, resolved):
-        runtime = (
-            self.output_root.parent.parent
-            if self.output_root.parent.name == "dashboard"
-            else self.output_root.parent)
+        runtime = self._runtime_root()
         state = self._read(
             runtime / "infrastructure/state.json",
             {"assets": [], "collectors": []})
@@ -360,6 +363,77 @@ class DashboardPackRegistry:
                 "options": {"path": f"/var/lib/grafana/runtime-dashboard/managed/{slug}"}})
         return {"apiVersion": 1, "providers": providers}
 
+    def _publish_dashboard(self, declaration, resolved):
+        slug = FOLDERS[declaration["folder"]][1]
+        destination = self.output_root / slug / (
+            declaration["uid"] + ".json")
+        dashboard = self._managed_dashboard(
+            self._source(declaration), declaration,
+            resolved["capabilities"])
+        # Serialization validates the complete document before atomic_write
+        # can replace the previous managed dashboard.
+        content = json.dumps(dashboard, indent=2, sort_keys=True) + "\n"
+        json.loads(content)
+        atomic_write(destination, content)
+        return destination
+
+    def refresh_state_derived(self):
+        """Regenerate only platform dashboards backed by runtime snapshots."""
+        resolved = self.resolve()
+        self._readiness = self.readiness(resolved)
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        runtime = (
+            self.output_root.parent.parent
+            if self.output_root.parent.name == "dashboard"
+            else self.output_root.parent)
+        atomic_write(
+            self.output_root / "registry.json",
+            json.dumps(resolved, indent=2, sort_keys=True) + "\n")
+        summary_path = runtime / "dashboard/infrastructure-summary.json"
+        summary = self._read(
+            summary_path, empty_infrastructure_summary(self._readiness))
+        summary["readiness"] = self._readiness
+        if not resolved["enabled_collectors"]:
+            summary.update(empty_infrastructure_summary(self._readiness))
+        atomic_write(
+            summary_path,
+            json.dumps(summary, indent=2, sort_keys=True) + "\n")
+        operations = self._read(
+            runtime / "operations/operations.json",
+            {"generated_at": self._readiness["generated_at"],
+             "issues": [], "risks": [], "recommendations": []})
+        render_dashboard(
+            self.root /
+            "dashboards/Infrastructure Overview/infrastructure-overview.json",
+            runtime / "dashboard/grafana/infrastructure-overview.json",
+            operations, summary)
+        readiness_now = datetime.fromisoformat(
+            self._readiness["generated_at"].replace("Z", "+00:00"))
+        WallboardEngine(
+            infrastructure_state=runtime / "infrastructure/state.json",
+            operations_state=runtime / "operations/operations.json",
+            sites_state=runtime / "sites/sites.json",
+            dashboard_template=self.root /
+                "dashboards/Operations/operations-wallboard.json",
+            summary_output=runtime / "dashboard/wallboard-summary.json",
+            dashboard_output=runtime /
+                "dashboard/operations/operations-wallboard.json",
+            capability_registry=self.output_root / "registry.json",
+            service_health=runtime / "services/service-health.json",
+            readiness_state=runtime /
+                "dashboard/readiness.json").run(readiness_now)
+        platform_uids = {
+            "itp-operations-wallboard",
+            "itp-infrastructure-overview",
+            "itp-collector-health",
+        }
+        published = []
+        for declaration in resolved["dashboards"]:
+            if declaration["uid"] in platform_uids:
+                published.append(str(self._publish_dashboard(
+                    declaration, resolved)))
+        return {"resolved": resolved, "published": published}
+
     def generate(self):
         resolved = self.resolve()
         self._readiness = self.readiness(resolved)
@@ -404,11 +478,7 @@ class DashboardPackRegistry:
                 readiness_now)
         expected = set()
         for declaration in resolved["dashboards"]:
-            slug = FOLDERS[declaration["folder"]][1]
-            destination = self.output_root / slug / (declaration["uid"] + ".json")
-            dashboard = self._managed_dashboard(
-                self._source(declaration), declaration, resolved["capabilities"])
-            atomic_write(destination, json.dumps(dashboard, indent=2, sort_keys=True) + "\n")
+            destination = self._publish_dashboard(declaration, resolved)
             expected.add(destination.resolve())
         for path in sorted(self.output_root.glob("*/*.json")):
             if path.resolve() not in expected: path.unlink()

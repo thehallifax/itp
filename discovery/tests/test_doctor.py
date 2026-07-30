@@ -311,6 +311,65 @@ def test_doctor_reports_missing_and_malformed_scheduler_state(
         engine(root, offline=True).run(), "scheduler.state").status == "fail"
 
 
+def test_doctor_warns_when_wallboard_is_older_than_runtime_state(
+        tmp_path, monkeypatch):
+    root = repository(tmp_path)
+    runtime = tmp_path / "runtime"
+    dashboard = runtime / (
+        "dashboard/managed/operations/itp-operations-wallboard.json")
+    dashboard.parent.mkdir(parents=True)
+    dashboard.write_text('{"panels":[]}')
+    source = runtime / "operations/operations.json"
+    source.parent.mkdir(parents=True)
+    source.write_text('{"generated_at":"2026-07-30T01:00:00Z"}')
+    os.utime(dashboard, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(source, ns=(2_000_000_000, 2_000_000_000))
+    monkeypatch.setenv("ITP_RUNTIME_DIR", str(runtime))
+
+    result = check(
+        engine(root, offline=True).run(),
+        "operations.wallboard_freshness")
+
+    assert result.status == "warn"
+    assert "older than authoritative runtime state" in result.summary
+    assert "operations/operations.json" in result.detail
+
+
+def test_doctor_detects_active_bootstrap_payload_but_ignores_no_value(
+        tmp_path, monkeypatch):
+    root = repository(tmp_path)
+    runtime = tmp_path / "runtime"
+    source = runtime / "inventory/source_runs.json"
+    source.parent.mkdir(parents=True)
+    source.write_text('{"sources":{"example":{"last_run":{"success":true}}}}')
+    dashboard = runtime / (
+        "dashboard/managed/operations/itp-operations-wallboard.json")
+    dashboard.parent.mkdir(parents=True)
+    dashboard.write_text(json.dumps({"panels": [{
+        "fieldConfig": {"defaults": {"noValue": "Not Yet Collected"}},
+        "targets": [{"csvContent":
+                     "scope,value\\r\\nall,Waiting for first collection"}]}]}))
+    os.utime(source, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(dashboard, ns=(2_000_000_000, 2_000_000_000))
+    monkeypatch.setenv("ITP_RUNTIME_DIR", str(runtime))
+
+    result = check(
+        engine(root, offline=True).run(),
+        "operations.wallboard_freshness")
+    assert result.status == "warn"
+    assert result.metadata == {}
+    assert "bootstrap" in result.summary
+
+    dashboard.write_text(json.dumps({"panels": [{
+        "fieldConfig": {"defaults": {"noValue": "Not Yet Collected"}},
+        "targets": [{"csvContent": "scope,value\\r\\nall,Healthy"}]}]}))
+    os.utime(dashboard, ns=(3_000_000_000, 3_000_000_000))
+    result = check(
+        engine(root, offline=True).run(),
+        "operations.wallboard_freshness")
+    assert result.status == "pass"
+
+
 def test_cli_exit_codes_json_alias_and_no_runtime_dependency(
         tmp_path, monkeypatch, capsys, caplog):
     import collectors.__main__ as cli

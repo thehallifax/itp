@@ -56,7 +56,10 @@ class CollectorAdapter(SignalAdapter):
             run = state.get("last_run", {}); successful = state.get("last_complete_successful_run", {})
             collectors.append({"collector": self.collector, "last_run": run.get("completed_at"),
                 "duration_ms": _duration(run),
-                "status": "healthy" if run.get("success") is True else "failed" if run.get("success") is False else "unknown",
+                "status": "warning" if run.get("success") is True
+                    and run.get("partial") is True
+                    else "healthy" if run.get("success") is True
+                    else "failed" if run.get("success") is False else "unknown",
                 "failures": int(state.get("consecutive_failures", 0)),
                 "last_successful_run": successful.get("completed_at")})
         return AdapterResult(self.name, self.priority, assets=selected, collectors=collectors)

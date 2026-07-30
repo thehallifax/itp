@@ -92,7 +92,7 @@ def test_collect_records_pipeline_run_and_redacts_results(tmp_path):
     assert "Alpha" in render_collect(result)
 
 
-def write_run(store, connector, status, completed):
+def write_run(store, connector, status, completed, *, reason="", points=0):
     store.write({
         "schema_version": 1,
         "deployment_identity": "test-estate",
@@ -107,8 +107,9 @@ def write_run(store, connector, status, completed):
             "skipped_scopes": [], "scopes": [], "warning_details": []},
         "connectors": [{
             "connector": connector, "display_name": connector,
-            "status": status, "duration_ms": 1, "summary": {},
-            "exception_type": "", "reason": ""}],
+            "status": status, "duration_ms": 1,
+            "summary": {"points_written": points},
+            "exception_type": "", "reason": reason}],
         "summary": {},
     })
 
@@ -136,6 +137,7 @@ def test_status_reports_service_health_success_and_freshness(tmp_path):
               for value in result["connectors"]}
     assert states == {
         "alpha": "Fresh", "beta": "Disabled", "gamma": "Disabled"}
+    assert result["connectors"][0]["health"] == "Healthy"
     assert result["connectors"][0]["last_successful_collection"] == \
         "2026-07-24T07:59:00Z"
     assert result["connectors"][0]["configuration_state"] == "configured"
@@ -151,9 +153,10 @@ def test_status_reports_service_health_success_and_freshness(tmp_path):
 
 def test_status_freshness_states_are_deterministic(tmp_path):
     scenarios = (
+        ("success", NOW - timedelta(seconds=150), "Aging"),
         ("success", NOW - timedelta(seconds=181), "Stale"),
-        ("failed", NOW - timedelta(seconds=1), "Failed"),
-        ("skipped", NOW - timedelta(seconds=1), "Unknown"),
+        ("failed", NOW - timedelta(seconds=1), "Fresh"),
+        ("skipped", NOW - timedelta(seconds=1), "Fresh"),
     )
     for index, (run_status, at, expected) in enumerate(scenarios):
         runtime = tmp_path / str(index)
@@ -169,6 +172,72 @@ def test_status_freshness_states_are_deterministic(tmp_path):
         runtime_dir=tmp_path / "empty", now_fn=lambda: NOW).run()
     assert empty["connectors"][0]["freshness"] == "Never Run"
     assert empty["latest_pipeline_run"] is None
+
+
+def test_status_recovery_uses_latest_result_and_preserves_failure_history(
+        tmp_path):
+    runtime = tmp_path / "runtime"
+    store = PipelineRunStore(runtime / "pipeline-runs")
+    write_run(
+        store, "alpha", "failed", "2026-07-24T07:55:00Z",
+        reason="connection unreachable")
+    write_run(
+        store, "alpha", "success", "2026-07-24T07:59:00Z", points=33)
+
+    result = OperatorStatusEngine(
+        tmp_path, config(beta=False), registry=Registry(),
+        runtime_dir=runtime, now_fn=lambda: NOW).run()
+    alpha = result["connectors"][0]
+
+    assert alpha["status"] == "successful"
+    assert alpha["health"] == "Healthy"
+    assert alpha["freshness"] == "Fresh"
+    assert alpha["records_collected"] == 33
+    assert alpha["last_successful_collection"] == "2026-07-24T07:59:00Z"
+    assert alpha["last_failure"] == "2026-07-24T07:55:00Z"
+    assert alpha["last_error_summary"] == "connection unreachable"
+
+
+def test_freshness_is_independent_from_current_health(tmp_path):
+    runtime = tmp_path / "runtime"
+    store = PipelineRunStore(runtime / "pipeline-runs")
+    write_run(
+        store, "alpha", "failed", "2026-07-24T07:59:00Z",
+        reason="current failure")
+    result = OperatorStatusEngine(
+        tmp_path, config(beta=False), registry=Registry(),
+        runtime_dir=runtime, now_fn=lambda: NOW).run()
+    alpha = result["connectors"][0]
+    assert alpha["freshness"] == "Fresh"
+    assert alpha["health"] == "Failed"
+
+    older = tmp_path / "older"
+    write_run(
+        PipelineRunStore(older / "pipeline-runs"), "alpha", "success",
+        "2026-07-24T07:55:00Z")
+    stale = OperatorStatusEngine(
+        tmp_path, config(beta=False), registry=Registry(),
+        runtime_dir=older, now_fn=lambda: NOW).run()["connectors"][0]
+    assert stale["freshness"] == "Stale"
+    assert stale["health"] == "Healthy"
+
+
+def test_status_mixed_connectors_project_only_their_latest_results(tmp_path):
+    runtime = tmp_path / "runtime"
+    store = PipelineRunStore(runtime / "pipeline-runs")
+    write_run(store, "alpha", "failed", "2026-07-24T07:55:00Z",
+              reason="historical PaperCut failure")
+    write_run(store, "alpha", "success", "2026-07-24T07:59:00Z", points=34)
+    write_run(store, "beta", "failed", "2026-07-24T07:59:30Z",
+              reason="current Palo Alto failure")
+    result = OperatorStatusEngine(
+        tmp_path, config(gamma=False), registry=Registry(),
+        runtime_dir=runtime, now_fn=lambda: NOW).run()
+    values = {value["connector"]: value for value in result["connectors"]}
+    assert values["alpha"]["health"] == "Healthy"
+    assert values["alpha"]["status"] == "successful"
+    assert values["beta"]["health"] == "Failed"
+    assert values["beta"]["status"] == "failed"
 
 
 def test_status_json_contains_no_configuration_or_secrets(tmp_path):

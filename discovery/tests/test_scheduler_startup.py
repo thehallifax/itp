@@ -146,6 +146,10 @@ def test_success_resets_failure_counter(tmp_path):
     collector.collection_error = False
     asyncio.run(value._execute_detailed(collector, "collect"))
     assert value.state.value["consecutive_collection_failures"] == 0
+    assert value.state.value["last_error_class"] is None
+    assert value.state.value["last_safe_error_summary"] is None
+    assert value.state.value["last_failure"] == NOW.isoformat().replace(
+        "+00:00", "Z")
 
 
 def test_recoverable_failure_returns_to_ready_after_later_successes(
@@ -160,6 +164,32 @@ def test_recoverable_failure_returns_to_ready_after_later_successes(
     assert value.state.value["lifecycle_state"] == "ready"
     assert value.state.value["consecutive_discovery_failures"] == 0
     assert value.state.value["consecutive_collection_failures"] == 0
+    assert value.state.value["last_error_class"] is None
+    assert value.state.value["last_safe_error_summary"] is None
+    assert value.state.value["last_skip_reason"] is None
+
+
+def test_scheduler_root_error_remains_until_every_connector_recovers(tmp_path):
+    first = Collector([], collection_error=True)
+    first.name = "papercut"
+    second = Collector([], collection_error=True)
+    second.name = "paloalto"
+    value = Scheduler(
+        [first, second], state_path=tmp_path / "scheduler/state.json",
+        now_fn=lambda: NOW)
+    asyncio.run(value.startup())
+    assert value.state.value["last_error_class"] == "RuntimeError"
+
+    first.collection_error = False
+    asyncio.run(value._execute_detailed(first, "collect"))
+    assert value.state.value["last_error_class"] == "RuntimeError"
+
+    second.collection_error = False
+    asyncio.run(value._execute_detailed(second, "collect"))
+    assert value.state.value["last_error_class"] is None
+    assert value.state.value["last_safe_error_summary"] is None
+    assert value.state.value["last_failure"] == NOW.isoformat().replace(
+        "+00:00", "Z")
 
 
 def test_overlap_reason_identifies_active_phase(tmp_path):
@@ -283,3 +313,89 @@ def test_state_file_remains_valid_after_every_observed_write(
     asyncio.run(value.startup())
     assert observed
     assert all(item["schema_version"] == 1 for item in observed)
+
+
+def test_analysis_cycle_refreshes_state_derived_dashboards_in_order(
+        tmp_path, caplog):
+    events = []
+
+    class Engine:
+        def __init__(self, name, result=None):
+            self.name = name
+            self.result = result
+
+        def run(self):
+            events.append(self.name)
+            return self.result
+
+        def generate(self):
+            events.append(self.name)
+
+    class Registry:
+        output_root = tmp_path / "dashboard/managed"
+
+        def refresh_state_derived(self):
+            events.append("dashboards")
+
+    value = Scheduler(
+        [], capability_engine=Engine("capabilities"),
+        infrastructure_engine=Engine("infrastructure", {"assets": []}),
+        operations_engine=Engine("operations", {
+            "issues": [], "risks": [], "recommendations": []}),
+        service_health_engine=Engine("services"),
+        wallboard_engine=Engine("legacy-wallboard"),
+        dashboard_registry=Registry())
+
+    with caplog.at_level("INFO", logger="collector.operations"):
+        asyncio.run(value._execute_operations())
+
+    assert events == [
+        "capabilities", "infrastructure", "operations", "services",
+        "dashboards"]
+    assert "dashboard.render.begin" in caplog.text
+    assert "dashboard.render.complete" in caplog.text
+    assert str(
+        tmp_path / "dashboard/managed/operations/"
+        "itp-operations-wallboard.json") in caplog.text
+
+
+def test_recovery_analysis_cycle_regenerates_wallboard_again(tmp_path):
+    generations = []
+
+    class Engine:
+        def run(self):
+            return {"issues": [], "risks": [], "recommendations": []}
+
+    class Registry:
+        output_root = tmp_path / "dashboard/managed"
+
+        def refresh_state_derived(self):
+            generations.append("refreshed")
+
+    value = Scheduler(
+        [], operations_engine=Engine(), dashboard_registry=Registry())
+    asyncio.run(value._execute_operations())
+    asyncio.run(value._execute_operations())
+    assert generations == ["refreshed", "refreshed"]
+
+
+def test_production_dashboard_render_failure_is_structured_and_safe(
+        tmp_path, caplog):
+    class Engine:
+        def run(self):
+            return {"issues": [], "risks": [], "recommendations": []}
+
+    class Registry:
+        output_root = tmp_path / "dashboard/managed"
+
+        def refresh_state_derived(self):
+            raise ValueError("token=must-not-appear")
+
+    value = Scheduler(
+        [], operations_engine=Engine(), dashboard_registry=Registry())
+    with caplog.at_level("INFO", logger="collector.operations"):
+        assert asyncio.run(value._execute_operations()) is None
+    assert "dashboard.render.begin" in caplog.text
+    assert "dashboard.render.failed" in caplog.text
+    assert "error_class=ValueError" in caplog.text
+    assert "must-not-appear" not in caplog.text

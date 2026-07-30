@@ -75,6 +75,42 @@ def test_four_existing_output_adapters_register_and_clean_bootstrap(tmp_path):
     assert json.loads((tmp_path / "state/state.json").read_text()) == state
 
 
+def test_collector_adapter_projects_latest_run_not_historical_failure(
+        tmp_path):
+    inventory = tmp_path / "inventory"
+    write(inventory / "source_runs.json", {"sources": {"papercut": {
+        "consecutive_failures": 0,
+        "last_failed_run": {
+            "success": False, "completed_at": "2026-07-22T23:00:00Z"},
+        "last_run": {
+            "success": True, "partial": False,
+            "started_at": "2026-07-22T23:59:00Z",
+            "completed_at": "2026-07-23T00:00:00Z"},
+        "last_complete_successful_run": {
+            "completed_at": "2026-07-23T00:00:00Z"},
+    }}})
+    adapter = next(value for value in SignalAdapter.registered(inventory)
+                   if value.name == "papercut")
+    collector = adapter.collect().collectors[0]
+    assert collector["status"] == "healthy"
+    assert collector["failures"] == 0
+    assert collector["last_successful_run"] == "2026-07-23T00:00:00Z"
+
+
+def test_partial_success_is_warning_not_healthy(tmp_path):
+    inventory = tmp_path / "inventory"
+    write(inventory / "source_runs.json", {"sources": {"paloalto": {
+        "consecutive_failures": 0,
+        "last_run": {
+            "success": True, "partial": True,
+            "started_at": "2026-07-22T23:59:00Z",
+            "completed_at": "2026-07-23T00:00:00Z"},
+    }}})
+    adapter = next(value for value in SignalAdapter.registered(inventory)
+                   if value.name == "paloalto")
+    assert adapter.collect().collectors[0]["status"] == "warning"
+
+
 def test_same_serial_merges_with_provenance_and_stable_id():
     mist = asset("mist", "m1", serial_number=" ab 12 ", hostname="Vendor-Name", site="HQ", online=True)
     snmp = asset("snmp", "s1", serial_number="AB12", hostname="SNMP-Name", site="HQ", management_ip="192.0.2.10")

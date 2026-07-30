@@ -905,6 +905,82 @@ class DoctorEngine:
             "Operations configuration is parseable"
             if value is None or isinstance(value, dict)
             else "Operations configuration must be a mapping")
+        self._dashboard_freshness_check()
+
+    @staticmethod
+    def _active_bootstrap_payload(value):
+        """Inspect active embedded content, excluding noValue fallbacks."""
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in {"csvContent", "content"} and isinstance(item, str):
+                    if "Waiting for first collection" in item or \
+                            "## Not Yet Collected" in item:
+                        return True
+                if DoctorEngine._active_bootstrap_payload(item):
+                    return True
+        elif isinstance(value, list):
+            return any(
+                DoctorEngine._active_bootstrap_payload(item)
+                for item in value)
+        return False
+
+    def _dashboard_freshness_check(self):
+        runtime = Path(os.getenv("ITP_RUNTIME_DIR", self.root / "runtime"))
+        dashboard = runtime / (
+            "dashboard/managed/operations/"
+            "itp-operations-wallboard.json")
+        sources = (
+            runtime / "operations/operations.json",
+            runtime / "services/service-health.json",
+            runtime / "infrastructure/state.json",
+            runtime / "inventory/source_runs.json",
+        )
+        existing = [path for path in sources if path.is_file()]
+        if not existing:
+            self._result(
+                "operations.wallboard_freshness", "Operations Engine",
+                "Operations Wallboard", "skip",
+                "Authoritative runtime state is not available")
+            return
+        try:
+            payload = json.loads(dashboard.read_text())
+            newer = [
+                path for path in existing
+                if path.stat().st_mtime_ns > dashboard.stat().st_mtime_ns]
+            bootstrap = self._active_bootstrap_payload(payload)
+        except (OSError, json.JSONDecodeError) as exc:
+            self._result(
+                "operations.wallboard_freshness", "Operations Engine",
+                "Operations Wallboard", "warn",
+                "Generated dashboard is missing or invalid",
+                detail=type(exc).__name__,
+                remediation=(
+                    "Run the state-derived dashboard generation command."))
+            return
+        if newer or bootstrap:
+            details = []
+            if newer:
+                details.append(
+                    "newer_sources=" +
+                    ",".join(path.relative_to(runtime).as_posix()
+                             for path in newer))
+            if bootstrap:
+                details.append("active_bootstrap_payload=true")
+            self._result(
+                "operations.wallboard_freshness", "Operations Engine",
+                "Operations Wallboard", "warn",
+                "Generated dashboard is older than authoritative runtime state"
+                if newer else
+                "Generated dashboard still contains active bootstrap state",
+                detail="; ".join(details),
+                remediation=(
+                    "Regenerate state-derived dashboards and inspect "
+                    "collector logs if rendering fails."))
+            return
+        self._result(
+            "operations.wallboard_freshness", "Operations Engine",
+            "Operations Wallboard", "pass",
+            "Generated dashboard matches current authoritative runtime state")
 
     def _telemetry_contract_checks(self):
         config = self.raw_config or {}

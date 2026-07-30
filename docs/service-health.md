@@ -54,6 +54,12 @@ The engine never converts missing data into a healthy state. Every service row
 also records its summary, severity, affected assets, inferable affected-user
 count, last evidence change, and evidence list.
 
+Service evaluation consumes only the latest canonical connector and capability
+state. A recovered connector's historical failure remains in source-run and
+PipelineRun audit history, but cannot keep a service Warning or Critical.
+Current versus historical state and manual-run semantics are documented in
+[Status and Health State](status-and-health.md).
+
 `Unknown` remains the Service Health result for an enabled capability without
 trustworthy service evidence. The dashboard readiness contract adds the
 operator-facing distinction between first-run waiting and failed/stale
