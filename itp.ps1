@@ -31,7 +31,7 @@ if ($args.Count -gt 0 -and $args[0] -eq "prerequisites") {
 }
 
 try {
-    $Selected = Initialize-ITPPython -Arguments @args
+    $Selected = Initialize-ITPPython -Arguments ([string[]]$args)
 }
 catch {
     [Console]::Error.WriteLine($_.Exception.Message)
@@ -40,7 +40,8 @@ catch {
 
 if ($args.Count -gt 0 -and $args[0] -eq "deploy") {
     try {
-        $PlatformPreparation = Initialize-ITPWindowsPlatform -Arguments @args
+        $PlatformPreparation = Initialize-ITPWindowsPlatform `
+            -Arguments ([string[]]$args)
         if (-not $PlatformPreparation.Continue) {
             exit $PlatformPreparation.ExitCode
         }

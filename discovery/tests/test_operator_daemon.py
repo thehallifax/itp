@@ -235,6 +235,25 @@ def test_background_start_uses_foreground_child_and_persists_starting(
     assert "4321" in messages[0]
 
 
+def test_background_start_preserves_explicit_deployment(tmp_path, monkeypatch):
+    script = tmp_path / "scripts/itp.py"
+    script.parent.mkdir()
+    script.write_text("# test")
+    calls = []
+
+    class Process:
+        pid = 4321
+
+    monkeypatch.setattr(
+        "analysis.operator.daemon.subprocess.Popen",
+        lambda arguments, **_options: calls.append(arguments) or Process())
+    start_background(
+        script, tmp_path / "runtime",
+        arguments=("--deployment", "example"))
+    assert calls[0][-4:] == [
+        "daemon", "--foreground", "--deployment", "example"]
+
+
 def test_daemon_coalesces_notification_evaluation(tmp_path, monkeypatch):
     evaluations = []
 

@@ -192,6 +192,7 @@ class RuntimeDeploymentManager:
         self.clock = clock
         self.sleep = sleep
         self.registry = registry or ConnectorMetadataRegistry.load(self.root)
+        self._new_grafana_passwords = {}
 
     def list(self) -> list[dict]:
         result = []
@@ -221,11 +222,27 @@ class RuntimeDeploymentManager:
     def select(self, deployment_id: str | None = None) -> RuntimeDeployment:
         selected = deployment_id or self.active_id()
         if not selected:
+            deployments = [value["id"] for value in self.list()]
+            if len(deployments) > 1:
+                available = "\n".join(f"- {value}" for value in deployments)
+                raise RuntimeDeploymentError(
+                    "multiple deployments exist and no active deployment is "
+                    f"selected:\n\n{available}\n\nSpecify one with:\n\n"
+                    f"--deployment {deployments[0]}\n\nor select it with:\n\n"
+                    f"./itp deployment select {deployments[0]}")
             raise RuntimeDeploymentError(
                 "no deployment selected; run ./itp deploy or pass --deployment")
         deployment = RuntimeDeployment(self.root, slugify(selected))
         if not deployment.manifest.is_file():
             raise RuntimeDeploymentError(f"deployment does not exist: {selected}")
+        return deployment
+
+    def activate(self, deployment_id: str) -> RuntimeDeployment:
+        deployment = self.select(deployment_id)
+        self.shared.mkdir(parents=True, exist_ok=True)
+        atomic_write(
+            self.shared / "active-deployment",
+            deployment.deployment_id + "\n")
         return deployment
 
     def verify_docker(self):
@@ -269,6 +286,45 @@ class RuntimeDeploymentManager:
             raise RuntimeDeploymentError(
                 "unknown collectors: " + ", ".join(unknown))
         return values
+
+    def _grafana_password(self, deployment_id, existing, non_interactive):
+        if existing:
+            return existing
+        if non_interactive:
+            password = _secret()
+        else:
+            self.output("Grafana administrator password")
+            self.output("")
+            self.output(
+                "1. Generate a secure password automatically [recommended]")
+            self.output("2. Enter a password")
+            selection = self.input("Selection [1]: ").strip() or "1"
+            if selection == "1":
+                password = _secret()
+            elif selection == "2":
+                password = self.secret_input(
+                    "Grafana administrator password: ")
+                confirmation = self.secret_input("Confirm password: ")
+                if not password:
+                    raise RuntimeDeploymentError(
+                        "Grafana administrator password cannot be blank")
+                if len(password) < 12:
+                    raise RuntimeDeploymentError(
+                        "Grafana administrator password must contain at least "
+                        "12 characters")
+                if password != confirmation:
+                    raise RuntimeDeploymentError(
+                        "Grafana administrator password confirmation does not match")
+            else:
+                raise RuntimeDeploymentError(
+                    "Grafana password selection must be 1 or 2")
+        self._new_grafana_passwords[deployment_id] = password
+        return password
+
+    def take_new_grafana_password(self, deployment):
+        """Return a password created by this process once, then forget it."""
+        return self._new_grafana_passwords.pop(
+            deployment.deployment_id, None)
 
     def create(self, *, name=None, deployment_id=None, timezone=None,
                grafana_port=3000, influxdb_port=8181,
@@ -419,8 +475,10 @@ class RuntimeDeploymentManager:
             "INFLUXDB_ADDRESS": listen_address,
             "INFLUXDB_PORT": str(influxdb_port),
             "GRAFANA_ADMIN_USER": "admin",
-            "GRAFANA_ADMIN_PASSWORD": existing_environment.get(
-                "GRAFANA_ADMIN_PASSWORD") or _secret(),
+            "GRAFANA_ADMIN_PASSWORD": self._grafana_password(
+                identifier,
+                existing_environment.get("GRAFANA_ADMIN_PASSWORD", ""),
+                non_interactive),
             "INFLUXDB_TOKEN": existing_environment.get("INFLUXDB_TOKEN", ""),
             "INFLUXDB_NODE_ID": f"{identifier}-node",
             "INFLUXDB_HOST": "influxdb3-core",
@@ -848,7 +906,7 @@ class RuntimeDeploymentManager:
                     and settings[field]["status"] != "configured"
                 ]
                 missing_credentials = [
-                    field["id"] for field in connector.credential_fields
+                    field["env"] for field in connector.credential_fields
                     if field.get("required")
                     and settings[
                         f"{connector.id}.{field['id']}"]["status"]
@@ -864,8 +922,9 @@ class RuntimeDeploymentManager:
                 "id": connector.id, "display_name": connector.display_name,
                 "state": state, "missing": missing,
                 "next_action": (
-                    f"./itp collector --deployment {deployment.deployment_id} "
-                    f"add {connector.id}" if state.startswith("pending") else ""),
+                    f"./itp collector add {connector.id} --deployment "
+                    f"{deployment.deployment_id}"
+                    if state.startswith("pending") else ""),
             })
         return result
 

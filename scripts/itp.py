@@ -96,6 +96,13 @@ def load_runtime_env(path):
         os.environ[key] = value
 
 
+def load_deployment_environment(deployment):
+    """Load one deployment's protected environment without rendering values."""
+    load_runtime_env(deployment.env_file)
+    for path in sorted(deployment.secrets_dir.glob("*.env")):
+        load_runtime_env(path)
+
+
 def deployment_verbose(explicit=False, environment=None):
     environment = os.environ if environment is None else environment
     return bool(explicit) or str(environment.get(
@@ -637,6 +644,169 @@ def run_demo(seed=1001, days=30):
     return engine.run()
 
 
+def grafana_onboarding_summary(runtime_manager, deployment, url, *,
+                               non_interactive=False):
+    password = runtime_manager.take_new_grafana_password(deployment)
+    lines = [
+        "Grafana:",
+        f"  URL: {url}",
+        "  Username: admin",
+    ]
+    if password and not non_interactive:
+        lines.extend((
+            f"  Password: {password}",
+            "  Store this password securely.",
+        ))
+    else:
+        lines.append("  Password: securely stored")
+    lines.extend((
+        "  Retrieve it later with:",
+        "    " + retry_command(
+            "credentials", "grafana", "--deployment",
+            deployment.deployment_id),
+    ))
+    return lines
+
+
+def add_deployment_selector(parser):
+    """Add the canonical runtime deployment selector to a command parser."""
+    parser.add_argument(
+        "--deployment", metavar="DEPLOYMENT_ID",
+        help="runtime deployment ID (defaults to the active deployment)")
+    return parser
+
+
+def add_local_deployment_selector(parser):
+    """Allow canonical selector placement after a nested subcommand."""
+    parser.add_argument(
+        "--deployment", metavar="DEPLOYMENT_ID",
+        default=argparse.SUPPRESS,
+        help="runtime deployment ID (defaults to the active deployment)")
+    return parser
+
+
+def resolve_runtime_deployment(runtime_manager, requested=None):
+    """Resolve an explicit, active, or sole runtime deployment.
+
+    Return None only when no runtime deployment exists, preserving the legacy
+    root-stack command path.
+    """
+    if requested or runtime_manager.active_id() or runtime_manager.list():
+        return runtime_manager.select(requested)
+    return None
+
+
+def last_json_object(output):
+    """Return the final JSON object from combined container output."""
+    decoder = json.JSONDecoder()
+    candidates = []
+    for index, character in enumerate(output):
+        if character != "{":
+            continue
+        try:
+            value, end = decoder.raw_decode(output[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            candidates.append((index + end, value))
+    return max(candidates, default=(0, {}), key=lambda item: item[0])[1]
+
+
+def compose_service_state(output, service):
+    """Return a deterministic Compose service state from JSON output."""
+    values = []
+    try:
+        parsed = json.loads(output)
+        values = parsed if isinstance(parsed, list) else [parsed]
+    except json.JSONDecodeError:
+        for line in output.splitlines():
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                values.append(value)
+    for value in values:
+        if str(value.get("Service") or value.get("service") or "") == service:
+            return str(
+                value.get("State") or value.get("state") or "unknown"
+            ).casefold()
+    return "stopped"
+
+
+def runtime_collection(runtime_manager, deployment, config, connector=None):
+    """Collect configured connectors independently in the shared service."""
+    readiness = {
+        value["id"]: value
+        for value in runtime_manager.collector_readiness(deployment)}
+    configured = []
+    enabled_metadata = []
+    outcomes = []
+    additional = []
+    settings = config.get("collectors") or {}
+    for metadata in runtime_manager.registry.all():
+        enabled = (
+            isinstance(settings.get(metadata.id), dict)
+            and settings[metadata.id].get("enabled") is True)
+        if connector and metadata.id != connector:
+            continue
+        if connector and not enabled:
+            raise RuntimeDeploymentError(
+                f"collector {connector} is not enabled in deployment "
+                f"{deployment.deployment_id}")
+        if not enabled:
+            if not connector:
+                additional.append({
+                    "connector": metadata.id,
+                    "display_name": metadata.display_name,
+                    "status": "skipped", "duration_ms": 0, "summary": {},
+                    "exception_type": "", "reason": "disabled"})
+            continue
+        enabled_metadata.append(metadata)
+        state = readiness[metadata.id]
+        if state["state"] != "configured":
+            reason = state["state"]
+            if state["missing"]:
+                reason += ": " + ", ".join(state["missing"])
+            additional.append({
+                "connector": metadata.id,
+                "display_name": metadata.display_name,
+                "status": "skipped", "duration_ms": 0, "summary": {},
+                "exception_type": "", "reason": reason})
+            continue
+        configured.append((metadata, None))
+        started = time.monotonic()
+        completed = deployment.run_compose(
+            "exec", "-T", "collector", "python", "-m", "collectors",
+            "--config", "/app/config.yml", "collect", metadata.id, "--json",
+            capture=True, check=False)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        output = (completed.stdout or "").strip()
+        payload = {}
+        if completed.returncode == 0 and output:
+            payload = last_json_object(output)
+        outcomes.append({
+            "connector": metadata.id,
+            "status": "success" if completed.returncode == 0 else "failed",
+            "duration_ms": duration_ms,
+            "value": payload,
+            "exception_type": (
+                "" if completed.returncode == 0 else "CollectorCommandError"),
+            "reason": (
+                "" if completed.returncode == 0
+                else "collector execution failed; inspect shared collector logs"),
+        })
+    if connector and not any(
+            value.id == connector for value in runtime_manager.registry.all()):
+        raise RuntimeDeploymentError(f"unknown collector: {connector}")
+    engine = OperatorCollectEngine(
+        ROOT, config, registry=runtime_manager.registry,
+        runtime_dir=deployment.path)
+    return engine.record(
+        configured, outcomes, additional,
+        scope_metadata=tuple(enabled_metadata))
+
+
 def main():
     parser = argparse.ArgumentParser(prog="./itp", description=__doc__)
     commands = parser.add_subparsers(dest="group", required=True)
@@ -668,33 +838,39 @@ def main():
     deployment_show = deployment_actions.add_parser("show")
     deployment_show.add_argument("deployment_id", nargs="?")
     deployment_show.add_argument("--json", action="store_true")
-    credentials = commands.add_parser(
+    deployment_select = deployment_actions.add_parser(
+        "select", help="set the active runtime deployment")
+    deployment_select.add_argument("deployment_id")
+    deployment_select.add_argument("--json", action="store_true")
+    credentials = add_deployment_selector(commands.add_parser(
         "credentials", help="show how to retrieve deployment credentials")
-    credentials.add_argument("--deployment")
+    )
     credential_actions = credentials.add_subparsers(dest="credential_action")
-    grafana_credentials = credential_actions.add_parser(
-        "grafana", help="display generated Grafana administrator credentials")
-    grafana_credentials.add_argument(
-        "--deployment", default=argparse.SUPPRESS)
-    collector_runtime = commands.add_parser(
-        "collector", help="manage collectors in a runtime deployment")
-    collector_runtime.add_argument("--deployment")
+    grafana_credentials = add_local_deployment_selector(
+        credential_actions.add_parser(
+            "grafana",
+            help="display generated Grafana administrator credentials"))
+    grafana_credentials.add_argument("--json", action="store_true")
+    collector_runtime = add_deployment_selector(commands.add_parser(
+        "collector", help="manage collectors in a runtime deployment"))
     collector_actions = collector_runtime.add_subparsers(
         dest="runtime_collector_action", required=True)
-    collector_actions.add_parser("list").add_argument(
+    collector_list_runtime = add_local_deployment_selector(
+        collector_actions.add_parser("list"))
+    collector_list_runtime.add_argument(
         "--json", action="store_true")
-    for action in ("add", "test", "remove"):
-        item = collector_actions.add_parser(action)
+    for action in ("add", "test", "run", "remove"):
+        item = add_local_deployment_selector(
+            collector_actions.add_parser(action))
         item.add_argument("collector")
         item.add_argument("--json", action="store_true")
-    dashboard_runtime = commands.add_parser(
-        "dashboard", help="manage runtime dashboards")
-    dashboard_runtime.add_argument("--deployment")
-    dashboard_runtime.add_subparsers(
-        dest="dashboard_action", required=True).add_parser("generate")
-    update_runtime = commands.add_parser(
-        "update", help="fast-forward source and refresh the active deployment")
-    update_runtime.add_argument("--deployment")
+    dashboard_runtime = add_deployment_selector(commands.add_parser(
+        "dashboard", help="manage runtime dashboards"))
+    dashboard_generate = add_local_deployment_selector(
+        dashboard_runtime.add_subparsers(
+            dest="dashboard_action", required=True).add_parser("generate"))
+    update_runtime = add_deployment_selector(commands.add_parser(
+        "update", help="fast-forward source and refresh a runtime deployment"))
     connector_parser = commands.add_parser(
         "connectors", help="inspect the connector metadata registry")
     connector_actions = connector_parser.add_subparsers(
@@ -704,8 +880,8 @@ def main():
     connector_inspect = connector_actions.add_parser("inspect")
     connector_inspect.add_argument("connector")
     connector_inspect.add_argument("--json", action="store_true")
-    doctor = commands.add_parser(
-        "doctor", help="run read-only deployment diagnostics")
+    doctor = add_deployment_selector(commands.add_parser(
+        "doctor", help="run read-only deployment diagnostics"))
     doctor.add_argument("--json", action="store_true")
     doctor_scope = doctor.add_mutually_exclusive_group()
     doctor_scope.add_argument("--platform-only", action="store_true")
@@ -713,36 +889,41 @@ def main():
     doctor.add_argument("--connector")
     doctor.add_argument("--offline", action="store_true")
     doctor.add_argument("--strict", action="store_true")
-    collect_root = commands.add_parser(
-        "collect", help="run all enabled root-deployment connectors once")
+    collect_root = add_deployment_selector(commands.add_parser(
+        "collect", help="run every enabled deployment connector once"))
     collect_root.add_argument("--json", action="store_true")
-    status_root = commands.add_parser(
-        "status", help="show root-deployment collection and service status")
+    status_root = add_deployment_selector(commands.add_parser(
+        "status", help="show deployment collection and service status"))
     status_root.add_argument("--json", action="store_true")
-    daemon = commands.add_parser(
-        "daemon", help="run enabled root-deployment connectors continuously")
+    daemon = add_deployment_selector(commands.add_parser(
+        "daemon", help="run enabled deployment connectors continuously"))
     daemon_mode = daemon.add_mutually_exclusive_group()
     daemon_mode.add_argument("--foreground", action="store_true")
     daemon_mode.add_argument("--once", action="store_true")
     for lifecycle_name in ("start", "stop", "restart"):
-        lifecycle = commands.add_parser(
-            lifecycle_name, help=f"{lifecycle_name} the root Compose stack")
+        lifecycle = add_deployment_selector(commands.add_parser(
+            lifecycle_name, help=f"{lifecycle_name} a deployment stack"))
         lifecycle.add_argument("--json", action="store_true")
-    logs_root = commands.add_parser("logs", help="show root stack logs")
+    logs_root = add_deployment_selector(
+        commands.add_parser("logs", help="show deployment service logs"))
+    logs_root.add_argument("service_positional", nargs="?")
     logs_root.add_argument("--follow", action="store_true")
     logs_root.add_argument("--service")
     logs_root.add_argument("--tail", type=int, default=200)
-    notifications = commands.add_parser(
-        "notifications", help="evaluate and inspect operational notifications")
+    notifications = add_deployment_selector(commands.add_parser(
+        "notifications", help="evaluate and inspect operational notifications"))
     notification_actions = notifications.add_subparsers(
         dest="notification_action", required=True)
     for name in ("evaluate", "list", "test"):
-        item = notification_actions.add_parser(name)
+        item = add_local_deployment_selector(
+            notification_actions.add_parser(name))
         item.add_argument("--json", action="store_true")
-    notification_inspect = notification_actions.add_parser("inspect")
+    notification_inspect = add_local_deployment_selector(
+        notification_actions.add_parser("inspect"))
     notification_inspect.add_argument("notification_id")
     notification_inspect.add_argument("--json", action="store_true")
-    notification_ack = notification_actions.add_parser("acknowledge")
+    notification_ack = add_local_deployment_selector(
+        notification_actions.add_parser("acknowledge"))
     notification_ack.add_argument("notification_id")
     notification_ack.add_argument("--json", action="store_true")
     setup_parser = commands.add_parser(
@@ -802,11 +983,16 @@ def main():
             return
         deployment = runtime_manager.select(args.deployment)
         result = runtime_manager.grafana_credentials(deployment)
-        print(f"Deployment: {result['deployment_id']}")
-        print(f"Grafana URL: {result['url']}")
-        print(f"Username: {result['username']}")
-        print(f"Password: {result['password']}")
-        print(f"Source: {result['source']}")
+        if args.json:
+            print(json.dumps({
+                key: result[key] for key in (
+                    "deployment_id", "url", "username", "password")
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"Deployment: {result['deployment_id']}")
+            print(f"Grafana URL: {result['url']}")
+            print(f"Username: {result['username']}")
+            print(f"Password: {result['password']}")
         return
     if args.group in {"deploy", "init"}:
         verbose = deployment_verbose(args.verbose)
@@ -902,7 +1088,7 @@ def main():
                 print("[WARN] Containers did not all report healthy within 180 seconds.")
         value = deployment.load()
         network = value["network"]
-        print("Deployment complete")
+        print("ITP deployment complete.")
         print(f"Deployment: {deployment.deployment_id} ({value['display_name']})")
         try:
             runtime_display = deployment.path.relative_to(ROOT)
@@ -922,9 +1108,15 @@ def main():
         print(
             f"  InfluxDB http://{network['listen_address']}:"
             f"{network['influxdb_port']}")
-        print("Grafana:")
-        print("Grafana username: admin")
-        print("Grafana password: ./itp credentials grafana")
+        grafana_url = (
+            f"http://{display_host}:{network['grafana_port']}")
+        for line in grafana_onboarding_summary(
+                runtime_manager, deployment, grafana_url,
+                non_interactive=args.non_interactive):
+            print(line)
+        print("Dashboards:")
+        print("  Infrastructure Overview is the default Grafana landing dashboard.")
+        print("  Managed dashboards are generated automatically during deployment.")
         readiness = runtime_manager.collector_readiness(deployment)
         print("Collectors:")
         for item in readiness:
@@ -962,6 +1154,12 @@ def main():
     if args.group == "deployment":
         if args.deployment_action == "list":
             result = runtime_manager.list()
+        elif args.deployment_action == "select":
+            deployment = runtime_manager.activate(args.deployment_id)
+            result = {
+                "deployment_id": deployment.deployment_id,
+                "active": True,
+            }
         else:
             deployment = runtime_manager.select(args.deployment_id)
             result = {
@@ -979,6 +1177,7 @@ def main():
         return
     if args.group == "collector":
         deployment = runtime_manager.select(args.deployment)
+        load_deployment_environment(deployment)
         if args.runtime_collector_action == "list":
             config = yaml.safe_load(deployment.collectors.read_text()) or {}
             result = [{
@@ -996,7 +1195,7 @@ def main():
                 deployment, args.collector)
             result = {"collector": item.id, "enabled": False,
                       "configuration": str(deployment.collectors)}
-        else:
+        elif args.runtime_collector_action == "test":
             result = deployment.run_compose(
                 "run", "--rm", "collector", "python", "-m", "collectors",
                 "--config", "/app/config.yml", "inspect", args.collector,
@@ -1006,6 +1205,10 @@ def main():
                 "success": result.returncode == 0,
                 "output": (result.stdout or result.stderr).strip()[:4000],
             }
+        else:
+            config = load_config(deployment.collectors)
+            result = runtime_collection(
+                runtime_manager, deployment, config, args.collector)
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True))
         elif isinstance(result, list):
@@ -1022,7 +1225,22 @@ def main():
             ROOT, config, deployment.generated / "dashboard/managed",
             deployment.generated / "dashboard/provisioning/dashboards.yml",
             registry_validation_mode="runtime").generate()
-        print(f"Generated {len(result['dashboards'])} managed dashboards")
+        dashboards = sorted(
+            result["dashboards"],
+            key=lambda item: (item["folder"], item["uid"]))
+        print(f"Generated {len(dashboards)} managed dashboards for "
+              f"deployment {deployment.deployment_id}:")
+        for item in dashboards:
+            path = next(
+                deployment.generated.glob(
+                    f"dashboard/managed/*/{item['uid']}.json"),
+                None)
+            title = item["uid"]
+            if path is not None:
+                title = json.loads(path.read_text()).get("title", title)
+            print(f"  {title} (Grafana folder: {item['folder']})")
+        print("Grafana provisions these dashboards into their managed folders "
+              "automatically within 30 seconds; no restart is required.")
         return
     if args.group == "update":
         deployment = runtime_manager.select(args.deployment)
@@ -1123,11 +1341,11 @@ def main():
             raise SystemExit(1)
         return
     if args.group == "doctor":
-        active = runtime_manager.active_id()
         doctor_paths = {}
-        if active:
-            selected = runtime_manager.select(active)
-            load_runtime_env(selected.env_file)
+        selected = resolve_runtime_deployment(
+            runtime_manager, args.deployment)
+        if selected:
+            load_deployment_environment(selected)
             doctor_paths = {
                 "env_path": selected.env_file,
                 "config_path": selected.collectors,
@@ -1135,7 +1353,7 @@ def main():
         report = DoctorEngine(
             ROOT, offline=args.offline, platform_only=args.platform_only,
             connectors_only=args.connectors_only, connector=args.connector,
-            runtime_deployment=selected if active else None,
+            runtime_deployment=selected,
             **doctor_paths).run()
         print(render_json(report, args.strict) if args.json
               else render_human(report, args.strict))
@@ -1144,10 +1362,12 @@ def main():
     if args.group in {
             "collect", "status", "daemon", "notifications",
             "start", "stop", "restart", "logs"}:
-        active = runtime_manager.active_id()
-        if active and args.group in {"start", "stop", "restart", "logs", "status"}:
-            selected = runtime_manager.select(active)
-            load_runtime_env(selected.env_file)
+        selected = resolve_runtime_deployment(
+            runtime_manager, args.deployment)
+        if selected:
+            load_deployment_environment(selected)
+            config = load_config(selected.collectors)
+            runtime_dir = selected.path
             if args.group in {"start", "stop", "restart"}:
                 if args.group == "start":
                     selected.run_compose("up", "-d", "--remove-orphans")
@@ -1156,32 +1376,170 @@ def main():
                 else:
                     selected.run_compose("down")
                     selected.run_compose("up", "-d", "--remove-orphans")
-                result = {"deployment": active, "action": args.group,
+                result = {
+                    "deployment": selected.deployment_id,
+                    "action": args.group,
                           "success": True}
                 print(json.dumps(result, indent=2) if args.json else
-                      f"Deployment {active}: {args.group} complete")
+                      f"Deployment {selected.deployment_id}: "
+                      f"{args.group} complete")
                 return
             if args.group == "logs":
+                service = args.service or args.service_positional
+                supported = {
+                    "collector", "discovery", "telegraf", "grafana",
+                    "influxdb3-core"}
+                if service and service not in supported:
+                    raise RuntimeDeploymentError(
+                        f"unknown log service {service}; choose one of: "
+                        + ", ".join(sorted(supported)))
                 command = ["logs", "--tail", str(args.tail)]
                 if args.follow:
                     command.append("--follow")
-                if args.service:
-                    command.append(args.service)
+                if service:
+                    command.append(service)
                 selected.run_compose(*command, capture=False)
                 return
-            payload = selected.run_compose(
-                "ps", "--format", "json", capture=True, check=False)
-            result = {
-                "deployment": active,
-                "configuration": str(selected.manifest),
-                "containers": payload.stdout.strip(),
-                "grafana": (
-                    f"http://{selected.load()['network']['listen_address']}:"
-                    f"{selected.load()['network']['grafana_port']}"),
-            }
-            print(json.dumps(result, indent=2, sort_keys=True) if args.json else
-                  f"Deployment: {active}\nGrafana: {result['grafana']}\n"
-                  f"Containers: {'running' if result['containers'] else 'stopped'}")
+            if args.group == "collect":
+                result = runtime_collection(
+                    runtime_manager, selected, config)
+                print(json.dumps(result, indent=2, sort_keys=True)
+                      if args.json else render_collect(result))
+                if result["summary"]["overall"] in {"failed", "partial"}:
+                    raise SystemExit(1)
+                return
+            if args.group == "status":
+                result = OperatorStatusEngine(
+                    ROOT, config, runtime_dir=runtime_dir,
+                    readiness=runtime_manager.collector_readiness(
+                        selected)).run()
+                payload = selected.run_compose(
+                    "ps", "--format", "json", capture=True, check=False)
+                result["deployment_id"] = selected.deployment_id
+                result["configuration"] = str(selected.manifest)
+                result["containers"] = payload.stdout.strip()
+                result["shared_collector_service"] = {
+                    "service": "collector",
+                    "container": f"itp-{selected.deployment_id}-collector-1",
+                    "state": compose_service_state(
+                        payload.stdout, "collector"),
+                }
+                result["discovery"] = {
+                    "enabled": bool(
+                        (config.get("discovery") or {}).get("enabled", True)),
+                    "state": (
+                        "enabled" if
+                        (config.get("discovery") or {}).get("enabled", True)
+                        else "disabled"),
+                }
+                network = selected.load()["network"]
+                result["grafana"] = (
+                    f"http://{network['listen_address']}:"
+                    f"{network['grafana_port']}")
+                if args.json:
+                    print(json.dumps(result, indent=2, sort_keys=True))
+                else:
+                    print(render_status(result))
+                    print(
+                        "Shared collector service: "
+                        f"{result['shared_collector_service']['state']}")
+                    print(
+                        "Discovery: "
+                        f"{result['discovery']['state']} "
+                        "(independent service)")
+                    print(
+                        "Containers: "
+                        f"{'running' if result['containers'] else 'stopped'}")
+                return
+            if args.group == "notifications":
+                notification_config = config.get("notifications") or {}
+                channel_registry = NotificationChannelRegistry(
+                    output=lambda value: print(value, file=sys.stderr))
+                engine = NotificationEngine(
+                    runtime_dir, notification_config,
+                    channel_registry=channel_registry)
+                store = NotificationStore(runtime_dir)
+                if args.notification_action == "evaluate":
+                    status_result = OperatorStatusEngine(
+                        ROOT, config, runtime_dir=runtime_dir,
+                        readiness=runtime_manager.collector_readiness(
+                            selected)).run()
+                    doctor_result = DoctorEngine(
+                        ROOT, runtime_deployment=selected,
+                        env_path=selected.env_file,
+                        config_path=selected.collectors).run()
+                    result = engine.evaluate(status_result, doctor_result)
+                elif args.notification_action == "test":
+                    result = engine.test()
+                elif args.notification_action == "list":
+                    state = store.read()
+                    result = {
+                        "enabled": engine.enabled,
+                        "active": sorted(
+                            state["active"].values(),
+                            key=lambda value: value["id"]),
+                        "events": state["events"],
+                        "deliveries": state["deliveries"],
+                    }
+                elif args.notification_action == "inspect":
+                    result = store.find(args.notification_id)
+                    if result is None:
+                        raise ValueError(
+                            "notification not found: "
+                            f"{args.notification_id}")
+                else:
+                    result = store.acknowledge(
+                        args.notification_id,
+                        datetime.now(timezone.utc).isoformat().replace(
+                            "+00:00", "Z"))
+                    if result is None:
+                        raise ValueError(
+                            "notification not found: "
+                            f"{args.notification_id}")
+                if args.json:
+                    print(json.dumps(result, indent=2, sort_keys=True))
+                elif args.notification_action == "list":
+                    print(
+                        f"Notifications: {len(result['active'])} active, "
+                        f"{len(result['events'])} total")
+                    for value in result["active"]:
+                        print(
+                            f"[{value['severity'].upper()}] {value['id']} "
+                            f"{value['title']} "
+                            f"occurrences={value['occurrence_count']}")
+                elif args.notification_action == "evaluate":
+                    print(
+                        "Notification evaluation: "
+                        f"{result['active_count']} active, "
+                        f"{len(result['new_events'])} new, "
+                        f"{len(result['recoveries'])} recovered")
+                elif args.notification_action == "test":
+                    print(
+                        "Test notification: "
+                        f"{len(result['deliveries'])} delivery attempt(s)")
+                else:
+                    print(
+                        f"Notification: {result['id']}\n"
+                        f"Severity: {result['severity']}\n"
+                        f"Title: {result['title']}\n"
+                        f"Summary: {result['summary']}\n"
+                        f"Acknowledged: "
+                        f"{result.get('acknowledged', False)}")
+                return
+            if args.once:
+                result = OperatorDaemon(
+                    ROOT, config, runtime_dir=runtime_dir).run(once=True)
+                print(render_collect(result))
+                if result["summary"]["overall"] in {"failed", "partial"}:
+                    raise SystemExit(1)
+            elif args.foreground:
+                OperatorDaemon(
+                    ROOT, config, runtime_dir=runtime_dir).run()
+            else:
+                start_background(
+                    Path(__file__).resolve(), runtime_dir, output=print,
+                    arguments=(
+                        "--deployment", selected.deployment_id))
             return
         load_root_env()
         # These commands intentionally operate on the backwards-compatible
@@ -1208,7 +1566,9 @@ def main():
                         + (f"/{service['health']}" if service["health"] else ""))
         elif args.group == "logs":
             lifecycle.logs(
-                follow=args.follow, service=args.service, tail=args.tail)
+                follow=args.follow,
+                service=args.service or args.service_positional,
+                tail=args.tail)
         elif args.group == "notifications":
             notification_config = config.get("notifications") or {}
             channel_registry = NotificationChannelRegistry(

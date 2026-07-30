@@ -308,7 +308,7 @@ class OperatorDaemon:
                     last_heartbeat=_utc(self.now()), current_collection=[])
 
 
-def start_background(script, runtime_dir, output=None):
+def start_background(script, runtime_dir, output=None, arguments=()):
     """Start the foreground daemon as a detached child process."""
     state = DaemonStateStore(runtime_dir)
     snapshot = state.snapshot()
@@ -321,7 +321,8 @@ def start_background(script, runtime_dir, output=None):
     log_path = state.root / "daemon.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log = log_path.open("a")
-    arguments = [sys.executable, str(script), "daemon", "--foreground"]
+    command = [
+        sys.executable, str(script), "daemon", "--foreground", *arguments]
     options = {
         "cwd": str(Path(script).resolve().parents[1]),
         "stdin": subprocess.DEVNULL, "stdout": log, "stderr": log,
@@ -332,7 +333,7 @@ def start_background(script, runtime_dir, output=None):
             subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS)
     else:
         options["start_new_session"] = True
-    process = subprocess.Popen(arguments, **options)
+    process = subprocess.Popen(command, **options)
     log.close()
     state.write(pid=process.pid)
     if output:

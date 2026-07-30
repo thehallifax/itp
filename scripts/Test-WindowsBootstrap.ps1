@@ -763,12 +763,69 @@ Assert-True (($JsonPayload.repairableItems | Where-Object {
             $_ -notmatch '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
         }).Count -eq 0) "JSON repairable items must use stable identifiers"
 
+function Test-LauncherArgumentBinding {
+    param(
+        [string[]]$Arguments,
+        [scriptblock]$CommandResolver,
+        [scriptblock]$Probe
+    )
+    return [PSCustomObject]@{
+        Arguments = @($Arguments)
+        CommandResolver = $CommandResolver
+        Probe = $Probe
+    }
+}
+
+$ExampleDeploymentId = "m" + "lc"
+foreach ($ArgumentCase in @(
+        @{ Values = [string[]]@("help") },
+        @{ Values = [string[]]@("credentials", "grafana") },
+        @{ Values = [string[]]@(
+            "credentials", "grafana", "--deployment", $ExampleDeploymentId) },
+        @{ Values = [string[]]@("dashboard", "generate") },
+        @{ Values = [string[]]@(
+            "dashboard", "generate", "--deployment", $ExampleDeploymentId) },
+        @{ Values = [string[]]@(
+            "doctor", "--deployment", $ExampleDeploymentId) },
+        @{ Values = [string[]]@(
+            "status", "--deployment", $ExampleDeploymentId) },
+        @{ Values = [string[]]@(
+            "collect", "--deployment", $ExampleDeploymentId) },
+        @{ Values = [string[]]@("collector", "run", "paloalto") },
+        @{ Values = [string[]]@(
+            "collector", "run", "papercut",
+            "--deployment", $ExampleDeploymentId) },
+        @{ Values = [string[]]@("logs", "influxdb3-core") },
+        @{ Values = [string[]]@(
+            "logs", "collector", "--deployment", $ExampleDeploymentId) },
+        @{ Values = [string[]]@("config", "validate") },
+        @{ Values = [string[]]@("profile", "apply", "example") },
+        @{ Values = [string[]]@(
+            "deploy", "--deployment-name", "Example Site") },
+        @{ Values = [string[]]@("deploy", "--deployment-name", "") }
+    )) {
+    $ExpectedArguments = [string[]]$ArgumentCase.Values
+    $Bound = Test-LauncherArgumentBinding `
+        -Arguments ([string[]]$ExpectedArguments)
+    Assert-Equal $Bound.Arguments.Count $ExpectedArguments.Count `
+        "launcher argument count must be preserved"
+    Assert-Equal ($Bound.Arguments -join "|") ($ExpectedArguments -join "|") `
+        "launcher argument order, spaces, and empty values must be preserved"
+    Assert-Equal $Bound.CommandResolver $null `
+        "launcher arguments must not bind to CommandResolver"
+    Assert-Equal $Bound.Probe $null `
+        "launcher arguments must not bind to later dependency injection parameters"
+}
+
 $Launcher = Get-Content -Raw (Join-Path $PSScriptRoot "..\itp.ps1")
 if ($Launcher -notmatch '\$Bootstrap @args') {
     throw "launcher must forward all arguments to the shared bootstrap"
 }
 if ($Launcher -notmatch 'Invoke-ITPPrerequisiteDiagnostics') {
     throw "launcher must expose prerequisite diagnostics before Python bootstrap"
+}
+if ($Launcher -notmatch '-Arguments \(\[string\[\]\]\$args\)') {
+    throw "launcher must pass arguments as one explicit string array"
 }
 
 Write-Output "Windows bootstrap tests: PASS"

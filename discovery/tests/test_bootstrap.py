@@ -466,6 +466,8 @@ def test_windows_launcher_is_thin_and_preserves_exit_code():
         text.index("Initialize-ITPWindowsPlatform")
     assert text.index("Initialize-ITPWindowsPlatform") < \
         text.index("$Bootstrap @args")
+    assert text.count("-Arguments ([string[]]$args)") == 2
+    assert "-Arguments @args" not in text
     assert "exit $PlatformPreparation.ExitCode" in text
     assert 'Invoke-ITPPrerequisiteDiagnostics -Json:' in text
     assert "wsl.exe" in helper

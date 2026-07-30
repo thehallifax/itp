@@ -271,7 +271,7 @@ class OperatorCollectEngine:
 
 class OperatorStatusEngine:
     def __init__(self, root, config, *, registry=None, runtime_dir=None,
-                 now_fn=None):
+                 now_fn=None, readiness=None):
         self.root = Path(root)
         self.config = config
         self.registry = registry or ConnectorMetadataRegistry.load(self.root)
@@ -279,6 +279,8 @@ class OperatorStatusEngine:
             "ITP_RUNTIME_DIR", self.root / "runtime"))
         self.store = PipelineRunStore(self.runtime_dir / "pipeline-runs")
         self.now = now_fn or (lambda: datetime.now(timezone.utc))
+        self.readiness = {
+            value["id"]: value for value in (readiness or ())}
 
     def _freshness(self, enabled, latest, connector_id):
         if not enabled:
@@ -318,14 +320,42 @@ class OperatorStatusEngine:
                     item.get("connector") == metadata.id
                     and item.get("status") == "success"
                     for item in run.get("connectors", []))]
+            records = [
+                (run, item) for run in history
+                for item in run.get("connectors", [])
+                if item.get("connector") == metadata.id]
+            failures = [
+                (run, item) for run, item in records
+                if item.get("status") == "failed"]
+            latest_record = records[0] if records else (None, None)
+            readiness = self.readiness.get(metadata.id, {})
+            latest_summary = (
+                latest_record[1].get("summary") or {}
+                if latest_record[1] else {})
             connectors.append({
                 "connector": metadata.id,
                 "display_name": metadata.display_name,
                 "enabled": enabled,
+                "configuration_state": readiness.get(
+                    "state", "configured" if enabled else "disabled"),
+                "missing": list(readiness.get("missing") or ()),
                 "freshness": self._freshness(enabled, latest, metadata.id),
+                "last_run": (
+                    latest_record[0]["pipeline_run"]["completed_at"]
+                    if latest_record[0] else None),
                 "last_successful_collection": (
                     successes[0]["pipeline_run"]["completed_at"]
                     if successes else None),
+                "last_failure": (
+                    failures[0][0]["pipeline_run"]["completed_at"]
+                    if failures else None),
+                "last_error_summary": (
+                    failures[0][1].get("reason") if failures else None),
+                "records_collected": (
+                    latest_summary.get("points_written")
+                    or latest_summary.get("points_produced")
+                    or latest_summary.get("device_count")
+                    or 0),
             })
         services_path = self.runtime_dir / "services/service-health.json"
         try:
@@ -419,9 +449,22 @@ def render_status(payload):
     ))
     for value in payload["connectors"]:
         lines.append(
-            f"  {value['display_name']}: {value['freshness']}"
+            f"  {value['display_name']}: "
+            f"{value.get('configuration_state', 'configured')}; "
+            f"{value['freshness']}"
             + (f" — last success {value['last_successful_collection']}"
                if value["last_successful_collection"] else ""))
+        if value.get("missing"):
+            lines.append(
+                "    Missing: " + ", ".join(value["missing"]))
+        if value.get("last_run"):
+            lines.append(f"    Last run: {value['last_run']}")
+        if value.get("last_failure"):
+            lines.append(
+                f"    Last failure: {value['last_failure']} — "
+                f"{value.get('last_error_summary') or 'collection failed'}")
+        lines.append(
+            f"    Records collected: {value.get('records_collected', 0)}")
     lines.append("Service health:")
     lines.extend(
         f"  {value['service']}: {value['status']}"

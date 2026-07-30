@@ -105,8 +105,73 @@ Display the active deployment's generated Grafana login without editing files:
 ./itp credentials grafana
 ```
 
-The command is read-only. The credentials and all other runtime material remain
-under the ignored `runtime/deployments/<deployment-id>/` directory.
+Use `--deployment <deployment-id>` to select a deployment and `--json` for
+machine-readable output. The command is read-only. During interactive creation,
+the recommended generated password is displayed once in the successful
+deployment summary; a custom password may instead be entered and confirmed
+without terminal echo. Non-interactive creation generates and stores a password
+without printing it. Credentials and all other runtime material remain under
+the ignored `runtime/deployments/<deployment-id>/` directory.
+
+## Deployment selection
+
+Commands that operate on one runtime deployment accept:
+
+```bash
+--deployment <deployment-id>
+```
+
+Place the selector after the top-level command, or after a nested operational
+subcommand:
+
+```bash
+./itp doctor --deployment example
+./itp collect --deployment example
+./itp collector run paloalto --deployment example
+./itp dashboard generate --deployment example
+./itp credentials grafana --deployment example
+./itp logs collector --deployment example
+```
+
+Without the selector, ITP uses the active deployment. If the active marker is
+absent and exactly one deployment exists, that deployment is inferred. Multiple
+deployments without an active selection produce an error listing the available
+IDs. Set the active deployment with:
+
+```bash
+./itp deployment select example
+```
+
+Repository-global commands such as `config validate`, connector metadata
+inspection, setup, demo generation, and profile management do not use this
+selector.
+
+### Command contract
+
+| Command | Subcommand(s) | Scope | `--deployment` | Omitted selector |
+|---|---|---|---|---|
+| `deploy`, `init` | — | Creates a deployment | No; use `--deployment-id` | Creates or preserves the requested ID and marks it active |
+| `deployment` | `list`, `show`, `select` | Deployment catalogue | No; ID is positional | `show` uses active/sole deployment |
+| `credentials` | `grafana` | One deployment | Yes | Active, then sole deployment |
+| `collector` | `list`, `add`, `test`, `run`, `remove` | One deployment | Yes | Active, then sole deployment |
+| `dashboard` | `generate` | One deployment | Yes | Active, then sole deployment |
+| `update` | — | One deployment | Yes | Active, then sole deployment |
+| `connectors` | `list`, `inspect` | Repository metadata | No | Not applicable |
+| `doctor` | — | One deployment, with legacy root fallback | Yes | Active, sole, then legacy root when none exist |
+| `collect` | — | One deployment, with legacy root fallback | Yes | Active, sole, then legacy root when none exist |
+| `status` | — | One deployment, with legacy root fallback | Yes | Active, sole, then legacy root when none exist |
+| `daemon` | — | One deployment, with legacy root fallback | Yes | Active, sole, then legacy root when none exist |
+| `start`, `stop`, `restart` | — | One deployment, with legacy root fallback | Yes | Active, sole, then legacy root when none exist |
+| `logs` | service name | One deployment, with legacy root fallback | Yes | Active, sole, then legacy root when none exist |
+| `notifications` | `evaluate`, `list`, `inspect`, `test`, `acknowledge` | One deployment, with legacy root fallback | Yes | Active, sole, then legacy root when none exist |
+| `setup`, `demo` | — | Repository/bootstrap utility | No | Not applicable |
+| `config` | `validate` | Repository configuration | No | Not applicable |
+| `profile` | profile lifecycle actions | Explicit profile | No; profile ID is positional | Never inferred |
+
+Nested runtime commands accept the selector after their subcommand. The
+documented canonical placement is the rightmost command-local form shown above.
+The parent-command form remains accepted for compatibility where it already
+existed.
 
 ## Configure discovery and collectors
 
@@ -119,6 +184,42 @@ contact infrastructure. Configure one through the registry-driven workflow:
 ./itp collector test <collector>
 ./itp dashboard generate
 ./itp restart
+```
+
+Dashboard generation lists the managed dashboards refreshed for the selected
+deployment. Grafana polls the generated provisioning tree every 30 seconds, so
+dashboard regeneration does not normally require a Grafana restart.
+
+## Shared collector and diagnostics
+
+`itp-<deployment>-collector-1` runs all enabled runtime connector
+implementations. Palo Alto and PaperCut do not create containers named after
+the connector. Run all independently eligible connectors once with:
+
+```bash
+./itp collect --deployment example
+```
+
+Run one enabled connector with:
+
+```bash
+./itp collector run paloalto --deployment example
+```
+
+An incomplete connector is skipped with its missing configuration or credential
+identifiers while other configured connectors continue. Diagnostic output
+never renders credential values. `status` reports connector configuration,
+freshness, last run, last success or failure, record count, shared collector
+service state, and the independent discovery state.
+
+Supported service log targets are:
+
+```bash
+./itp logs collector --deployment example
+./itp logs discovery --deployment example
+./itp logs telegraf --deployment example
+./itp logs grafana --deployment example
+./itp logs influxdb3-core --deployment example
 ```
 
 The add command writes non-secret discovery/collector settings to

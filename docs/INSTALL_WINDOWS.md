@@ -217,8 +217,55 @@ External collectors remain disabled until configured.
 .\itp.ps1 credentials grafana
 ```
 
-The deployment wizard prints the Grafana URL. Services bind to `127.0.0.1` by
-default and are therefore reachable only from the Windows host.
+These commands infer the active deployment. When more than one deployment
+exists, use the canonical selector after the command or nested subcommand:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 doctor --deployment example
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 status --deployment example
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 collect --deployment example
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 collector run paloalto --deployment example
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 logs collector --deployment example
+```
+
+Set the default explicitly with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deployment select example
+```
+
+During interactive deployment, the wizard offers to generate a secure Grafana
+administrator password (recommended) or accept a masked custom password twice.
+Custom passwords must contain at least 12 characters. A newly generated
+password is shown once in the successful deployment summary. Retrieve the
+stored value later with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 credentials grafana
+```
+
+Add `--json` for machine-readable credential output. Treat that output as a
+secret and do not write it to logs. Non-interactive deployment generates and
+stores the password without printing it.
+
+The deployment wizard also prints the Grafana URL and confirms that managed
+dashboards were generated. Grafana polls the generated provisioning files
+automatically, so a restart is not normally required. To refresh them manually:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 dashboard generate
+```
+
+Services bind to `127.0.0.1` by default and are therefore reachable only from
+the Windows host.
+
+Enabled connector implementations, including Palo Alto and PaperCut, run
+inside the shared `itp-<deployment>-collector-1` container. They are not
+separate Docker services. Use `logs collector` for their process logs and
+`collector run <connector>` for a connector-specific collection. Discovery
+runs in `itp-<deployment>-discovery-1`; a deliberately disabled discovery
+service does not mean the shared collector has failed. Other supported log
+targets are `discovery`, `telegraf`, `grafana`, and `influxdb3-core`.
 
 To permit remote access, explicitly choose an appropriate management address
 during deployment and restrict inbound access with Windows Defender Firewall

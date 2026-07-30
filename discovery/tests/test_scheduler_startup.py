@@ -100,6 +100,29 @@ def test_initial_discovery_failure_skips_dependent_collection(tmp_path):
     assert "must-not-appear" not in json.dumps(state)
 
 
+def test_failed_prerequisite_does_not_block_other_connector(tmp_path):
+    events = []
+    unavailable = Collector(events, discovery_error=True)
+    unavailable.name = "unavailable"
+    healthy = Collector(events)
+    healthy.name = "healthy"
+    value = Scheduler(
+        [unavailable, healthy],
+        state_path=tmp_path / "scheduler/state.json",
+        now_fn=lambda: NOW)
+
+    result = asyncio.run(value.startup())
+
+    by_id = {item["connector"]: item for item in result["collection"]}
+    assert by_id["healthy"]["status"] == "success"
+    assert "unavailable" not in by_id
+    assert events.count("collect.begin") == 1
+    assert events.count("collect.complete") == 1
+    assert value.state.value["initial_collection"]["outcome"] == "failed"
+    assert value.state.value["initial_collection"]["outcome"] != \
+        "skipped_prerequisite"
+
+
 def test_initial_collection_failure_is_recoverable_degraded(tmp_path):
     events = []
     value = scheduler(

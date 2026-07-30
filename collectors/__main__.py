@@ -58,7 +58,9 @@ def _enabled_collectors(config, *, include_ineligible=False):
     if runtime_mode not in ("central", "edge"):
         raise ValueError(f"unsupported ITP_RUNTIME_MODE: {runtime_mode}")
     inventory_path = os.getenv("INVENTORY_PATH", "/app/runtime/inventory/devices.json")
-    for name in ("mist", "fortigate", "paloalto", "papercut", "aruba"):
+    generated_dir = os.getenv(
+        "TELEGRAF_GENERATED_DIR", "/app/runtime/telegraf")
+    for name in CollectorRegistry.names():
         collector_settings = settings.get(name, {})
         if not collector_settings.get("enabled", False): continue
         eligible, execution = CollectorRegistry.execution_eligible(
@@ -70,7 +72,11 @@ def _enabled_collectors(config, *, include_ineligible=False):
                 result.append(RuntimePlacementCollector(
                     name, execution, runtime_mode))
             continue
-        result.append(CollectorRegistry.create(name, config, inventory_path))
+        result.append(
+            CollectorRegistry.create_configured(
+                name, config, inventory_path, generated_dir)
+            if name == "snmp"
+            else CollectorRegistry.create(name, config, inventory_path))
     return result
 
 
@@ -548,6 +554,10 @@ async def _run(args):
                     print(json.dumps(result, indent=2, sort_keys=True))
                 else:
                     print("\n".join(inspection_lines(args.name, result)))
+            elif args.json:
+                print(json.dumps(
+                    result if isinstance(result, dict) else {},
+                    indent=2, sort_keys=True))
         finally:
             close = getattr(collector, "close", None)
             if close: await close()
@@ -655,8 +665,7 @@ def build_parser():
     connectors.add_argument("--json", action="store_true")
     for command in ("discover", "collect", "inspect"):
         item = sub.add_parser(command); item.add_argument("name")
-        if command == "inspect":
-            item.add_argument("--json", action="store_true")
+        item.add_argument("--json", action="store_true")
     inventory = sub.add_parser("inventory")
     inventory.add_argument("action", choices=("list", "show", "summary", "reconcile", "lifecycle",
                                                "retire", "restore", "history", "sources", "changes",

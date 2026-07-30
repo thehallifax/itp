@@ -42,6 +42,11 @@ The default bind address is `127.0.0.1`, so Grafana is initially available only
 on the deployment host. Retrieve its generated login with
 `.\itp.ps1 credentials grafana` on Windows or
 `./itp credentials grafana` on macOS/Linux.
+During an interactive deployment, choose the recommended generated Grafana
+password or enter and confirm a custom password of at least 12 characters.
+The generated password is shown once in the successful deployment summary and
+is otherwise read from the deployment's protected runtime environment by the
+credentials command.
 
 The examples below use the macOS/Linux launcher. On Windows PowerShell, replace
 `./itp` with `.\itp.ps1`.
@@ -58,6 +63,16 @@ Useful commands:
 ./itp restart
 ./itp logs
 ```
+
+Runtime commands infer the active deployment. Select one explicitly with
+`--deployment <deployment-id>`, or make it active with
+`./itp deployment select <deployment-id>`. Connector implementations run in
+the shared `collector` service; use `./itp logs collector` for connector
+runtime diagnostics.
+
+Dashboard generation reports the managed dashboards and folders it refreshed.
+Grafana polls the generated provisioning tree automatically; a restart is not
+normally required.
 
 Use `./itp deploy --verbose` on macOS/Linux or
 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy --verbose`

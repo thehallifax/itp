@@ -126,13 +126,22 @@ def test_status_reports_service_health_success_and_freshness(tmp_path):
 
     result = OperatorStatusEngine(
         tmp_path, config(beta=False), registry=Registry(),
-        runtime_dir=runtime, now_fn=lambda: NOW).run()
+        runtime_dir=runtime, now_fn=lambda: NOW,
+        readiness=(
+            {"id": "alpha", "state": "configured", "missing": []},
+            {"id": "beta", "state": "disabled", "missing": []},
+            {"id": "gamma", "state": "disabled", "missing": []},
+        )).run()
     states = {value["connector"]: value["freshness"]
               for value in result["connectors"]}
     assert states == {
         "alpha": "Fresh", "beta": "Disabled", "gamma": "Disabled"}
     assert result["connectors"][0]["last_successful_collection"] == \
         "2026-07-24T07:59:00Z"
+    assert result["connectors"][0]["configuration_state"] == "configured"
+    assert result["connectors"][0]["last_run"] == "2026-07-24T07:59:00Z"
+    assert result["connectors"][0]["last_failure"] is None
+    assert result["connectors"][0]["records_collected"] == 0
     assert result["service_health"] == [
         {"service": "Internet", "status": "Healthy"},
         {"service": "Wireless", "status": "Warning"},
@@ -176,6 +185,22 @@ def test_status_json_contains_no_configuration_or_secrets(tmp_path):
     rendered = json.dumps(result, sort_keys=True)
     assert "super-secret" not in rendered
     assert json.loads(rendered)["deployment_identity"] == "test-estate"
+
+
+def test_status_reports_missing_identifiers_without_secret_values(tmp_path):
+    result = OperatorStatusEngine(
+        tmp_path, config(beta=False), registry=Registry(),
+        runtime_dir=tmp_path / "runtime", now_fn=lambda: NOW,
+        readiness=(
+            {"id": "alpha", "state": "pending credentials",
+             "missing": ["ALPHA_API_TOKEN"]},
+            {"id": "beta", "state": "disabled", "missing": []},
+            {"id": "gamma", "state": "disabled", "missing": []},
+        )).run()
+    rendered = render_status(result)
+    assert "pending credentials" in rendered
+    assert "Missing: ALPHA_API_TOKEN" in rendered
+    assert "secret-value" not in rendered
 
 
 def test_scheduler_one_shot_isolates_connector_failures(caplog):
