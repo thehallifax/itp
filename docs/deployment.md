@@ -34,6 +34,25 @@ The PowerShell launcher performs the same runtime bootstrap as `./itp`; do not
 run `scripts\bootstrap.py` separately. See the
 [Windows installation guide](INSTALL_WINDOWS.md).
 
+Deployment is transactional at the configuration boundary. ITP gathers and
+validates deployment identity, ports, timezone, canonical site and credentials,
+prints a plan, and asks for confirmation before creating persistent files or
+Docker resources. InfluxDB bootstrap begins only after `deployment.env` has
+been written durably. Completion is reported only after services and Doctor
+pass their required checks.
+
+The canonical site defaults to the deployment ID. A separate display name may
+be changed without changing identity:
+
+```sh
+./itp deploy --deployment-id campus \
+  --site-id north-campus --site-name "North Campus"
+```
+
+`deployment_id` owns the runtime; `site:...` partitions canonical telemetry;
+the display name is presentation metadata; collectors are instances within the
+deployment; and Docker uses the exact Compose project `itp-<deployment-id>`.
+
 If local script execution is blocked:
 
 ```powershell
@@ -62,6 +81,25 @@ Commands wrap the repository's existing Compose file. Repeated start and stop
 operations are safe. Lifecycle output reports the resulting service state and
 never prints environment values or credentials.
 
+Deployment recovery and removal are explicit:
+
+```sh
+./itp deployment list
+./itp reset --deployment campus
+./itp reset --deployment campus --reset-influx
+./itp remove --deployment campus
+./itp remove --deployment campus --remove-telemetry
+./itp cleanup
+./itp cleanup --yes
+```
+
+`deployment list` reports configured, stopped, partial and orphaned state even
+when `docker compose ls` is empty. Reset preserves the InfluxDB volume unless
+`--reset-influx` is explicit. Remove likewise preserves telemetry unless
+`--remove-telemetry` is explicit. Cleanup is a dry-run by default, removes only
+exactly labelled orphan containers and networks, preserves volumes and unknown
+Docker resources, and never runs a global Docker or builder prune.
+
 ## Dashboard packs
 
 Deploy and start resolve dashboard packs from enabled connector metadata.
@@ -71,7 +109,8 @@ which provides device totals, availability, and canonical SNMP inventory.
 
 Managed dashboards use stable UIDs and carry `itp-managed` plus pack-version
 tags. Upgrades replace managed content with the same UID. Disabling a connector
-removes its files only from `runtime/dashboard/managed/`; dashboards created
+removes its files only from
+`runtime/deployments/<deployment>/generated/dashboard/managed/`; dashboards created
 through Grafana are stored separately and are not removed. Installed packs and
 versions appear under `stack.dashboard_packs` in `./itp status --json`.
 

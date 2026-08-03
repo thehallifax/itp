@@ -63,6 +63,7 @@ Useful commands:
 ./itp dashboard generate
 ./itp restart
 ./itp logs collector
+./itp deployment list
 ```
 
 Runtime commands infer the active deployment. Select one explicitly with
@@ -70,6 +71,11 @@ Runtime commands infer the active deployment. Select one explicitly with
 `./itp deployment select <deployment-id>`. Connector implementations run in
 the shared `collector` service; use `./itp logs collector` for connector
 runtime diagnostics.
+
+Deployment validates and displays its plan before persistent state is created.
+Recovery preserves telemetry by default: use `./itp reset --deployment <id>`
+for disposable generated state, `./itp remove --deployment <id>` for a known
+deployment, and dry-run `./itp cleanup` to audit orphan Docker resources.
 
 Dashboard generation reports the managed dashboards and folders it refreshed.
 Grafana polls the generated provisioning tree automatically; a restart is not

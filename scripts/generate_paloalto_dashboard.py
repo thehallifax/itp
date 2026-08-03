@@ -177,26 +177,17 @@ def build():
     add(table(0, "Interface Inventory", 12, 17, 12, 8,
         inventory_interface_sql,
         "Latest canonical interface identity, type, speed, and WAN classification."))
-    traffic_sql = ("WITH samples AS (SELECT time, rx_bytes_total, "
-        "tx_bytes_total, LAG(time) OVER (ORDER BY time) "
-        "AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) "
-        "AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx "
+    traffic_sql = ("SELECT time, rx_bps AS \"Download\", "
+        "tx_bps AS \"Upload\" "
         f"{where('interface')} AND interface_name = ${{wan_interface:sqlstring}} "
         "AND wan_classified = true AND time >= $__timeFrom "
-        "AND time <= $__timeTo) SELECT time, "
-        "CASE WHEN rx_bytes_total >= previous_rx AND "
-        "EXTRACT(EPOCH FROM (time - previous_time)) > 0 "
-        "THEN (rx_bytes_total - previous_rx) * 8 / "
-        "EXTRACT(EPOCH FROM (time - previous_time)) END "
-        "AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND "
-        "EXTRACT(EPOCH FROM (time - previous_time)) > 0 "
-        "THEN (tx_bytes_total - previous_tx) * 8 / "
-        "EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples "
-        "WHERE previous_time IS NOT NULL ORDER BY time")
+        "AND time <= $__timeTo ORDER BY time")
     wan_panel = timeseries(
         0, "WAN Throughput · ${wan_interface:text}", 0, 25, 12, 9,
         traffic_sql, unit="bps",
-        description="Per-interface rates derived from cumulative counters. "
+        description="Collector-derived per-interface rates from successive "
+        "cumulative counter observations. The first observation establishes a "
+        "baseline. "
         "Download and Upload current values are shown in the legend; negative "
         "deltas after reset are omitted.")
     wan_panel.update({

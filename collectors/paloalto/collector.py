@@ -1,5 +1,6 @@
 """Production-safe, read-only Palo Alto Networks PAN-OS collector."""
 import asyncio
+import copy
 import logging
 import os
 import time
@@ -66,6 +67,25 @@ def _add_wan_rate_samples(record, previous):
                    if isinstance(value, dict) and value.get("time")]
         current["samples"] = (history + [sample])[-120:]
     return record
+
+
+def _publish_wan_rates(points, record):
+    """Copy the latest derived WAN sample onto canonical interface points."""
+    rates = {}
+    for interface in record.get("extensions", {}).get("wan_interfaces", []):
+        samples = interface.get("samples") or []
+        if samples and isinstance(samples[-1], dict):
+            rates[interface.get("interface_name")] = samples[-1]
+    for point in points:
+        if point.get("measurement") != "interface":
+            continue
+        sample = rates.get((point.get("tags") or {}).get("interface_name"))
+        if not sample:
+            continue
+        for field in ("rx_bps", "tx_bps"):
+            if sample.get(field) is not None:
+                point.setdefault("fields", {})[field] = sample[field]
+    return points
 
 
 def validate_settings(config, *, require_key=True):
@@ -160,6 +180,7 @@ class PaloAltoCollector(BaseCollector):
                 raw.get("allow_insecure_http"), False),
             max_retries=self.settings.max_retries)
         self.writer = writer or InfluxWriter.from_config(config)
+        self._wan_baseline = None
 
     async def _snapshot(self):
         system_result = await self.client.op("system")
@@ -219,6 +240,7 @@ class PaloAltoCollector(BaseCollector):
                              or value.get("asset_id") == record["id"]
                              or value.get("source_record_id") == record["id"]), None)
             _add_wan_rate_samples(record, previous)
+            self._wan_baseline = copy.deepcopy(record)
             result = self.inventory.update_source([record], "paloalto", self.settings.customer,
                 self.settings.site, _utcnow(), source_run_id=run_id)
             self.inventory.engine.complete_source_run("paloalto", run_id, success=True,
@@ -240,7 +262,17 @@ class PaloAltoCollector(BaseCollector):
             diagnostics = [value for value in snapshot.capabilities.values() if not value.available]
             unavailable = len(diagnostics); category = "partial" if partial else "success"
             record, points = map_snapshot(self._parse(snapshot), self.settings, _utcnow())
+            previous = self._wan_baseline
+            if previous is None:
+                assets = self.inventory.engine.load().get("assets", [])
+                previous = next((value for value in assets
+                                 if value.get("id") == record["id"]
+                                 or value.get("asset_id") == record["id"]
+                                 or value.get("source_record_id") == record["id"]), None)
+            _add_wan_rate_samples(record, previous)
+            _publish_wan_rates(points, record)
             written = await asyncio.to_thread(self.writer.write, points)
+            self._wan_baseline = copy.deepcopy(record)
             success = True
             return {"status": category, "points_written": written, "asset_id": record["id"],
                     "capabilities_unavailable": sorted(value.name for value in diagnostics),

@@ -156,7 +156,8 @@ deployment environment.
 Only for a confirmed disposable deployment with no required telemetry, run:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy --force --reset-influx --verbose
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 reset --deployment <deployment-id> --reset-influx
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy --deployment-id <deployment-id> --force --verbose
 ```
 
 The command requires typing `RESET <deployment-id>` before it removes only

@@ -221,6 +221,98 @@ def test_custom_grafana_password_rejects_invalid_values(
     assert runtime._new_grafana_passwords == {}
 
 
+def test_invalid_password_validation_has_no_persistent_side_effects(tmp_path):
+    secrets = iter(["short", "short"])
+    runtime = manager(
+        tmp_path, input_fn=lambda prompt: "2" if prompt.startswith(
+            "Selection") else "",
+        secret_input=lambda _prompt: next(secrets))
+    with pytest.raises(RuntimeDeploymentError, match="at least 12"):
+        runtime.create(
+            name="Invalid Password", deployment_id="invalid-password",
+            timezone="UTC", non_interactive=False,
+            collectors=[], confirm=False)
+    assert not (tmp_path / "runtime/deployments/invalid-password").exists()
+
+
+def test_canonical_site_defaults_and_custom_site_are_created_idempotently(tmp_path):
+    runtime = manager(tmp_path)
+    default = runtime.create(name="Default Site", non_interactive=True)
+    assert runtime._site_id(default) == "site:default-site"
+    custom = runtime.create(
+        name="Campus Deployment", deployment_id="campus",
+        site_id="north-campus", site_name="North Campus",
+        non_interactive=True)
+    sites = yaml.safe_load((custom.generated / "sites.yml").read_text())
+    assert sites["sites"] == [{
+        "id": "site:north-campus", "display_name": "North Campus",
+        "aliases": ["campus", "north-campus"], "enabled": True}]
+    repeated = runtime.create(
+        name="Campus Deployment", deployment_id="campus",
+        site_id="north-campus", non_interactive=True)
+    assert repeated.path == custom.path
+    assert len(yaml.safe_load((custom.generated / "sites.yml").read_text())[
+        "sites"]) == 1
+
+
+def test_deployment_inventory_and_cleanup_use_exact_compose_labels(tmp_path):
+    outputs = {
+        ("docker", "ps", "-a", "--filter", "label=com.docker.compose.project",
+         "--format", "{{.Label \"com.docker.compose.project\"}}"): "itp-orphan\n",
+    }
+    def runner(command, **_kwargs):
+        key = tuple(command)
+        output = outputs.get(key, "")
+        if any(value == "label=com.docker.compose.project=itp-orphan"
+               for value in command):
+            if command[1:3] == ["ps", "-a"]:
+                output = '{"Names":"itp-orphan-collector-1","State":"exited"}\n'
+            elif command[1:3] == ["network", "ls"]:
+                output = '{"Name":"itp-orphan_default"}\n'
+            elif command[1:3] == ["volume", "ls"]:
+                output = '{"Name":"itp-orphan_influxdb_data"}\n'
+        return subprocess.CompletedProcess(command, 0, output, "")
+    runtime = manager(tmp_path, runner=runner)
+    inventory = runtime.deployment_inventory()
+    assert inventory[0]["deployment_id"] == "orphan"
+    assert inventory[0]["status"] == "orphaned"
+    audit = runtime.cleanup()
+    assert audit["dry_run"] is True
+    assert audit["candidates"][0]["volumes"] == [
+        "itp-orphan_influxdb_data"]
+    assert audit["removed"] == []
+
+
+def test_reset_preserves_telemetry_by_default(tmp_path, monkeypatch):
+    runtime = manager(tmp_path)
+    deployment = runtime.create(name="Reset Site", non_interactive=True)
+    runtime.runner = lambda command, **_kwargs: subprocess.CompletedProcess(
+        command, 0, "", "")
+    calls = []
+    install_compose_mock(monkeypatch, calls)
+    result = runtime.reset(deployment.deployment_id, yes=True)
+    assert result["telemetry_preserved"] is True
+    assert calls == [("down", "--remove-orphans")]
+    assert deployment.env_file.is_file()
+
+
+def test_remove_requires_confirmation_and_preserves_volume_by_default(
+        tmp_path, monkeypatch):
+    runtime = manager(tmp_path, input_fn=lambda _prompt: "no")
+    deployment = runtime.create(name="Remove Site", non_interactive=True)
+    with pytest.raises(RuntimeDeploymentError, match="not confirmed"):
+        runtime.remove(deployment.deployment_id)
+    assert deployment.path.exists()
+    calls = []
+    runtime.runner = lambda command, **_kwargs: subprocess.CompletedProcess(
+        command, 0, "", "")
+    install_compose_mock(monkeypatch, calls)
+    result = runtime.remove(deployment.deployment_id, yes=True)
+    assert result["telemetry_preserved"] is True
+    assert calls == [("down", "--remove-orphans")]
+    assert not deployment.path.exists()
+
+
 def test_force_accepts_ports_owned_by_same_deployment(tmp_path):
     runtime = manager(tmp_path)
     runtime.create(name="Example", non_interactive=True)
@@ -322,7 +414,8 @@ def test_unknown_deployment_fails_clearly(tmp_path):
 
 def test_interactive_deployment_id_and_listen_guidance(tmp_path):
     answers = iter([
-        "Friendly Site", "friendly-id", "UTC", "", "3100", "8282", "", ""])
+        "Friendly Site", "friendly-id", "UTC", "", "3100", "8282",
+        "", "", "", "", ""])
     output = []
     runtime = RuntimeDeploymentManager(
         tmp_path, registry=Registry(), input_fn=lambda _prompt: next(answers),

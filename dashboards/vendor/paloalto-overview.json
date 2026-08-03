@@ -1126,7 +1126,7 @@
         "type": "influxdb",
         "uid": "ffsu5ap2kr5dse"
       },
-      "description": "Per-interface rates derived from cumulative counters. Download and Upload current values are shown in the legend; negative deltas after reset are omitted.",
+      "description": "Collector-derived per-interface rates from successive cumulative counter observations. The first observation establishes a baseline. Download and Upload current values are shown in the legend; negative deltas after reset are omitted.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1175,9 +1175,9 @@
             "uid": "ffsu5ap2kr5dse"
           },
           "format": "table",
-          "query": "WITH samples AS (SELECT time, rx_bytes_total, tx_bytes_total, LAG(time) OVER (ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
+          "query": "SELECT time, rx_bps AS \"Download\", tx_bps AS \"Upload\" FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time",
           "rawQuery": true,
-          "rawSql": "WITH samples AS (SELECT time, rx_bytes_total, tx_bytes_total, LAG(time) OVER (ORDER BY time) AS previous_time, LAG(rx_bytes_total) OVER (ORDER BY time) AS previous_rx, LAG(tx_bytes_total) OVER (ORDER BY time) AS previous_tx FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo) SELECT time, CASE WHEN rx_bytes_total >= previous_rx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (rx_bytes_total - previous_rx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Download\", CASE WHEN tx_bytes_total >= previous_tx AND EXTRACT(EPOCH FROM (time - previous_time)) > 0 THEN (tx_bytes_total - previous_tx) * 8 / EXTRACT(EPOCH FROM (time - previous_time)) END AS \"Upload\" FROM samples WHERE previous_time IS NOT NULL ORDER BY time",
+          "rawSql": "SELECT time, rx_bps AS \"Download\", tx_bps AS \"Upload\" FROM interface WHERE collector = 'paloalto' AND customer_id LIKE ${customer:sqlstring} AND site_id LIKE ${site:sqlstring} AND device_id LIKE ${device:sqlstring} AND interface_name = ${wan_interface:sqlstring} AND wan_classified = true AND time >= $__timeFrom AND time <= $__timeTo ORDER BY time",
           "refId": "A"
         }
       ],

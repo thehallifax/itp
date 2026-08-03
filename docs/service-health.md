@@ -17,7 +17,8 @@ The engine reads:
   canonical signals.
 - `runtime/operations/operations.json` for deterministic active issues and
   risks.
-- `runtime/dashboard/managed/registry.json` for enabled collectors and merged
+- `runtime/deployments/<deployment>/generated/dashboard/managed/registry.json`
+  for enabled collectors and merged
   capabilities.
 
 Aliases are first resolved through the canonical registry in

@@ -58,6 +58,53 @@ ignored `collectors.yml` as documented in the
 [Palo Alto guide](collectors/paloalto.md). Rerun the collector and regenerate
 dashboards. Do not infer WAN state from an interface number or default route.
 
+If the role is configured but throughput says **Awaiting first collection**,
+run two observations far enough apart for the cumulative counters to change:
+
+```sh
+./itp collector run paloalto --deployment <deployment>
+./itp collector run paloalto --deployment <deployment>
+./itp dashboard generate --deployment <deployment>
+```
+
+The first observation is a baseline. Counter reset, missing counters, and a
+restart without a prior inventory baseline safely defer the rate. The stable
+query key is the PAN-OS interface name; `display_name` only labels the panel.
+
+## Partial or interrupted deployment
+
+```sh
+./itp deployment list
+./itp doctor --deployment <deployment>
+./itp reset --deployment <deployment>
+./itp deploy --deployment-id <deployment> --force
+```
+
+Reset preserves telemetry by default. If an abandoned InfluxDB bootstrap
+created an operator token that cannot be recovered and the deployment is
+confirmed disposable, explicitly use:
+
+```sh
+./itp reset --deployment <deployment> --reset-influx
+```
+
+This is destructive and requires confirmation. A missing canonical site is
+corrected by rerunning deployment with `--site-id`; new sites are created
+idempotently before scheduler startup.
+
+## Old Docker Desktop ITP projects
+
+`docker compose ls` may omit stopped projects. ITP audits exact Compose labels:
+
+```sh
+./itp cleanup
+./itp cleanup --yes
+```
+
+The first command is a dry run. Cleanup preserves volumes, unrelated projects,
+unknown resources and global build cache. It may suggest `docker builder prune
+-a`, but never executes it.
+
 ## Empty data
 
 Use Collector Health and Doctor to distinguish Configuration required,

@@ -854,6 +854,8 @@ def main():
         runtime_setup.add_argument("--influxdb-port", type=int, default=8181)
         runtime_setup.add_argument("--listen-address", default="127.0.0.1")
         runtime_setup.add_argument("--collector", action="append", default=None)
+        runtime_setup.add_argument("--site-id")
+        runtime_setup.add_argument("--site-name")
         runtime_setup.add_argument("--non-interactive", action="store_true")
         runtime_setup.add_argument("--force", action="store_true")
         runtime_setup.add_argument("--reset-influx", action="store_true")
@@ -873,6 +875,24 @@ def main():
         "select", help="set the active runtime deployment")
     deployment_select.add_argument("deployment_id")
     deployment_select.add_argument("--json", action="store_true")
+    reset_runtime = commands.add_parser(
+        "reset", help="reset disposable generated deployment state")
+    reset_runtime.add_argument("--deployment", required=True)
+    reset_runtime.add_argument("--reset-influx", action="store_true",
+                               help="also permanently remove telemetry")
+    reset_runtime.add_argument("--yes", action="store_true")
+    reset_runtime.add_argument("--json", action="store_true")
+    remove_runtime = commands.add_parser(
+        "remove", help="remove a runtime deployment")
+    remove_runtime.add_argument("--deployment", required=True)
+    remove_runtime.add_argument("--remove-telemetry", action="store_true")
+    remove_runtime.add_argument("--yes", action="store_true")
+    remove_runtime.add_argument("--json", action="store_true")
+    cleanup_runtime = commands.add_parser(
+        "cleanup", help="audit or remove confidently owned orphan resources")
+    cleanup_runtime.add_argument("--deployment")
+    cleanup_runtime.add_argument("--yes", action="store_true")
+    cleanup_runtime.add_argument("--json", action="store_true")
     credentials = add_deployment_selector(commands.add_parser(
         "credentials", help="show how to retrieve deployment credentials")
     )
@@ -1093,7 +1113,9 @@ def main():
                 listen_address=args.listen_address,
                 collectors=args.collector,
                 non_interactive=args.non_interactive,
-                force=args.force),
+                force=args.force,
+                site_id=args.site_id,
+                site_name=args.site_name),
             retry_command("deploy", "--verbose"))
         load_runtime_env(deployment.env_file)
         deployment_config = load_config(deployment.collectors)
@@ -1150,10 +1172,25 @@ def main():
                     break
                 time.sleep(2)
             if not healthy:
-                print("[WARN] Containers did not all report healthy within 180 seconds.")
+                raise RuntimeDeploymentError(
+                    "service-health validation failed: containers did not all "
+                    "report running within 180 seconds; run ./itp deployment "
+                    "list and ./itp logs --deployment " + deployment.deployment_id)
+            report = DoctorEngine(
+                ROOT, runtime_deployment=deployment,
+                env_path=deployment.env_file,
+                config_path=deployment.collectors).run()
+            if report.exit_code(False):
+                raise RuntimeDeploymentError(
+                    "Doctor validation failed after services started; inspect "
+                    f"with ./itp doctor --deployment {deployment.deployment_id} "
+                    "and retry after correcting the reported failure")
         value = deployment.load()
         network = value["network"]
-        print("ITP deployment complete.")
+        print(
+            "ITP deployment complete."
+            if args.group == "deploy" and not args.no_start
+            else "ITP deployment configuration initialized.")
         print(f"Deployment: {deployment.deployment_id} ({value['display_name']})")
         try:
             runtime_display = deployment.path.relative_to(ROOT)
@@ -1195,30 +1232,18 @@ def main():
             print("Next:")
             print("  ./itp doctor")
             print("  ./itp status")
-            run_doctor = deployment_doctor_requested(
-                non_interactive=args.non_interactive,
-                explicit=args.doctor)
-            if run_doctor:
-                report = DoctorEngine(
-                    ROOT, runtime_deployment=deployment,
-                    env_path=deployment.env_file,
-                    config_path=deployment.collectors).run()
-                summary = report.summary
-                print(
-                    "Doctor: "
-                    f"{report.overall_status} "
-                    f"({summary['pass']} passed, {summary['warn']} warnings, "
-                    f"{summary['fail']} failed)")
-                if report.exit_code(False):
-                    print(
-                        "Deployment completed; Doctor found issues. "
-                        "Run ./itp doctor for details.")
+            summary = report.summary
+            print(
+                "Doctor: "
+                f"{report.overall_status} "
+                f"({summary['pass']} passed, {summary['warn']} warnings, "
+                f"{summary['fail']} failed)")
         else:
             print("Next: ./itp deploy")
         return
     if args.group == "deployment":
         if args.deployment_action == "list":
-            result = runtime_manager.list()
+            result = runtime_manager.deployment_inventory()
         elif args.deployment_action == "select":
             deployment = runtime_manager.activate(args.deployment_id)
             result = {
@@ -1236,7 +1261,25 @@ def main():
             print(json.dumps(result, indent=2, sort_keys=True))
         elif isinstance(result, list):
             for item in result:
-                print(f"{item['id']}\t{item['name']}\t{item['platform']}")
+                print(
+                    f"{item['deployment_id']}\t{item.get('site_id') or '-'}\t"
+                    f"{item['status']}\t{item['compose_project']}")
+        else:
+            print(yaml.safe_dump(result, sort_keys=False).rstrip())
+        return
+    if args.group in {"reset", "remove", "cleanup"}:
+        if args.group == "reset":
+            result = runtime_manager.reset(
+                args.deployment, reset_influx=args.reset_influx, yes=args.yes)
+        elif args.group == "remove":
+            result = runtime_manager.remove(
+                args.deployment, remove_telemetry=args.remove_telemetry,
+                yes=args.yes)
+        else:
+            result = runtime_manager.cleanup(
+                yes=args.yes, deployment_id=args.deployment)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
         else:
             print(yaml.safe_dump(result, sort_keys=False).rstrip())
         return

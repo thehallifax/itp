@@ -222,6 +222,213 @@ class RuntimeDeploymentManager:
                 continue
         return result
 
+    def _docker_rows(self, kind, project):
+        """Return exact Compose-labelled resources without relying on compose ls."""
+        commands = {
+            "container": ["docker", "ps", "-a"],
+            "network": ["docker", "network", "ls"],
+            "volume": ["docker", "volume", "ls"],
+        }
+        command = [*commands[kind], "--filter",
+                   f"label=com.docker.compose.project={project}",
+                   "--format", "{{json .}}"]
+        try:
+            completed = self.runner(
+                command, cwd=self.root, check=False, text=True,
+                encoding="utf-8", errors="replace", capture_output=True)
+        except OSError:
+            return []
+        rows = []
+        for line in (completed.stdout or "").splitlines():
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                rows.append(value)
+        return rows
+
+    def deployment_inventory(self, deployment_id=None):
+        """Describe runtime and exact Docker ownership for lifecycle commands."""
+        ids = set()
+        if self.deployments.is_dir():
+            ids.update(path.name for path in self.deployments.iterdir()
+                       if path.is_dir())
+        if deployment_id:
+            ids = {slugify(deployment_id)}
+        # Docker-labelled projects can survive after their runtime directory.
+        discovery_commands = (
+            ["docker", "ps", "-a"],
+            ["docker", "network", "ls"],
+            ["docker", "volume", "ls"],
+        )
+        for prefix in discovery_commands:
+            try:
+                completed = self.runner(
+                    [*prefix, "--filter", "label=com.docker.compose.project",
+                     "--format",
+                     "{{.Label \"com.docker.compose.project\"}}"],
+                    cwd=self.root, check=False, text=True, encoding="utf-8",
+                    errors="replace", capture_output=True)
+                ids.update(
+                    value[4:] for value in (completed.stdout or "").splitlines()
+                    if value.startswith("itp-") and len(value) > 4)
+            except OSError:
+                continue
+        result = []
+        for identifier in sorted(ids):
+            deployment = RuntimeDeployment(self.root, identifier)
+            project = f"itp-{identifier}"
+            containers = self._docker_rows("container", project)
+            networks = self._docker_rows("network", project)
+            volumes = self._docker_rows("volume", project)
+            configured = deployment.manifest.is_file()
+            generated = deployment.env_file.is_file()
+            states = [str(value.get("State") or value.get("Status") or "").casefold()
+                      for value in containers]
+            running = any("running" in value or value == "up" for value in states)
+            if configured and generated and running:
+                status = "running"
+            elif configured and generated and not containers:
+                status = "stopped"
+            elif not configured and (containers or networks or volumes):
+                status = "orphaned"
+            elif configured and (not generated or containers):
+                status = "partial"
+            else:
+                status = "missing"
+            manifest = {}
+            if configured:
+                try:
+                    manifest = deployment.load()
+                except RuntimeDeploymentError:
+                    status = "partial"
+            result.append({
+                "deployment_id": identifier,
+                "site_id": self._site_id(deployment),
+                "runtime_path": str(deployment.path),
+                "compose_project": project,
+                "status": status,
+                "configuration_present": configured,
+                "environment_present": generated,
+                "containers": sorted(str(value.get("Names") or value.get("Name") or "")
+                                     for value in containers),
+                "networks": sorted(str(value.get("Name") or "") for value in networks),
+                "volumes": sorted(str(value.get("Name") or "") for value in volumes),
+                "display_name": manifest.get("display_name", identifier),
+                "cleanup_destructive": bool(volumes),
+            })
+        return result
+
+    @staticmethod
+    def _site_id(deployment):
+        try:
+            value = yaml.safe_load(deployment.collectors.read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            return None
+        return value.get("site_id") or value.get("site")
+
+    def reset(self, deployment_id, *, reset_influx=False, yes=False):
+        deployment = RuntimeDeployment(self.root, slugify(deployment_id))
+        if not deployment.path.exists():
+            return {"deployment_id": deployment.deployment_id,
+                    "result": "already_absent", "telemetry_preserved": True}
+        preview = self.deployment_inventory(deployment.deployment_id)[0]
+        self.output("Reset preview:")
+        self.output(yaml.safe_dump(preview, sort_keys=False).rstrip())
+        if not yes:
+            expected = (
+                f"RESET DATA {deployment.deployment_id}" if reset_influx
+                else f"RESET {deployment.deployment_id}")
+            if self.input(f"Type {expected} to reset generated state: ").strip() != expected:
+                raise RuntimeDeploymentError("deployment reset was not confirmed")
+        if deployment.env_file.is_file() and deployment.compose_override.is_file():
+            deployment.run_compose("down", "--remove-orphans", check=False, capture=True)
+        else:
+            self._remove_exact_resources(preview)
+        if reset_influx:
+            volume = f"itp-{deployment.deployment_id}_influxdb_data"
+            self.runner(["docker", "volume", "rm", volume], cwd=self.root,
+                        check=False, text=True, encoding="utf-8",
+                        errors="replace", capture_output=True)
+            environment = self._read_env(deployment.env_file)
+            environment["INFLUXDB_TOKEN"] = ""
+            atomic_write(deployment.env_file, "".join(
+                f"{key}={value}\n" for key, value in environment.items()))
+            os.chmod(deployment.env_file, 0o600)
+        for name in ("dashboard", "telegraf"):
+            shutil.rmtree(deployment.generated / name, ignore_errors=True)
+        for name in ("state", "evidence", "logs"):
+            shutil.rmtree(deployment.path / name, ignore_errors=True)
+            (deployment.path / name).mkdir(parents=True, exist_ok=True)
+        return {"deployment_id": deployment.deployment_id, "result": "reset",
+                "telemetry_preserved": not reset_influx, "preview": preview}
+
+    def remove(self, deployment_id, *, remove_telemetry=False, yes=False):
+        deployment = RuntimeDeployment(self.root, slugify(deployment_id))
+        inventory = self.deployment_inventory(deployment.deployment_id)
+        preview = inventory[0] if inventory else {
+            "deployment_id": deployment.deployment_id, "status": "missing"}
+        self.output("Removal preview:")
+        self.output(yaml.safe_dump(preview, sort_keys=False).rstrip())
+        if not yes:
+            expected = (
+                f"REMOVE DATA {deployment.deployment_id}" if remove_telemetry
+                else f"REMOVE {deployment.deployment_id}")
+            if self.input(f"Type {expected} to remove this deployment: ").strip() != expected:
+                raise RuntimeDeploymentError("deployment removal was not confirmed")
+        if deployment.env_file.is_file() and deployment.compose_override.is_file():
+            arguments = ["down", "--remove-orphans"]
+            if remove_telemetry:
+                arguments.append("--volumes")
+            deployment.run_compose(*arguments, check=False, capture=True)
+        else:
+            self._remove_exact_resources(preview)
+            if remove_telemetry:
+                for volume in preview.get("volumes", []):
+                    if volume:
+                        self.runner(["docker", "volume", "rm", volume],
+                                    cwd=self.root, check=False, text=True,
+                                    capture_output=True)
+        shutil.rmtree(deployment.path, ignore_errors=True)
+        try:
+            if (self.shared / "active-deployment").read_text().strip() == deployment.deployment_id:
+                (self.shared / "active-deployment").unlink(missing_ok=True)
+        except OSError:
+            pass
+        return {"deployment_id": deployment.deployment_id, "result": "removed",
+                "telemetry_preserved": not remove_telemetry, "preview": preview}
+
+    def cleanup(self, *, yes=False, deployment_id=None):
+        inventory = self.deployment_inventory(deployment_id)
+        candidates = [value for value in inventory
+                      if value["status"] == "orphaned"]
+        if not yes:
+            return {"dry_run": True, "candidates": candidates,
+                    "removed": [], "build_cache_command": "docker builder prune -a"}
+        removed = []
+        for value in candidates:
+            project = value["compose_project"]
+            self._remove_exact_resources(value)
+            # Volumes contain persistent data and are never removed by cleanup.
+            removed.append({"compose_project": project,
+                            "containers": value["containers"],
+                            "networks": value["networks"],
+                            "volumes_preserved": value["volumes"]})
+        return {"dry_run": False, "candidates": candidates,
+                "removed": removed, "build_cache_command": "docker builder prune -a"}
+
+    def _remove_exact_resources(self, value):
+        """Remove only exact resources already resolved through Compose labels."""
+        for container in value.get("containers", []):
+            if container:
+                self.runner(["docker", "rm", "-f", container], cwd=self.root,
+                            check=False, text=True, capture_output=True)
+        for network in value.get("networks", []):
+            if network:
+                self.runner(["docker", "network", "rm", network], cwd=self.root,
+                            check=False, text=True, capture_output=True)
+
     def active_id(self) -> str | None:
         try:
             value = (self.shared / "active-deployment").read_text().strip()
@@ -341,7 +548,8 @@ class RuntimeDeploymentManager:
     def create(self, *, name=None, deployment_id=None, timezone=None,
                grafana_port=3000, influxdb_port=8181,
                listen_address="127.0.0.1", collectors=None,
-               non_interactive=False, force=False) -> RuntimeDeployment:
+               non_interactive=False, force=False, site_id=None,
+               site_name=None, confirm=True) -> RuntimeDeployment:
         display_name = name or (
             "ITP Deployment" if non_interactive
             else self._prompt("Deployment display name", "ITP Deployment"))
@@ -388,15 +596,16 @@ class RuntimeDeploymentManager:
                     f"{label} port {port} is already in use")
         enabled = sorted(collectors if collectors is not None else (
             [] if non_interactive else self._collector_selection()))
-        deployment.path.mkdir(parents=True, exist_ok=True)
-        for directory in (
-            deployment.secrets_dir, deployment.generated,
-            deployment.ca_dir,
-            deployment.path / "logs", deployment.path / "evidence",
-            deployment.path / "state", deployment.path / "generated/dashboard",
-            deployment.path / "generated/telegraf",
-        ):
-            directory.mkdir(parents=True, exist_ok=True)
+        proposed_site = str(site_id or "").strip()
+        if not proposed_site and not non_interactive:
+            proposed_site = self._prompt("Canonical Site ID", identifier)
+        proposed_site = proposed_site or identifier
+        proposed_site = proposed_site.removeprefix("site:")
+        canonical_site = f"site:{slugify(proposed_site)}"
+        site_display_name = str(site_name or "").strip()
+        if not site_display_name and not non_interactive:
+            site_display_name = self._prompt("Site display name", display_name)
+        site_display_name = site_display_name or display_name
         manifest = {
             "schema_version": 1,
             "deployment_id": identifier,
@@ -418,12 +627,12 @@ class RuntimeDeploymentManager:
             "deployment_id": identifier,
             "customer_id": identifier,
             "customer": identifier,
-            "site_id": f"site:{identifier}",
-            "site": f"site:{identifier}",
-            "site_name": display_name,
+            "site_id": canonical_site,
+            "site": canonical_site,
+            "site_name": site_display_name,
             "identity": {
                 "customer_name": display_name,
-                "site_name": display_name,
+                "site_name": site_display_name,
             },
             "discovery": {
                 "interval_seconds": 3600,
@@ -452,24 +661,15 @@ class RuntimeDeploymentManager:
             "managed": True,
             "enabled_collectors": enabled,
         }
-        atomic_write(deployment.manifest, yaml.safe_dump(
-            manifest, sort_keys=False))
-        atomic_write(deployment.collectors, yaml.safe_dump(
-            collector_config, sort_keys=False))
-        atomic_write(deployment.dashboards, yaml.safe_dump(
-            dashboards, sort_keys=False))
         sites = {
             "deployment_model": "standalone",
             "sites": [{
-                "id": f"site:{identifier}",
-                "display_name": display_name,
-                "aliases": [identifier],
+                "id": canonical_site,
+                "display_name": site_display_name,
+                "aliases": sorted({identifier, proposed_site}),
                 "enabled": True,
             }],
         }
-        atomic_write(
-            deployment.generated / "sites.yml",
-            yaml.safe_dump(sites, sort_keys=False))
         env = {
             "ITP_DEPLOYMENT_ID": identifier,
             "ITP_CUSTOMER_ID": identifier,
@@ -501,10 +701,6 @@ class RuntimeDeploymentManager:
             "INFLUXDB_ORG": "local_org",
             "TELEGRAF_COLLECTION_INTERVAL": "30s",
         }
-        atomic_write(
-            deployment.env_file,
-            "".join(f"{key}={value}\n" for key, value in env.items()))
-        os.chmod(deployment.env_file, 0o600)
         override = {
             "x-itp-deployment": {
                 "id": identifier,
@@ -512,6 +708,49 @@ class RuntimeDeploymentManager:
             },
             "services": {},
         }
+        plan = {
+            "deployment_id": identifier,
+            "display_name": display_name,
+            "site_id": canonical_site,
+            "site_name": site_display_name,
+            "collectors": enabled,
+            "listen_address": listen_address,
+            "grafana_port": int(grafana_port),
+            "influxdb_port": int(influxdb_port),
+        }
+        self.output("Deployment plan:")
+        self.output(yaml.safe_dump(plan, sort_keys=False).rstrip())
+        if confirm and not non_interactive:
+            accepted = self.input("Create this deployment? [Y/n]: ").strip().casefold()
+            if accepted not in {"", "y", "yes"}:
+                self._new_grafana_passwords.pop(identifier, None)
+                raise RuntimeDeploymentError(
+                    "deployment cancelled before persistent state was created")
+
+        # Persistence boundary: all operator input and locally checkable
+        # configuration has been normalised and validated above this point.
+        deployment.path.mkdir(parents=True, exist_ok=True)
+        for directory in (
+            deployment.secrets_dir, deployment.generated,
+            deployment.ca_dir,
+            deployment.path / "logs", deployment.path / "evidence",
+            deployment.path / "state", deployment.path / "generated/dashboard",
+            deployment.path / "generated/telegraf",
+        ):
+            directory.mkdir(parents=True, exist_ok=True)
+        atomic_write(deployment.manifest, yaml.safe_dump(
+            manifest, sort_keys=False))
+        atomic_write(deployment.collectors, yaml.safe_dump(
+            collector_config, sort_keys=False))
+        atomic_write(deployment.dashboards, yaml.safe_dump(
+            dashboards, sort_keys=False))
+        atomic_write(
+            deployment.generated / "sites.yml",
+            yaml.safe_dump(sites, sort_keys=False))
+        atomic_write(
+            deployment.env_file,
+            "".join(f"{key}={value}\n" for key, value in env.items()))
+        os.chmod(deployment.env_file, 0o600)
         atomic_write(deployment.compose_override, yaml.safe_dump(
             override, sort_keys=False))
         self.shared.mkdir(parents=True, exist_ok=True)
@@ -784,9 +1023,12 @@ class RuntimeDeploymentManager:
 
     def _existing_token_error(self, deployment, endpoint, *,
                               non_interactive=False):
-        retry = retry_command("deploy", "--force", "--verbose")
+        retry = retry_command(
+            "deploy", "--deployment-id", deployment.deployment_id,
+            "--force", "--verbose")
         reset = retry_command(
-            "deploy", "--force", "--reset-influx", "--verbose")
+            "reset", "--deployment", deployment.deployment_id,
+            "--reset-influx")
         mode = (
             "Non-interactive recovery cannot reset data."
             if non_interactive else

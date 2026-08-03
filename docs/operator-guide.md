@@ -3,25 +3,26 @@
 ## Single-site deployment
 
 ```bash
-./itp profile create customer
-./itp profile init-secrets customer
-./itp profile validate customer
-./itp profile up customer
-./itp profile status customer
+./itp deploy --deployment-id customer --site-id main-campus
+./itp collector add <collector> --deployment customer
+./itp collector test <collector> --deployment customer
+./itp collect --deployment customer
+./itp doctor --deployment customer
+./itp status --deployment customer
 ```
 
 ## Multi-site deployment
 
-Create one profile, adapt a tracked deployment example, configure collector
-aliases, then run:
+Create one runtime deployment and define its canonical sites. The deployment
+wizard creates the first site idempotently; additional site hierarchy remains
+an advanced profile workflow described in
+[deployment profiles](deployment-profiles.md).
 
 ```bash
-./itp profile sites customer
-./itp profile validate customer
-./itp profile up customer
-./itp profile services customer
-./itp profile dashboards customer
-./itp profile status customer
+./itp deployment show customer
+./itp doctor --deployment customer
+./itp dashboard generate --deployment customer
+./itp status --deployment customer
 ```
 
 Confirm Entire Estate and each site appear, then compare a drill-down with the
@@ -31,9 +32,9 @@ estate view.
 
 ```bash
 git pull --ff-only
-./itp profile validate <profile>
-./itp profile restart <profile>
-./itp profile status <profile>
+./itp update --deployment <deployment>
+./itp doctor --deployment <deployment>
+./itp status --deployment <deployment>
 ```
 
 ## Troubleshooting

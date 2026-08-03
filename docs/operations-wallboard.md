@@ -92,7 +92,8 @@ Enabled, the section is omitted.
 
 ## Capabilities, WAN and drill-down
 
-`runtime/dashboard/managed/registry.json` controls domain availability and
+`runtime/deployments/<deployment>/generated/dashboard/managed/registry.json`
+controls domain availability and
 drill-down links. The wallboard does not check vendor names to decide whether a
 domain exists. Links are added only for dashboard UIDs selected by the registry,
 so optional packs may be absent safely.
