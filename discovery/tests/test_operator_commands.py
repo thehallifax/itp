@@ -323,7 +323,7 @@ def test_scheduler_one_shot_isolates_connector_failures(caplog):
     assert [value["connector"] for value in outcomes] == ["bad", "good"]
     assert outcomes[0]["status"] == "failed"
     assert outcomes[0]["exception_type"] == "RuntimeError"
-    assert outcomes[0]["reason"] == "collector execution failed"
+    assert outcomes[0]["reason"] == "collect: execution_failed"
     assert "must-not-be-returned" not in json.dumps(outcomes)
     assert "must-not-be-returned" not in caplog.text
     assert outcomes[1]["value"] == {"points_written": 2}

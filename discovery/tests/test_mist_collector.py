@@ -9,7 +9,7 @@ from collectors.config import load_config
 from collectors.inventory import InventoryManager
 from collectors.mist.client import MistClient
 from collectors.mist.collector import MistCollector
-from collectors.mist.models import MistAuthenticationError, MistAuthorizationError, MistError, MistPaginationError
+from collectors.mist.models import MistAuthenticationError, MistAuthorizationError, MistConfigurationError, MistError, MistPaginationError
 from collectors.mist.normalizer import device_kind, metric_fields, metric_points, normalize_device, stable_id
 from collectors.writer import InfluxWriter
 from collectors.__main__ import inspection_lines
@@ -29,8 +29,14 @@ def client_with(handler, **kwargs):
 
 def test_mist_registered_and_missing_credentials():
     assert CollectorRegistry.get("mist") is MistCollector
-    with pytest.raises(ValueError, match="MIST_ORG_ID"):
+    with pytest.raises(MistConfigurationError, match="organization_id"):
         MistCollector({"collectors": {"mist": {"enabled": True}}})
+
+
+def test_mist_rejects_non_uuid_organisation_before_network_access():
+    with pytest.raises(MistConfigurationError, match="complete UUID"):
+        MistCollector({"collectors": {"mist": {
+            "organization_id": "not-a-uuid", "api_token": "secret"}}})
 
 
 def test_configuration_environment_loading(tmp_path, monkeypatch):

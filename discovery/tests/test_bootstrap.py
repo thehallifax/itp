@@ -263,6 +263,25 @@ def test_deploy_prerequisite_failure_stops_before_environment_or_runtime_write(
     assert not (tmp_path / "runtime").exists()
 
 
+def test_deploy_defers_port_checks_until_operator_selects_ports(
+        tmp_path, monkeypatch):
+    observed = {}
+    monkeypatch.setattr(
+        bootstrap, "ensure_environment",
+        lambda *args, **kwargs: (
+            tmp_path / ".venv/bin/python", tmp_path / "scripts/itp.py"))
+
+    def prerequisites(*_args, **kwargs):
+        observed.update(kwargs)
+        return {}
+
+    bootstrap.launch(
+        tmp_path, ["deploy", "--no-start"], prerequisite_fn=prerequisites,
+        run=lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+        interactive=False)
+    assert observed["check_ports"] is False
+
+
 def test_interactive_deploy_can_cancel_before_environment_creation(
         tmp_path, monkeypatch):
     from analysis.prerequisites import PrerequisiteCheck, PrerequisiteReport

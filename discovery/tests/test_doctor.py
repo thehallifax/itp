@@ -231,12 +231,14 @@ def test_incomplete_connector_and_missing_secret_names_only(tmp_path):
 def test_validation_exception_timeout_and_secret_redaction(tmp_path, monkeypatch):
     root = repository(tmp_path)
     secret = "DOCTOR-SECRET-8675309"
-    monkeypatch.setenv("MIST_ORG_ID", "org")
+    monkeypatch.setenv(
+        "MIST_ORG_ID", "00000000-0000-4000-8000-000000000001")
     monkeypatch.setenv("MIST_API_TOKEN", secret)
     (root / "discovery/config.yml").write_text(yaml.safe_dump({
         "schema_version": 1,
         "collectors": {"mist": {"enabled": True,
-                                "base_url": "https://api.mist.com"}},
+                                  "organization_id": "00000000-0000-4000-8000-000000000001",
+                                  "base_url": "https://api.mist.com"}},
     }))
 
     def failure(config, timeout):

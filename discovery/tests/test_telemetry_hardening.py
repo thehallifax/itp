@@ -10,7 +10,7 @@ from collectors.base import BaseCollector, RuntimePlacementCollector
 from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.inventory import InventoryManager
 from collectors.scheduler import Scheduler
-from collectors.writer import InfluxWriter
+from collectors.writer import InfluxWriteError, InfluxWriter
 from telemetry import (
     CollectorHealth,
     DeploymentMetadata,
@@ -162,9 +162,18 @@ def test_inventory_rewrites_source_site_before_persistence(tmp_path):
 
 def test_runtime_capabilities_and_dashboard_site_contracts():
     registry = ConnectorMetadataRegistry.load(ROOT)
-    assert registry.get("fortigate").runtime_modes == ("edge",)
+    assert registry.get("fortigate").runtime_modes == ("central", "edge")
     assert registry.get("mist").runtime_modes == ("central",)
     assert registry.get("paloalto").runtime_modes == ("central", "edge")
+
+
+def test_influx_writer_reports_safe_failure_stage_and_category():
+    writer = InfluxWriter(url="", token="", database="")
+    with pytest.raises(InfluxWriteError) as raised:
+        writer.write([{"measurement": "m", "fields": {"value": 1}}])
+    assert raised.value.stage == "write"
+    assert raised.value.category == "configuration_incomplete"
+    assert "token" not in str(raised.value).casefold()
     for relative in (
             "dashboards/Collectors/collector-health.json",
             "dashboards/Printing/papercut-overview.json",

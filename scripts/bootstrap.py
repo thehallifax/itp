@@ -487,9 +487,8 @@ def launch(
     prerequisite = None
     if arguments[:1] == ["deploy"]:
         prerequisite_options = {
-            "ports": prerequisite_ports(arguments), "runner": run}
-        if existing_deployment_selected(root, arguments):
-            prerequisite_options["check_ports"] = False
+            "ports": prerequisite_ports(arguments), "runner": run,
+            "check_ports": False}
         if "--no-start" in arguments:
             prerequisite_options.update(
                 check_services=False, check_ports=False,

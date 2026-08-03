@@ -5,6 +5,7 @@ import yaml
 
 from collectors.config import load_config
 from collectors.mist.collector import MistCollector
+from collectors.mist.models import MistConfigurationError
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -63,6 +64,8 @@ def test_missing_environment_placeholders_fail_without_secret_values(tmp_path, m
     config = load_config(path)
     assert config["collectors"]["mist"]["organization_id"] == ""
     assert config["collectors"]["mist"]["api_token"] == ""
-    with pytest.raises(ValueError, match="MIST_ORG_ID and MIST_API_TOKEN are required") as caught:
+    with pytest.raises(
+            MistConfigurationError,
+            match="organization_id and api_token") as caught:
         MistCollector(config)
     assert "${" not in str(caught.value)

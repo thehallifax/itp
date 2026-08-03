@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import time
+import uuid
 from collections import Counter, defaultdict
 from urllib.parse import urlsplit
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ from collectors.writer import InfluxWriter
 from collectors.configuration import parse_bool_default
 from collectors.tls import deployment_ca_bundle
 from .client import MistClient
-from .models import MistConfig
+from .models import MistConfig, MistConfigurationError
 from .normalizer import METRIC_FIELDS, metric_points, normalize_device
 
 LOG = logging.getLogger("collector.mist")
@@ -42,7 +43,14 @@ class MistCollector(BaseCollector):
                 or deployment_ca_bundle(config)),
         )
         if not self.settings.organization_id or not self.settings.api_token:
-            raise ValueError("MIST_ORG_ID and MIST_API_TOKEN are required")
+            raise MistConfigurationError(
+                "Mist configuration requires organization_id and api_token")
+        if client is None:
+            try:
+                uuid.UUID(self.settings.organization_id)
+            except ValueError as exc:
+                raise MistConfigurationError(
+                    "Mist organization_id must be a complete UUID") from exc
         self.customer = config.get("customer", "unknown")
         self.default_site = config.get("site", "unknown")
         self.discovery_interval = self.settings.discovery_interval_seconds

@@ -38,7 +38,7 @@ deployment fixtures and complete Docker volume/network inventory remain.
 
 **Status:** Foundation implemented; full acceptance pending
 
-Palo Alto, FortiGate and PaperCut use guided setup. Palo Alto and FortiGate can
+Palo Alto, FortiGate, PaperCut and Mist use guided setup. Palo Alto and FortiGate can
 select discovered WAN interfaces while retaining canonical interface identity.
 Product-mismatch confirmation and the complete diagnostic/re-run acceptance
 matrix remain.

@@ -58,7 +58,9 @@ def _legacy_points(record, points):
 @CollectorRegistry.register
 class FortiGateCollector(BaseCollector):
     name = "fortigate"
-    execution = "edge"
+    # The read-only FortiOS HTTPS API has no edge-local dependency. It may run
+    # centrally when the management endpoint is reachable, or at an edge.
+    execution = "either"
 
     def __init__(self, config, inventory_path="/app/runtime/inventory/devices.json", *, client=None, writer=None):
         settings = config.get("collectors", {}).get("fortigate", config)

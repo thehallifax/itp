@@ -53,7 +53,7 @@ connectors:
       - hpe-aruba-central
     notes: Read-only Aruba Central REST collector with OAuth renewal; guided setup is unavailable.
   - id: fortigate
-    runtime_modes: [edge]
+    runtime_modes: [central, edge]
     display_name: FortiGate
     vendor: Fortinet
     domains: [firewall, internet, switching]
@@ -112,20 +112,21 @@ connectors:
     domains: [switching, wireless]
     deployment_types: [Business, Enterprise, Home Lab, MSP, School]
     implementation_status: supported
-    guided_setup: false
-    configuration_mode: manual
+    guided_setup: true
+    configuration_mode: guided
     credential_fields:
       - id: organization_id
         env: MIST_ORG_ID
         required: true
         secret: false
+        configuration_field: collectors.mist.organization_id
         prompt: {label: Organisation ID, example: 00000000-0000-0000-0000-000000000000, help: Mist organisation UUID, default: '', value_type: uuid, sensitive: false}
       - id: api_token
         env: MIST_API_TOKEN
         required: true
         secret: true
         prompt: {label: API token, example: Mist API token, help: Read-only Mist API token, default: '', value_type: secret, sensitive: true}
-    configuration_fields: [collectors.mist.base_url]
+    configuration_fields: [collectors.mist.organization_id, collectors.mist.base_url]
     configuration_prompts:
       - {field: collectors.mist.base_url, label: Juniper Mist API base URL, example: 'https://api.ac2.mist.com', help: Enter the regional API origin only; do not include /api/v1, default: 'https://api.mist.com', value_type: url, sensitive: false, normalizer: https-origin}
     secret_handling:

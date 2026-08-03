@@ -5,19 +5,31 @@ from dataclasses import dataclass
 
 
 class MistError(RuntimeError):
-    pass
+    category = "api_failure"
+
+    @property
+    def diagnostic_payload(self):
+        return {"category": self.category, "message": str(self)}
 
 
 class MistAuthenticationError(MistError):
-    pass
+    category = "authentication_failed"
 
 
 class MistAuthorizationError(MistError):
-    pass
+    category = "insufficient_permissions"
 
 
 class MistPaginationError(MistError):
-    pass
+    category = "pagination_failed"
+
+
+class MistConfigurationError(MistError):
+    category = "configuration_incomplete"
+
+
+class MistOrganizationError(MistError):
+    category = "organization_not_found"
 
 
 @dataclass(frozen=True)

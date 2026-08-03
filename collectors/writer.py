@@ -10,6 +10,24 @@ from urllib.parse import urlsplit, urlunsplit
 from telemetry import DeploymentMetadata, normalize_point
 
 
+class InfluxWriteError(RuntimeError):
+    """Safe, structured failure at the canonical telemetry write boundary."""
+
+    def __init__(self, message, *, category="write_failed", http_status=None):
+        super().__init__(message)
+        self.category = category
+        self.stage = "write"
+        self.http_status = http_status
+
+    @property
+    def diagnostic_payload(self):
+        value = {"category": self.category, "stage": self.stage,
+                 "message": str(self)}
+        if self.http_status is not None:
+            value["http_status"] = self.http_status
+        return value
+
+
 def atomic_write(path, content, *, mode=None, directory_mode=None):
     """Atomically publish content with an optional explicit permission policy.
 
@@ -152,7 +170,9 @@ class InfluxWriter:
         if self.delegate:
             return self.delegate(points)
         if not self.url or not self.token or not self.database:
-            raise ValueError("INFLUXDB_HOST, INFLUXDB_TOKEN and INFLUXDB_BUCKET are required")
+            raise InfluxWriteError(
+                "InfluxDB writer configuration is incomplete",
+                category="configuration_incomplete")
         import httpx
         client = self.client or httpx.Client(timeout=self.timeout)
         lines = [line for line in (self.line_protocol(p) for p in points) if line]
@@ -167,9 +187,19 @@ class InfluxWriter:
                             headers={"Authorization": f"Bearer {self.token}", "Content-Type": "text/plain"})
                         if response.status_code < 300: break
                         if response.status_code not in (429, 500, 502, 503, 504) or attempt == self.retries:
-                            raise RuntimeError(f"InfluxDB write failed with HTTP {response.status_code}")
+                            category = (
+                                "influx_authentication_failed"
+                                if response.status_code in {401, 403} else
+                                "influx_database_missing"
+                                if response.status_code == 404 else "write_failed")
+                            raise InfluxWriteError(
+                                f"InfluxDB rejected telemetry (HTTP {response.status_code})",
+                                category=category,
+                                http_status=response.status_code)
                     except httpx.TransportError as exc:
-                        if attempt == self.retries: raise RuntimeError("InfluxDB write transport failure") from exc
+                        if attempt == self.retries:
+                            raise InfluxWriteError(
+                                "InfluxDB write transport failure") from exc
                     time.sleep(min(2 ** attempt, 4))
                 written += len(lines[offset:offset + self.batch_size])
         finally:

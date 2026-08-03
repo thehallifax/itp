@@ -5,9 +5,29 @@ from datetime import datetime, timezone
 import pytest
 
 from collectors.scheduler import Scheduler
+from collectors.writer import InfluxWriteError
 
 
 NOW = datetime(2026, 7, 28, 1, 2, 3, tzinfo=timezone.utc)
+
+
+def test_scheduler_preserves_safe_write_failure_diagnostic():
+    class WriteFailure:
+        name = "papercut"
+        discovery_interval = 60
+        collection_interval = 30
+
+        async def collect(self):
+            raise InfluxWriteError(
+                "InfluxDB rejected telemetry", category="write_failed")
+
+    scheduler = Scheduler([WriteFailure()])
+    outcome = asyncio.run(
+        scheduler._execute_detailed(scheduler.collectors[0], "collect"))
+    assert outcome["status"] == "failed"
+    assert outcome["failed_stage"] == "write"
+    assert outcome["diagnostic_category"] == "write_failed"
+    assert outcome["reason"] == "write: write_failed"
 
 
 class Collector:

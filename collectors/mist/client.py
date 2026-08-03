@@ -12,6 +12,7 @@ from .models import (
     MistAuthenticationError,
     MistAuthorizationError,
     MistError,
+    MistOrganizationError,
     MistPaginationError,
 )
 
@@ -72,7 +73,10 @@ class MistClient:
             try:
                 response = await self.client.get(path, params=params, headers=self._headers)
             except httpx.TransportError as exc:
-                if attempt == self.max_retries: raise MistError("Mist API transport failure") from exc
+                if attempt == self.max_retries:
+                    error = MistError("Mist API unavailable or DNS/TLS connection failed")
+                    error.category = "api_unavailable"
+                    raise error from exc
                 response = None
             if response is not None:
                 remaining = response.headers.get("X-RateLimit-Remaining")
@@ -81,9 +85,15 @@ class MistClient:
                     except ValueError: pass
                 if response.status_code == 401: raise MistAuthenticationError("Mist API authentication failed (HTTP 401)")
                 if response.status_code == 403: raise MistAuthorizationError("Mist API token lacks required read permission (HTTP 403)")
+                if response.status_code == 404:
+                    raise MistOrganizationError(
+                        "Mist organisation was not found at the configured regional API endpoint (HTTP 404)")
                 if response.status_code < 400:
                     try: data = response.json()
-                    except ValueError as exc: raise MistError("Mist API returned invalid JSON") from exc
+                    except ValueError as exc:
+                        error = MistError("Mist API returned malformed JSON")
+                        error.category = "malformed_response"
+                        raise error from exc
                     if not isinstance(data, (list, dict)): raise MistError("Mist API returned an unexpected JSON type")
                     return response, data
                 if response.status_code not in transient:

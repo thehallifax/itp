@@ -341,11 +341,15 @@ class Scheduler:
                     self.logger.error(
                         "collector=%s phase=%s result=failed exception_type=%s",
                         collector.name, phase, type(exc).__name__)
+                category = str(getattr(exc, "category", "execution_failed"))
+                stage = str(getattr(exc, "stage", phase))
                 outcome = {
                     "connector": collector.name, "status": "failed",
                     "duration_ms": int((self.monotonic() - started) * 1000),
                     "value": None, "exception_type": type(exc).__name__,
-                    "reason": "collector execution failed", "run_id": run_id}
+                    "reason": f"{stage}: {category}",
+                    "diagnostic_category": category,
+                    "failed_stage": stage, "run_id": run_id}
             finally:
                 self._active.pop(collector, None)
                 self.state.write(

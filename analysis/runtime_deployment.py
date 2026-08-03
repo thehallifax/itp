@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
@@ -127,6 +128,12 @@ def normalize_onboarding_value(value: str, normalizer: str = "") -> str:
     value = str(value or "").strip()
     if not value or not normalizer:
         return value
+    if normalizer == "uuid":
+        try:
+            return str(uuid.UUID(value))
+        except ValueError as exc:
+            raise RuntimeDeploymentError(
+                "the value must be a complete UUID") from exc
     if normalizer == "https-origin" and "://" not in value:
         raise RuntimeDeploymentError("enter a complete HTTPS URL, including https://")
     if "://" not in value:
@@ -553,7 +560,6 @@ class RuntimeDeploymentManager:
         deployment = RuntimeDeployment(self.root, slugify(selected))
         if not deployment.manifest.is_file():
             raise RuntimeDeploymentError(f"deployment does not exist: {selected}")
-        self._migrate_site_alias(deployment)
         return deployment
 
     def activate(self, deployment_id: str) -> RuntimeDeployment:
@@ -649,7 +655,45 @@ class RuntimeDeploymentManager:
                grafana_port=3000, influxdb_port=8181,
                listen_address="127.0.0.1", collectors=None,
                non_interactive=False, force=False, site_id=None,
-               site_name=None, confirm=True) -> RuntimeDeployment:
+               site_name=None, confirm=True, reconfigure=False) -> RuntimeDeployment:
+        # An explicit existing ID is a resume operation.  Resolve it before any
+        # onboarding prompt so ``deploy --force`` can safely retry a failed
+        # build/start without rewriting canonical configuration or credentials.
+        if deployment_id:
+            requested = RuntimeDeployment(self.root, slugify(deployment_id))
+            if requested.manifest.is_file() and force and not reconfigure:
+                requested.load()
+                if not requested.collectors.is_file() or not requested.env_file.is_file():
+                    raise RuntimeDeploymentError(
+                        f"deployment {requested.deployment_id} is incomplete; "
+                        "use --reconfigure to repair its configuration")
+                self.output(
+                    f"Resuming deployment {requested.deployment_id}; preserving "
+                    "existing configuration and credentials.")
+                return requested
+            if requested.manifest.is_file() and reconfigure:
+                previous = requested.load()
+                previous_config = yaml.safe_load(
+                    requested.collectors.read_text()) or {}
+                previous_network = previous.get("network") or {}
+                name = name or previous.get("display_name")
+                timezone = timezone or previous.get("timezone")
+                listen_address = (
+                    listen_address if listen_address != "127.0.0.1" else
+                    previous_network.get("listen_address", listen_address))
+                grafana_port = (
+                    grafana_port if grafana_port != 3000 else
+                    previous_network.get("grafana_port", grafana_port))
+                influxdb_port = (
+                    influxdb_port if influxdb_port != 8181 else
+                    previous_network.get("influxdb_port", influxdb_port))
+                if collectors is None:
+                    collectors = [
+                        key for key, item in
+                        (previous_config.get("collectors") or {}).items()
+                        if isinstance(item, dict) and item.get("enabled")]
+                site_id = site_id or previous_config.get("site_id")
+                site_name = site_name or previous_config.get("site_name")
         display_name = name or (
             "ITP Deployment" if non_interactive
             else self._prompt("Deployment display name", "ITP Deployment"))
@@ -680,6 +724,23 @@ class RuntimeDeploymentManager:
                 "Listening address", listen_address)
             grafana_port = int(self._prompt("Grafana port", str(grafana_port)))
             influxdb_port = int(self._prompt("InfluxDB port", str(influxdb_port)))
+            selected_ports = {"Grafana": grafana_port, "InfluxDB": influxdb_port}
+            for label in ("Grafana", "InfluxDB"):
+                port = selected_ports[label]
+                existing_network = existing_manifest.get("network", {})
+                owns_port = (
+                    force
+                    and existing_network.get("listen_address") == listen_address
+                    and int(existing_network.get(
+                        f"{label.casefold()}_port", -1)) == int(port))
+                while not owns_port and not self.port_available(
+                        listen_address, port):
+                    self.output(
+                        f"{label} port {port} is already in use; choose another port.")
+                    port = int(self._prompt(f"{label} port", str(port)))
+                selected_ports[label] = port
+            grafana_port = selected_ports["Grafana"]
+            influxdb_port = selected_ports["InfluxDB"]
         if grafana_port == influxdb_port:
             raise RuntimeDeploymentError("Grafana and InfluxDB ports must differ")
         for label, port in (("Grafana", grafana_port), ("InfluxDB", influxdb_port)):
@@ -1306,7 +1367,8 @@ class RuntimeDeploymentManager:
             entered = self.input(f"{label}{suffix}: ").strip() or default
             if entered:
                 entered = normalize_onboarding_value(
-                    entered, prompt.get("normalizer", ""))
+                    entered, prompt.get("normalizer", "") or (
+                        "uuid" if prompt.get("value_type") == "uuid" else ""))
                 if key.endswith(("verify_tls", "enabled")):
                     enabled = entered.casefold() in {
                         "1", "true", "yes", "on"}
@@ -1330,6 +1392,11 @@ class RuntimeDeploymentManager:
             lines = []
             for field in connector.credential_fields:
                 canonical = field.get("configuration_field", "")
+                if (connector.id == "mist" and canonical
+                        and not field.get("secret")):
+                    # Non-secret canonical configuration belongs in
+                    # collectors.yml, not a credential environment file.
+                    continue
                 if canonical and (
                         canonical in canonical_values
                         or settings.get(canonical.rsplit(".", 1)[-1])):
@@ -1349,13 +1416,8 @@ class RuntimeDeploymentManager:
                         field.get("secret") or prompt.get("sensitive")
                     ) else self.input
                     entered = reader(f"{label}{suffix}: ").strip() or default
-                    if (entered and prompt.get("value_type") == "uuid"
-                            and not re.fullmatch(
-                                r"[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}",
-                                entered)):
-                        self.output(
-                            f"Advisory: {label} does not look like a UUID; "
-                            "verify it before collection.")
+                    if entered and prompt.get("value_type") == "uuid":
+                        entered = normalize_onboarding_value(entered, "uuid")
                 if entered:
                     lines.append(f"{field['env']}={entered}")
             atomic_write(secret_path, "\n".join(lines) + ("\n" if lines else ""))
@@ -1520,6 +1582,12 @@ class RuntimeDeploymentManager:
 
     def collector_readiness(self, deployment):
         config = yaml.safe_load(deployment.collectors.read_text()) or {}
+        try:
+            scheduler_state = json.loads(
+                (deployment.path / "scheduler/state.json").read_text())
+        except (OSError, ValueError, TypeError):
+            scheduler_state = {}
+        run_states = scheduler_state.get("connectors") or {}
         runtime_mode = deployment.environment().get(
             "ITP_RUNTIME_MODE", "central").strip().casefold()
         environment = {}
@@ -1555,12 +1623,22 @@ class RuntimeDeploymentManager:
                 elif missing_credentials:
                     state, missing = "pending credentials", missing_credentials
                 else:
-                    state, missing = "configured", []
+                    run_state = run_states.get(connector.id) or {}
+                    latest = run_state.get("last_collection_outcome")
+                    if latest == "success":
+                        state = "configured and validated"
+                    elif latest == "failed":
+                        state = "configured but last collection failed"
+                    elif latest == "skipped":
+                        state = "configured but collection skipped"
+                    else:
+                        state = "ready for first collection"
+                    missing = []
                 eligible, execution = CollectorRegistry.execution_eligible(
                     connector.id,
                     (config.get("collectors") or {}).get(connector.id) or {},
                     runtime_mode)
-                if state == "configured" and not eligible:
+                if not missing and not eligible:
                     state = "execution mode mismatch"
             result.append({
                 "id": connector.id, "display_name": connector.display_name,
@@ -1576,7 +1654,12 @@ class RuntimeDeploymentManager:
                 "next_action": (
                     f"./itp collector add {connector.id} --deployment "
                     f"{deployment.deployment_id}"
-                    if state.startswith("pending") else ""),
+                    if state.startswith("pending") else
+                    f"./itp collector test {connector.id} --deployment "
+                    f"{deployment.deployment_id} --json"
+                    if state in {"ready for first collection",
+                                 "configured but last collection failed",
+                                 "configured but collection skipped"} else ""),
             })
         return result
 

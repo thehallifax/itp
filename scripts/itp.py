@@ -53,9 +53,11 @@ from analysis.operator import (
     start_background,
 )
 from analysis.runtime_deployment import (
+    RuntimeDeployment,
     RuntimeDeploymentError,
     RuntimeDeploymentManager,
     retry_command,
+    slugify,
 )
 from analysis.sites import SiteRegistry
 from analysis.support import SupportBundleBuilder
@@ -809,7 +811,13 @@ def runtime_collection(runtime_manager, deployment, config, connector=None):
             continue
         enabled_metadata.append(metadata)
         state = readiness[metadata.id]
-        if state["state"] != "configured":
+        runnable_states = {
+            "configured",  # compatibility with injected/legacy readiness
+            "ready for first collection", "configured and validated",
+            "configured but last collection failed",
+            "configured but collection skipped",
+        }
+        if state["state"] not in runnable_states:
             diagnostic = {}
             if state["state"] == "execution mode mismatch":
                 mismatch = ExecutionModeMismatch(
@@ -902,6 +910,9 @@ def main():
         runtime_setup.add_argument("--site-name")
         runtime_setup.add_argument("--non-interactive", action="store_true")
         runtime_setup.add_argument("--force", action="store_true")
+        runtime_setup.add_argument(
+            "--reconfigure", action="store_true",
+            help="explicitly reopen existing deployment onboarding")
         runtime_setup.add_argument("--reset-influx", action="store_true")
         runtime_setup.add_argument("--no-start", action="store_true")
         runtime_setup.add_argument("--verbose", action="store_true")
@@ -951,7 +962,10 @@ def main():
     cleanup_runtime.add_argument("--yes", action="store_true")
     cleanup_runtime.add_argument("--json", action="store_true")
     credentials = add_deployment_selector(commands.add_parser(
-        "credentials", help="show how to retrieve deployment credentials")
+        "credentials", help="retrieve Grafana credentials or manage trusted CAs",
+        description=(
+            "Retrieve deployment-generated Grafana credentials or manage "
+            "deployment-specific trusted CA certificates."))
     )
     credential_actions = credentials.add_subparsers(dest="credential_action")
     grafana_credentials = add_local_deployment_selector(
@@ -960,15 +974,19 @@ def main():
             help="display generated Grafana administrator credentials"))
     grafana_credentials.add_argument("--json", action="store_true")
     ca_credentials = credential_actions.add_parser(
-        "ca", help="manage deployment-specific trusted CA certificates")
+        "ca", help="manage deployment-specific trusted CA certificates",
+        description="Add, list, or remove deployment-specific trusted CAs.")
     ca_actions = ca_credentials.add_subparsers(
         dest="ca_action", required=True)
-    ca_add = add_local_deployment_selector(ca_actions.add_parser("add"))
+    ca_add = add_local_deployment_selector(ca_actions.add_parser(
+        "add", help="add a PEM CA certificate"))
     ca_add.add_argument("certificate_file")
     ca_add.add_argument("--json", action="store_true")
-    ca_list = add_local_deployment_selector(ca_actions.add_parser("list"))
+    ca_list = add_local_deployment_selector(ca_actions.add_parser(
+        "list", help="list trusted CA certificates"))
     ca_list.add_argument("--json", action="store_true")
-    ca_remove = add_local_deployment_selector(ca_actions.add_parser("remove"))
+    ca_remove = add_local_deployment_selector(ca_actions.add_parser(
+        "remove", help="remove a trusted CA by name or fingerprint"))
     ca_remove.add_argument("identifier")
     ca_remove.add_argument("--json", action="store_true")
     collector_runtime = add_deployment_selector(commands.add_parser(
@@ -1109,7 +1127,14 @@ def main():
         ROOT, registry=runtime_registry)
     if args.group == "credentials":
         if not args.credential_action:
-            print("Credential targets: grafana, ca")
+            print("Retrieve Grafana credentials:")
+            print("  ./itp credentials grafana --deployment <id>")
+            print("\nManage trusted CA certificates:")
+            print("  ./itp credentials ca list --deployment <id>")
+            print("  ./itp credentials ca add <certificate.pem> --deployment <id>")
+            print("  ./itp credentials ca remove <name> --deployment <id>")
+            print("\nGrafana credentials are generated during deployment; "
+                  "there is no credentials grafana add command.")
             return
         deployment = runtime_manager.select(args.deployment)
         if args.credential_action == "ca":
@@ -1195,6 +1220,9 @@ def main():
         return
     if args.group in {"deploy", "init"}:
         verbose = deployment_verbose(args.verbose)
+        requested_id = slugify(args.deployment_id) if args.deployment_id else ""
+        existed_before = bool(
+            requested_id and RuntimeDeployment(ROOT, requested_id).manifest.is_file())
         def phase(number, label, operation, retry):
             print(f"[{number}/6] {label}")
             try:
@@ -1228,16 +1256,20 @@ def main():
                 collectors=args.collector,
                 non_interactive=args.non_interactive,
                 force=args.force,
+                reconfigure=args.reconfigure,
                 site_id=args.site_id,
                 site_name=args.site_name),
             retry_command("deploy", "--verbose"))
+        # Site alias migration is an explicit deployment mutation, never a
+        # side effect of read-only commands such as credentials or status.
+        runtime_manager._migrate_site_alias(deployment)
         load_runtime_env(deployment.env_file, deployment)
         deployment_config = load_config(deployment.collectors)
         enabled_collectors = sorted(
             name for name, settings in
             (deployment_config.get("collectors") or {}).items()
             if isinstance(settings, dict) and settings.get("enabled"))
-        if not args.non_interactive:
+        if not args.non_interactive and (not existed_before or args.reconfigure):
             for name in enabled_collectors:
                 runtime_manager.add_collector(deployment, name)
         DashboardRegistry(

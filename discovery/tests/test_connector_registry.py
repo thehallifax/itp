@@ -41,7 +41,7 @@ def test_complete_inventory_stable_ids_and_deterministic_order(registry):
 def test_alias_lookup_and_guided_setup_inventory(registry):
     assert registry.get("pan-os").id == "paloalto"
     assert registry.get("vcenter").id == "vmware"
-    guided = {"fortigate", "paloalto", "papercut"}
+    guided = {"fortigate", "paloalto", "papercut", "mist"}
     assert {value.id for value in registry.manual_only()} == EXPECTED - guided
     assert {value.id for value in registry.filter(guided_setup=True)} == guided
     assert {value.id for value in registry.filter(guided_setup=False)} == EXPECTED - guided

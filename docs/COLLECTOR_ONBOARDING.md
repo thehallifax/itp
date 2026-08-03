@@ -29,7 +29,11 @@ requested twice.
   `/api/v2`; the host is stored as an HTTPS origin and the token is hidden.
 - Mist requires a complete HTTPS origin. The default is
   `https://api.mist.com`; Australian organisations commonly use
-  `https://api.ac2.mist.com`. Do not include `/api/v1`.
+  `https://api.ac2.mist.com`. Do not include `/api/v1`. Its organisation ID is
+  a non-secret UUID stored in canonical deployment configuration; the API token
+  remains in the deployment secret file. Authentication, permissions, regional
+  endpoint mismatch, malformed response, and transport failures are reported
+  as distinct safe diagnostic categories.
 - PaperCut accepts `hostname[:port]` or an HTTPS origin. A trailing
   `/api/health` is safely removed, and the optional authorization key is hidden.
 
@@ -49,6 +53,11 @@ Collectors provide source metadata and mapped values. Deployment identity,
 schema enforcement, writes, run health, and readiness belong to the framework.
 An edge-only connector in a central runtime remains visible as `skipped` with
 an explicit placement reason.
+
+`deploy --deployment-id <id> --force` resumes an existing deployment and
+preserves its canonical configuration and credential files. Use
+`--reconfigure` only when the operator explicitly intends to reopen onboarding.
+Read-only commands never migrate or rewrite deployment configuration.
 
 For each selected connector, complete configuration and credentials, run
 `collector test`, then run one collection:

@@ -15,12 +15,14 @@ cp secrets/fortigate.env.example secrets/fortigate.env
 # Set host, token, customer and site; retain FORTIGATE_VERIFY_TLS=true in production.
 ```
 
-Enable `collectors.fortigate` with `execution: edge`, then run:
+FortiGate can run in either central or edge mode. Central mode is appropriate
+when the collector service can reach the management HTTPS endpoint; edge mode
+remains available for private networks that require local placement. Then run:
 
 ```sh
-ITP_RUNTIME_MODE=edge docker compose run --rm collector python -m collectors inspect fortigate
-ITP_RUNTIME_MODE=edge docker compose run --rm collector python -m collectors collect fortigate
-ITP_RUNTIME_MODE=edge docker compose up -d --force-recreate collector
+docker compose run --rm collector python -m collectors inspect fortigate
+docker compose run --rm collector python -m collectors collect fortigate
+docker compose up -d --force-recreate collector
 docker compose logs --since=5m collector
 ```
 

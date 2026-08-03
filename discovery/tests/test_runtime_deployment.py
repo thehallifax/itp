@@ -971,7 +971,7 @@ def test_runtime_timezone_validation_is_iana_and_actionable(tmp_path):
             name="Invalid", timezone="Not/AZone", non_interactive=True)
 
 
-def test_select_durably_migrates_legacy_site_alias(tmp_path):
+def test_select_is_read_only_and_deploy_migration_is_explicit(tmp_path):
     runtime = manager(tmp_path)
     deployment = runtime.create(name="Example", non_interactive=True)
     value = yaml.safe_load(deployment.collectors.read_text())
@@ -979,13 +979,64 @@ def test_select_durably_migrates_legacy_site_alias(tmp_path):
     value["collectors"]["papercut"] = {
         "enabled": True, "site": "example"}
     deployment.collectors.write_text(yaml.safe_dump(value, sort_keys=False))
+    before = deployment.collectors.read_bytes()
     selected = runtime.select("example")
+    assert selected.collectors.read_bytes() == before
+    runtime._migrate_site_alias(selected)
     migrated = yaml.safe_load(selected.collectors.read_text())
     assert migrated["site"] == "site:example"
     assert migrated["collectors"]["papercut"]["site"] == "site:example"
-    before = selected.collectors.read_text()
-    runtime.select("example")
-    assert selected.collectors.read_text() == before
+
+
+def test_force_resume_preserves_existing_configuration_and_secrets(tmp_path):
+    runtime = manager(tmp_path)
+    deployment = runtime.create(name="Example", non_interactive=True)
+    deployment.secrets_dir.mkdir(exist_ok=True)
+    secret = deployment.secrets_dir / "example.env"
+    secret.write_text("TOKEN=private-value\n")
+    tracked = [deployment.manifest, deployment.collectors,
+               deployment.env_file, secret]
+    before = {path: path.read_bytes() for path in tracked}
+
+    resumed = runtime.create(
+        deployment_id="example", force=True, non_interactive=True)
+
+    assert resumed.deployment_id == "example"
+    assert {path: path.read_bytes() for path in tracked} == before
+
+
+def test_interactive_ports_are_validated_after_selection_and_can_be_retried(
+        tmp_path):
+    answers = iter([
+        "127.0.0.1", "3000", "8181", "3300", "8281", "1"])
+    occupied = {3000, 8181}
+    messages = []
+    runtime = RuntimeDeploymentManager(
+        tmp_path, registry=Registry(), input_fn=lambda _prompt: next(answers),
+        output_fn=messages.append,
+        port_fn=lambda _address, port: int(port) not in occupied)
+
+    deployment = runtime.create(
+        name="Ports", deployment_id="ports", timezone="UTC",
+        collectors=[], site_id="ports", site_name="Ports", confirm=False)
+
+    assert deployment.load()["network"] == {
+        "listen_address": "127.0.0.1",
+        "grafana_port": 3300,
+        "influxdb_port": 8281,
+    }
+    assert any("Grafana port 3000 is already in use" in item
+               for item in messages)
+    assert any("InfluxDB port 8181 is already in use" in item
+               for item in messages)
+
+
+def test_uuid_onboarding_value_is_strict_and_canonical():
+    assert normalize_onboarding_value(
+        "A0B1C2D3-E4F5-4678-9012-1234567890AB", "uuid") == (
+            "a0b1c2d3-e4f5-4678-9012-1234567890ab")
+    with pytest.raises(RuntimeDeploymentError, match="complete UUID"):
+        normalize_onboarding_value("mist-org", "uuid")
 
 
 def test_deployment_ca_store_builds_bundle_without_printing_contents(tmp_path):
