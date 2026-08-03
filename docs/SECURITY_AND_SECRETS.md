@@ -18,3 +18,13 @@ creating a sanitised repository does not revoke an exposed credential.
 
 Bind services to localhost unless remote access is required. Protect remote
 bindings with host firewall rules and a trusted management network.
+
+## Support bundles
+
+`./itp support bundle` excludes secret environment files, credential files,
+private keys and telemetry databases. It structurally redacts sensitive keys,
+known live secret values, authorization headers, URL user information and
+credential query parameters, then scans every archived member before
+publication. Standard bundles can retain infrastructure metadata needed for
+diagnosis; `--privacy high` applies stable pseudonyms to common identities.
+Always review a bundle before sharing it outside the organisation.

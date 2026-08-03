@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.request
 import warnings
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,6 +42,7 @@ from analysis.notifications import (
     NotificationEngine,
     NotificationStore,
 )
+from analysis.onboarding import inspect_tls, wan_candidate
 from analysis.operator import (
     DaemonAlreadyRunningError,
     OperatorCollectEngine,
@@ -56,12 +58,14 @@ from analysis.runtime_deployment import (
     retry_command,
 )
 from analysis.sites import SiteRegistry
+from analysis.support import SupportBundleBuilder
 from analysis.virtualisation import VirtualisationEngine
 from analysis.virtualisation.config import validate_virtualisation
 from analysis.virtualisation.renderer import render as render_virtualisation
 from analysis.virtualisation.telemetry import points as virtualisation_points
-from collectors.config import load_config
 from collectors.base import ExecutionModeMismatch
+from collectors.capabilities import MANIFESTS
+from collectors.config import load_config
 from collectors.configuration import ConfigurationResolver
 from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.file_permissions import restrict_owner_access
@@ -72,6 +76,7 @@ from collectors.writer import InfluxWriter
 from itp_profiles import DeploymentProfile, ProfileError, discover_profiles
 from itp_profiles.profiles import PLACEHOLDERS, PROFILE_ID
 from itp_profiles.setup import BootstrapWizard, SetupError, SetupOptions
+from analysis.prerequisites import evaluate_prerequisites
 
 
 def load_root_env():
@@ -89,17 +94,21 @@ def load_root_env():
         os.environ.setdefault(key.strip(), value.strip("'\""))
 
 
-def load_runtime_env(path):
-    for line in Path(path).read_text().splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ[key] = value
+def load_runtime_env(path, deployment=None):
+    values = deployment.environment() if deployment is not None else None
+    if values is None:
+        values = {}
+        for line in Path(path).read_text().splitlines():
+            if not line or line.lstrip().startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key] = value
+    os.environ.update(values)
 
 
 def load_deployment_environment(deployment):
     """Load one deployment's protected environment without rendering values."""
-    load_runtime_env(deployment.env_file)
+    load_runtime_env(deployment.env_file, deployment)
     for path in sorted(deployment.secrets_dir.glob("*.env")):
         load_runtime_env(path)
 
@@ -119,6 +128,41 @@ def deployment_doctor_requested(
     return input_fn(
         "Run deployment health checks now? [Y/n]: "
     ).strip().casefold() not in {"n", "no"}
+
+
+def deployment_edit_should_prompt(*, supplied, dry_run, json_output):
+    """Return whether an edit invocation is intentionally interactive."""
+    return not supplied and not dry_run and not json_output
+
+
+def deployment_verification_failure(report, deployment_id):
+    """Render the most relevant Doctor failure as an actionable deploy error."""
+    failures = [check for check in report.checks if check.status == "fail"]
+    if not failures:
+        return "Deployment verification failed.\n\nRun:\n" + (
+            f"./itp recover --deployment {deployment_id}")
+    check = next((item for item in failures
+                  if item.check_id.startswith("services.container.")), failures[0])
+    subsystem = check.subject or check.category
+    reason = check.summary
+    if check.detail:
+        reason += f" — {check.detail}"
+    if check.check_id.startswith("services.container."):
+        service = check.check_id.rsplit(".", 1)[-1]
+        first_action = f"./itp logs {service} --deployment {deployment_id}"
+    else:
+        first_action = f"./itp recover --deployment {deployment_id}"
+    state = check.summary
+    if state.casefold().startswith("container is "):
+        state = state[len("Container is "):].capitalize()
+    elif state.casefold().startswith("container state is "):
+        state = state[len("Container state is "):].capitalize()
+    return (
+        "Deployment verification failed.\n\n"
+        f"{subsystem}\n{'-' * len(subsystem)}\n\n"
+        f"State:\n{state}\n\nReason:\n{reason}\n\n"
+        f"Suggested next step:\n{first_action}\n\n"
+        f"Recovery options:\n./itp recover --deployment {deployment_id}")
 
 
 def profile(value, *, secrets=True):
@@ -875,6 +919,19 @@ def main():
         "select", help="set the active runtime deployment")
     deployment_select.add_argument("deployment_id")
     deployment_select.add_argument("--json", action="store_true")
+    deployment_edit = add_local_deployment_selector(
+        deployment_actions.add_parser(
+            "edit", help="safely edit canonical deployment configuration"))
+    deployment_edit.add_argument("--display-name")
+    deployment_edit.add_argument("--site-name")
+    deployment_edit.add_argument("--timezone")
+    deployment_edit.add_argument("--listen-address")
+    deployment_edit.add_argument("--grafana-port", type=int)
+    deployment_edit.add_argument("--influxdb-port", type=int)
+    deployment_edit.add_argument("--collectors")
+    deployment_edit.add_argument("--dry-run", action="store_true")
+    deployment_edit.add_argument("--yes", action="store_true")
+    deployment_edit.add_argument("--json", action="store_true")
     reset_runtime = commands.add_parser(
         "reset", help="reset disposable generated deployment state")
     reset_runtime.add_argument("--deployment", required=True)
@@ -922,11 +979,22 @@ def main():
         collector_actions.add_parser("list"))
     collector_list_runtime.add_argument(
         "--json", action="store_true")
-    for action in ("add", "test", "run", "remove"):
+    for action in ("add", "setup", "test", "run", "remove"):
         item = add_local_deployment_selector(
             collector_actions.add_parser(action))
         item.add_argument("collector")
         item.add_argument("--json", action="store_true")
+    support = commands.add_parser("support", help="create sanitised support evidence")
+    support_actions = support.add_subparsers(dest="support_action", required=True)
+    support_bundle = add_local_deployment_selector(
+        support_actions.add_parser("bundle"))
+    support_bundle.add_argument("--privacy", choices=("standard", "high"),
+                                default="standard")
+    support_bundle.add_argument("--output-dir")
+    support_bundle.add_argument("--json", action="store_true")
+    recover = add_deployment_selector(commands.add_parser(
+        "recover", help="show safe recovery actions for a deployment"))
+    recover.add_argument("--json", action="store_true")
     dashboard_runtime = add_deployment_selector(commands.add_parser(
         "dashboard", help="manage runtime dashboards"))
     dashboard_generate = add_local_deployment_selector(
@@ -1079,6 +1147,52 @@ def main():
             print(f"Username: {result['username']}")
             print(f"Password: {result['password']}")
         return
+    if args.group == "support":
+        deployment = runtime_manager.select(args.deployment)
+        load_deployment_environment(deployment)
+        config = load_config(deployment.collectors)
+        doctor_report = DoctorEngine(
+            ROOT, runtime_deployment=deployment,
+            env_path=deployment.env_file,
+            config_path=deployment.collectors).run()
+        status_report = OperatorStatusEngine(
+            ROOT, config, runtime_dir=deployment.path,
+            readiness=runtime_manager.collector_readiness(deployment)).run()
+        prerequisite_report = evaluate_prerequisites(
+            ROOT, check_docker_volume=False, check_ports=False)
+        extra = {
+            "doctor": doctor_report.to_dict(), "status": status_report,
+            "prerequisites": [asdict(item) for item in prerequisite_report.checks],
+            "deployment-inventory": runtime_manager.deployment_inventory(
+                deployment.deployment_id)[0],
+            "readiness": runtime_manager.collector_readiness(deployment),
+        }
+        result = SupportBundleBuilder(
+            ROOT, deployment, privacy=args.privacy).build(
+                args.output_dir, extra=extra)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(f"Support bundle: {result['path']}")
+            print(f"Size: {result['size_bytes']} bytes")
+            print(f"Privacy: {result['privacy']}")
+            print(f"Included sections: {len(result['included'])}")
+            print("Excluded: " + ", ".join(result["excluded"]))
+        return
+    if args.group == "recover":
+        deployment = runtime_manager.select(args.deployment)
+        result = runtime_manager.recovery_plan(deployment)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(f"Deployment {deployment.deployment_id} is {result['state']}.")
+            print("Available safe recovery actions:")
+            for index, action in enumerate(result["actions"], 1):
+                suffix = " [DESTRUCTIVE]" if action.get("destructive") else ""
+                print(f"{index}. {action['label']}{suffix}")
+                print(f"   {action['command']}")
+            print("No action was performed. Run the selected command explicitly.")
+        return
     if args.group in {"deploy", "init"}:
         verbose = deployment_verbose(args.verbose)
         def phase(number, label, operation, retry):
@@ -1117,7 +1231,7 @@ def main():
                 site_id=args.site_id,
                 site_name=args.site_name),
             retry_command("deploy", "--verbose"))
-        load_runtime_env(deployment.env_file)
+        load_runtime_env(deployment.env_file, deployment)
         deployment_config = load_config(deployment.collectors)
         enabled_collectors = sorted(
             name for name, settings in
@@ -1181,10 +1295,10 @@ def main():
                 env_path=deployment.env_file,
                 config_path=deployment.collectors).run()
             if report.exit_code(False):
+                print(render_human(report), file=sys.stderr)
                 raise RuntimeDeploymentError(
-                    "Doctor validation failed after services started; inspect "
-                    f"with ./itp doctor --deployment {deployment.deployment_id} "
-                    "and retry after correcting the reported failure")
+                    deployment_verification_failure(
+                        report, deployment.deployment_id))
         value = deployment.load()
         network = value["network"]
         print(
@@ -1250,6 +1364,62 @@ def main():
                 "deployment_id": deployment.deployment_id,
                 "active": True,
             }
+        elif args.deployment_action == "edit":
+            deployment = runtime_manager.select(args.deployment)
+            manifest = deployment.load()
+            config = yaml.safe_load(deployment.collectors.read_text()) or {}
+            enabled = sorted(name for name, item in
+                             (config.get("collectors") or {}).items()
+                             if isinstance(item, dict) and item.get("enabled"))
+            supplied = any(value is not None for value in (
+                args.display_name, args.site_name, args.timezone,
+                args.listen_address, args.grafana_port, args.influxdb_port,
+                args.collectors))
+            if deployment_edit_should_prompt(
+                    supplied=supplied, dry_run=args.dry_run,
+                    json_output=args.json):
+                network = manifest.get("network") or {}
+                args.display_name = runtime_manager._prompt(
+                    "Deployment display name", manifest.get("display_name", ""))
+                args.site_name = runtime_manager._prompt(
+                    "Site display name", config.get("site_name", ""))
+                args.timezone = runtime_manager._prompt(
+                    "Timezone", manifest.get("timezone", "UTC"))
+                args.listen_address = runtime_manager._prompt(
+                    "Listening address", network.get("listen_address", "127.0.0.1"))
+                args.grafana_port = int(runtime_manager._prompt(
+                    "Grafana port", str(network.get("grafana_port", 3000))))
+                args.influxdb_port = int(runtime_manager._prompt(
+                    "InfluxDB port", str(network.get("influxdb_port", 8181))))
+                args.collectors = runtime_manager._prompt(
+                    "Enabled collectors (comma-separated)", ",".join(enabled))
+            changes = {
+                "display_name": args.display_name, "site_name": args.site_name,
+                "timezone": args.timezone, "listen_address": args.listen_address,
+                "grafana_port": args.grafana_port,
+                "influxdb_port": args.influxdb_port,
+                "enabled_collectors": (
+                    sorted({item.strip() for item in args.collectors.split(",")
+                            if item.strip()}) if args.collectors is not None else None),
+            }
+            result = runtime_manager.edit(
+                deployment, changes, dry_run=args.dry_run, yes=args.yes)
+            if result.get("applied"):
+                load_runtime_env(deployment.env_file, deployment)
+                deployment_config = load_config(deployment.collectors)
+                DashboardRegistry(
+                    ROOT, deployment_config,
+                    deployment.generated / "dashboard/managed",
+                    deployment.generated / "dashboard/provisioning/dashboards.yml",
+                    registry_validation_mode="runtime").generate()
+            if args.json:
+                print(json.dumps(result, indent=2, sort_keys=True))
+            else:
+                print(yaml.safe_dump(result, sort_keys=False).rstrip())
+                if result.get("restart_required"):
+                    print("Restart required. Review, then run:")
+                    print(f"./itp restart --deployment {deployment.deployment_id}")
+            return
         else:
             deployment = runtime_manager.select(args.deployment_id)
             result = {
@@ -1293,11 +1463,91 @@ def main():
                 "enabled": bool((config.get("collectors") or {}).get(
                     item.id, {}).get("enabled")),
             } for item in runtime_manager.registry.all()]
-        elif args.runtime_collector_action == "add":
+        elif args.runtime_collector_action in {"add", "setup"}:
             item = runtime_manager.add_collector(
                 deployment, args.collector)
             result = {"collector": item.id, "enabled": True,
                       "configuration": str(deployment.collectors)}
+            if args.runtime_collector_action == "setup":
+                config_value = yaml.safe_load(deployment.collectors.read_text()) or {}
+                settings = (config_value.get("collectors") or {}).get(item.id) or {}
+                endpoint = settings.get("base_url") or settings.get("host") or ""
+                if endpoint:
+                    result["tls"] = inspect_tls(endpoint)
+                completed = deployment.run_compose(
+                    "run", "--rm", "collector", "python", "-m", "collectors",
+                    "--config", "/app/config.yml", "inspect", item.id,
+                    "--json", capture=True, check=False)
+                payload = last_json_object(
+                    (completed.stdout or "").strip()) if completed.stdout else {}
+                result["connection"] = payload
+                result["success"] = completed.returncode == 0
+                result["capabilities"] = {
+                    "domains": list(item.domains),
+                    "declared": [{
+                        "id": capability.id, "label": capability.label,
+                        "support": capability.support,
+                        "condition": capability.condition,
+                        "reason": capability.reason,
+                    } for capability in MANIFESTS.get(item.id, ())],
+                    "partial": bool(payload.get("partial"))
+                    if isinstance(payload, dict) else False,
+                    "unavailable": payload.get("diagnostics", [])
+                    if isinstance(payload, dict) else [],
+                }
+                interfaces = payload.get("interfaces", []) \
+                    if isinstance(payload, dict) else []
+                if item.id in {"paloalto", "fortigate"} and not args.json:
+                    candidates = [wan_candidate(value, item.id) for value in interfaces]
+                    result["interfaces"] = candidates
+                    print("Discovered interfaces:" if candidates else
+                          "No interfaces were returned; manual WAN entry is available.")
+                    for index, candidate in enumerate(candidates, 1):
+                        marker = "likely WAN" if candidate["likely_wan"] else "not recommended"
+                        print(f"[{index}] {candidate['interface_name']} - {marker}: "
+                              f"{candidate['reason']}")
+                    selected = input(
+                        "Select WAN interfaces (comma-separated numbers), "
+                        "type manual, or leave blank to preserve: ").strip()
+                    if selected:
+                        if selected.casefold() == "manual":
+                            names = [value.strip() for value in input(
+                                "Canonical interface names (comma-separated): ").split(",")
+                                if value.strip()]
+                            chosen = [{"interface_name": name,
+                                       "suggested_display_name": name}
+                                      for name in names]
+                        else:
+                            try:
+                                chosen = [candidates[int(value.strip()) - 1]
+                                          for value in selected.split(",")]
+                            except (ValueError, IndexError) as exc:
+                                raise RuntimeDeploymentError(
+                                    "invalid WAN interface selection") from exc
+                        mappings = []
+                        for index, candidate in enumerate(chosen):
+                            default_role = "primary" if index == 0 else "secondary"
+                            role = input(
+                                f"Role for {candidate['interface_name']} [{default_role}]: ").strip() or default_role
+                            label = input(
+                                f"Display name [{candidate['suggested_display_name']}]: ").strip() or candidate["suggested_display_name"]
+                            mappings.append({"name": candidate["interface_name"],
+                                             "role": role, "display_name": label})
+                        result["wan"] = runtime_manager.configure_wan(
+                            deployment, item.id, mappings, discovered=candidates)
+                        if result["wan"]["missing"]:
+                            print("WARNING: configured WAN interfaces were not "
+                                  "currently discovered: " + ", ".join(
+                                      result["wan"]["missing"]))
+                if result["success"] and not args.json and input(
+                        "Run the first collection now? [Y/n]: ").strip().casefold() \
+                        not in {"n", "no"}:
+                    result["first_collection"] = runtime_collection(
+                        runtime_manager, deployment,
+                        load_config(deployment.collectors), item.id)
+                result["dashboards"] = (
+                    "Run dashboard generation after the first successful collection: "
+                    f"./itp dashboard generate --deployment {deployment.deployment_id}")
         elif args.runtime_collector_action == "remove":
             item = runtime_manager.remove_collector(
                 deployment, args.collector)
@@ -1334,7 +1584,7 @@ def main():
         return
     if args.group == "dashboard":
         deployment = runtime_manager.select(args.deployment)
-        load_runtime_env(deployment.env_file)
+        load_runtime_env(deployment.env_file, deployment)
         config = load_config(deployment.collectors)
         result = DashboardRegistry(
             ROOT, config, deployment.generated / "dashboard/managed",
@@ -1878,17 +2128,38 @@ def main():
                 "--profile", value.id, args.action, "generate")
 
 
-if __name__ == "__main__":
+def run_cli():
+    """Run the operator CLI with concise expected-error handling."""
     try:
         main()
+        return 0
+    except KeyboardInterrupt:
+        print("Operation cancelled. No files were changed.", file=sys.stderr)
+        return 130
+    except EOFError:
+        print(
+            "ERROR: interactive input is unavailable. Rerun in an interactive "
+            "terminal or use the command's non-interactive options.",
+            file=sys.stderr)
+        return 2
     except DoctorUsageError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        raise SystemExit(2)
+        return 2
     except DoctorFatalError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        raise SystemExit(3)
+        return 3
+    except RuntimeDeploymentError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        print(
+            "Recovery: run ./itp recover --deployment <deployment-id> or "
+            "rerun with --json where supported.", file=sys.stderr)
+        return 1
     except (DaemonAlreadyRunningError, DeploymentError, ProfileError, SetupError,
             subprocess.CalledProcessError,
             OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_cli())

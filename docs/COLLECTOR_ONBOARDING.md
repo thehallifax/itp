@@ -7,6 +7,7 @@ operator guidance.
 ```bash
 ./itp collector list
 ./itp collector add <collector>
+./itp collector setup <collector>
 ./itp collector test <collector>
 ./itp collector remove <collector>
 ./itp dashboard generate
@@ -80,3 +81,28 @@ collectors:
 
 Until it is configured, the operational state is **WAN role not configured**,
 not a collector failure.
+
+## Guided setup
+
+Palo Alto, FortiGate and PaperCut support guided setup:
+
+```bash
+./itp collector setup paloalto --deployment <deployment>
+./itp collector setup fortigate --deployment <deployment>
+./itp collector setup papercut --deployment <deployment>
+```
+
+The workflow preserves credential references, performs the existing read-only
+connection inspection, reports partial capabilities, and offers a first
+collection. TLS inspection distinguishes DNS, TCP, trust, hostname, expiry and
+timeout failures. Import a private CA rather than disabling verification:
+
+```bash
+./itp credentials ca add <certificate> --deployment <deployment>
+```
+
+Palo Alto and FortiGate setup lists discovered interfaces and recommends likely
+WANs using device metadata. Recommendations require explicit selection. The
+saved `name` remains canonical device identity; alias/description is suggested
+only as `display_name`. Manual mappings that are temporarily absent are
+preserved with a warning. Exactly one selected WAN must be primary.

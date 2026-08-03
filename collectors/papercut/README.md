@@ -92,3 +92,10 @@ match.
 ./itp dashboard generate --deployment <deployment>
 ./itp logs collector --deployment <deployment>
 ```
+
+Use guided setup to preserve credential storage, inspect TLS, test the System
+Health API, report partial capabilities and optionally run the first collection:
+
+```sh
+./itp collector setup papercut --deployment <deployment>
+```

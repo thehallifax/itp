@@ -9,7 +9,6 @@ import re
 import shutil
 import socket
 import subprocess
-import sys
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -21,12 +20,15 @@ import yaml
 from collectors.configuration import ConfigurationResolver
 from collectors.connector_registry import ConnectorMetadataRegistry
 from itp_profiles.settings import SettingsError, resolve_settings
+from analysis.prerequisites import evaluate_prerequisites
+from analysis.runtime_deployment import (
+    EXPECTED_RUNTIME_SERVICES,
+    container_runtime_condition,
+)
 
 from .models import DiagnosticCheck, DoctorReport
 
-
-EXPECTED_SERVICES = (
-    "collector", "discovery", "grafana", "influxdb3-core", "telegraf")
+EXPECTED_SERVICES = tuple(sorted(EXPECTED_RUNTIME_SERVICES))
 REQUIRED_LAYOUT = (
     "collectors", "analysis", "discovery", "docs", "grafana", "secrets",
     "docker-compose.yml")
@@ -164,13 +166,17 @@ class DoctorEngine:
         return values
 
     def _platform_checks(self):
-        version_ok = sys.version_info >= (3, 9)
-        self._result(
-            "platform.python", "Platform", "Python",
-            "pass" if version_ok else "fail",
-            f"Python {platform.python_version()} is "
-            + ("supported" if version_ok else "unsupported"),
-            remediation="" if version_ok else "Install Python 3.9 or later.")
+        host = evaluate_prerequisites(
+            self.root, system=platform.system(), check_services=False,
+            check_ports=False, check_docker_volume=False)
+        for value in host.checks:
+            check_id = ("platform.python" if value.key == "python" else
+                        f"platform.prerequisite.{value.key}")
+            self._result(
+                check_id, "Platform", value.label, value.status,
+                value.summary, detail=value.detail,
+                remediation=value.remediation,
+                metadata=value.metadata)
 
         missing = [value for value in REQUIRED_LAYOUT
                    if not (self.root / value).exists()]
@@ -193,7 +199,10 @@ class DoctorEngine:
             remediation="Restore tracked templates with Git.")
 
         env_path = self.env_path
-        self.env_values = self._read_env(env_path)
+        self.env_values = (
+            self.runtime_deployment.environment()
+            if self.runtime_deployment is not None
+            else self._read_env(env_path))
         self._result(
             "platform.env", "Platform", ".env",
             "pass" if env_path.is_file() and os.access(env_path, os.R_OK) else "warn",
@@ -557,16 +566,9 @@ class DoctorEngine:
                         "warn", "Container does not exist",
                         command="docker compose up -d")
                     continue
-                state = str(row.get("State") or "").casefold()
-                health = str(row.get("Health") or "").casefold()
-                status = "pass"
-                summary = "Container is running"
-                if state != "running":
-                    status, summary = "fail", f"Container state is {state or 'unknown'}"
-                elif health == "unhealthy":
-                    status, summary = "fail", "Container is unhealthy"
-                elif health == "starting":
-                    status, summary = "warn", "Container health is starting"
+                condition, summary = container_runtime_condition(row)
+                status = {"running": "pass", "degraded": "warn",
+                          "failed": "fail"}[condition]
                 self._result(
                     f"services.container.{service}", "Services", service,
                     status, summary, command=f"docker compose logs {service}")

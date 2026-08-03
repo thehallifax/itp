@@ -38,6 +38,10 @@ cd infrastructure-telemetry-platform
 The wizard creates an ignored deployment under `runtime/deployments/`, writes
 owner-only credentials, starts the stack, and reports Grafana, InfluxDB, health,
 and remaining collector setup.
+Before creating runtime files, deploy runs a dedicated prerequisite phase for
+the operating system, Python, Git, Docker CLI and daemon, Compose v2, writable
+storage, Docker volumes, memory, disk and configured ports. Failed checks stop
+cleanly with a specific action; low memory or disk is reported as a warning.
 The default bind address is `127.0.0.1`, so Grafana is initially available only
 on the deployment host. Retrieve its generated login with
 `.\itp.ps1 credentials grafana` on Windows or
@@ -64,6 +68,9 @@ Useful commands:
 ./itp restart
 ./itp logs collector
 ./itp deployment list
+./itp deployment edit --deployment <deployment-id>
+./itp support bundle --deployment <deployment-id>
+./itp recover --deployment <deployment-id>
 ```
 
 Runtime commands infer the active deployment. Select one explicitly with
@@ -81,12 +88,18 @@ Dashboard generation reports the managed dashboards and folders it refreshed.
 Grafana polls the generated provisioning tree automatically; a restart is not
 normally required.
 
+Existing deployments can be edited without touching generated files. Guided
+setup is available for Palo Alto, FortiGate and PaperCut. A deployment-scoped
+support bundle removes credentials and excludes telemetry databases; use
+`--privacy high` to pseudonymise common infrastructure identity fields.
+
 Use `./itp deploy --verbose` on macOS/Linux or
 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deploy --verbose`
 on Windows when diagnosing Docker build or startup
 output.
 
-Windows prerequisite diagnostics are read-only:
+Windows prerequisite diagnostics are read-only and use the same host evidence
+as deployment where applicable:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 prerequisites

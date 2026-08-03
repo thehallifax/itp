@@ -59,8 +59,8 @@ connectors:
     domains: [firewall, internet, switching]
     deployment_types: [Business, Enterprise, Home Lab, MSP, School]
     implementation_status: supported
-    guided_setup: false
-    configuration_mode: manual
+    guided_setup: true
+    configuration_mode: guided
     credential_fields:
       - id: host
         env: FORTIGATE_HOST
@@ -145,8 +145,8 @@ connectors:
     domains: [firewall, internet]
     deployment_types: [Business, Enterprise, Home Lab, MSP, School]
     implementation_status: supported
-    guided_setup: false
-    configuration_mode: manual
+    guided_setup: true
+    configuration_mode: guided
     credential_fields:
       - {id: api_key, env: PALOALTO_API_KEY, required: true, secret: true}
     configuration_fields: [collectors.paloalto.base_url, collectors.paloalto.site]
@@ -167,8 +167,8 @@ connectors:
     domains: [printing, servers]
     deployment_types: [Business, Enterprise, Home Lab, MSP, School]
     implementation_status: supported
-    guided_setup: false
-    configuration_mode: manual
+    guided_setup: true
+    configuration_mode: guided
     credential_fields:
       - id: authorization_key
         env: PAPERCUT_AUTHORIZATION_KEY

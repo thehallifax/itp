@@ -17,13 +17,15 @@ import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
+from analysis.onboarding import validate_wan_selection
+from analysis.operator_ux import SafeRedactor, redacted_diff
 from collectors.configuration import ConfigurationResolver, parse_bool_default
 from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.registry import CollectorRegistry
@@ -32,6 +34,15 @@ from collectors.writer import atomic_write
 
 class RuntimeDeploymentError(ValueError):
     """Actionable deployment configuration failure."""
+
+
+DEPLOYMENT_PATH_KEYS = frozenset({
+    "ITP_RUNTIME_DIR", "ITP_DASHBOARD_DIR", "ITP_TELEGRAF_DIR",
+    "ITP_DISCOVERY_CONFIG", "ITP_CONNECTORS_CONFIG", "ITP_SITES_CONFIG",
+    "ITP_SECRETS_DIR", "ITP_ENV_FILE",
+})
+EXPECTED_RUNTIME_SERVICES = frozenset(
+    {"collector", "discovery", "grafana", "influxdb3-core", "telegraf"})
 
 
 def slugify(value: str) -> str:
@@ -46,6 +57,53 @@ def _port_available(address: str, port: int) -> bool:
     with socket.socket() as connection:
         connection.settimeout(0.2)
         return connection.connect_ex((host, int(port))) != 0
+
+
+def container_runtime_condition(row):
+    """Classify one Compose row consistently for Doctor and recovery."""
+    state = str(row.get("State") or "").strip().casefold()
+    status_text = str(row.get("Status") or "").strip().casefold()
+    health = str(row.get("Health") or "").strip().casefold()
+    restarting = state == "restarting" or "restarting" in status_text
+    if restarting:
+        return "failed", "Container is restarting"
+    if state != "running":
+        return "failed", f"Container state is {state or 'unknown'}"
+    if health == "unhealthy" or "unhealthy" in status_text:
+        return "failed", "Container is unhealthy"
+    if health == "starting" or "health: starting" in status_text:
+        return "degraded", "Container health is starting"
+    return "running", "Container is running"
+
+
+def deployment_runtime_state(*, configured, generated, containers,
+                             networks=(), volumes=()):
+    """Return deterministic current deployment state from owned resources."""
+    if not configured and (containers or networks or volumes):
+        return "orphaned"
+    if not configured:
+        return "missing"
+    if not generated:
+        return "partial"
+    if not containers:
+        return "stopped"
+    conditions = [container_runtime_condition(row)[0] for row in containers]
+    services = set()
+    for row in containers:
+        service = str(row.get("Service") or "")
+        name = str(row.get("Names") or row.get("Name") or "")
+        if not service:
+            service = next((value for value in EXPECTED_RUNTIME_SERVICES
+                            if re.search(rf"-{re.escape(value)}-\d+$", name)), "")
+        if service:
+            services.add(service)
+    if all(value == "failed" for value in conditions):
+        return "failed"
+    if services and not EXPECTED_RUNTIME_SERVICES.issubset(services):
+        return "degraded"
+    if all(value == "running" for value in conditions):
+        return "running"
+    return "degraded"
 
 
 def _secret() -> str:
@@ -133,6 +191,48 @@ class RuntimeDeployment:
     @property
     def env_file(self) -> Path:
         return self.generated / "deployment.env"
+
+    def environment(self) -> dict[str, str]:
+        """Load environment values, rebasing only deployment-owned host paths.
+
+        Generated environments can outlive a repository move. A known runtime
+        path is owned only when its path contains ``deployments/<id>`` (or the
+        deployment ID as a path segment). The suffix below that root is safely
+        attached to this explicitly selected deployment. External and
+        container-internal paths are preserved.
+        """
+        values = RuntimeDeploymentManager._read_env(self.env_file)
+        for key in DEPLOYMENT_PATH_KEYS:
+            if key in values:
+                values[key] = self._rebase_owned_path(values[key])
+        return values
+
+    def _rebase_owned_path(self, value: str) -> str:
+        raw = str(value or "").strip().strip("'\"")
+        if not raw or "://" in raw or raw.startswith("/app/"):
+            return raw
+        windows = bool(re.match(r"^[A-Za-z]:[\\/]", raw)) or "\\" in raw
+        candidate = PureWindowsPath(raw) if windows else Path(raw)
+        parts = candidate.parts
+        matches = [index for index, part in enumerate(parts)
+                   if str(part).casefold() == self.deployment_id.casefold()]
+        if not matches:
+            return raw
+        index = matches[-1]
+        if index and str(parts[index - 1]).casefold() != "deployments":
+            return raw
+        suffix = tuple(str(part) for part in parts[index + 1:])
+        if any(part in {"", ".", ".."} for part in suffix):
+            raise RuntimeDeploymentError(
+                f"unsafe deployment-owned path in {self.env_file}")
+        rebased = self.path.joinpath(*suffix).resolve()
+        selected = self.path.resolve()
+        try:
+            rebased.relative_to(selected)
+        except ValueError as exc:
+            raise RuntimeDeploymentError(
+                f"deployment-owned path escapes selected runtime: {raw}") from exc
+        return str(rebased)
 
     @property
     def compose_override(self) -> Path:
@@ -284,19 +384,9 @@ class RuntimeDeploymentManager:
             volumes = self._docker_rows("volume", project)
             configured = deployment.manifest.is_file()
             generated = deployment.env_file.is_file()
-            states = [str(value.get("State") or value.get("Status") or "").casefold()
-                      for value in containers]
-            running = any("running" in value or value == "up" for value in states)
-            if configured and generated and running:
-                status = "running"
-            elif configured and generated and not containers:
-                status = "stopped"
-            elif not configured and (containers or networks or volumes):
-                status = "orphaned"
-            elif configured and (not generated or containers):
-                status = "partial"
-            else:
-                status = "missing"
+            status = deployment_runtime_state(
+                configured=configured, generated=generated,
+                containers=containers, networks=networks, volumes=volumes)
             manifest = {}
             if configured:
                 try:
@@ -319,6 +409,16 @@ class RuntimeDeploymentManager:
                 "cleanup_destructive": bool(volumes),
             })
         return result
+
+    def deployment_inventory_entry(self, deployment_id):
+        """Return only the exact requested deployment inventory projection."""
+        identifier = slugify(deployment_id)
+        matches = [item for item in self.deployment_inventory(identifier)
+                   if item.get("deployment_id") == identifier]
+        if len(matches) != 1 or matches[0].get("status") == "missing":
+            raise RuntimeDeploymentError(
+                f"deployment inventory is unavailable: {identifier}")
+        return matches[0]
 
     @staticmethod
     def _site_id(deployment):
@@ -351,7 +451,7 @@ class RuntimeDeploymentManager:
             self.runner(["docker", "volume", "rm", volume], cwd=self.root,
                         check=False, text=True, encoding="utf-8",
                         errors="replace", capture_output=True)
-            environment = self._read_env(deployment.env_file)
+            environment = deployment.environment()
             environment["INFLUXDB_TOKEN"] = ""
             atomic_write(deployment.env_file, "".join(
                 f"{key}={value}\n" for key, value in environment.items()))
@@ -559,7 +659,7 @@ class RuntimeDeploymentManager:
         deployment = RuntimeDeployment(self.root, identifier)
         existing_manifest = (
             deployment.load() if deployment.manifest.is_file() else {})
-        existing_environment = self._read_env(deployment.env_file)
+        existing_environment = deployment.environment()
         if deployment.manifest.exists() and not force:
             self.output(f"Deployment {identifier} already exists; preserving configuration.")
             return deployment
@@ -821,7 +921,7 @@ class RuntimeDeploymentManager:
         certificates = sorted(
             path for path in deployment.ca_dir.glob("*.pem")
             if path.name != deployment.ca_bundle.name)
-        environment = self._read_env(deployment.env_file)
+        environment = deployment.environment()
         if certificates:
             atomic_write(
                 deployment.ca_bundle,
@@ -974,7 +1074,7 @@ class RuntimeDeploymentManager:
                 deployment.env_file,
                 "".join(f"{key}={value}\n" for key, value in updated.items()))
             os.chmod(deployment.env_file, 0o600)
-            persisted = cls._read_env(deployment.env_file).get(
+            persisted = deployment.environment().get(
                 "INFLUXDB_TOKEN", "")
         except OSError as exc:
             raise RuntimeDeploymentError(
@@ -1049,7 +1149,7 @@ class RuntimeDeploymentManager:
                          non_interactive=False):
         """Provision the real InfluxDB token and deployment database."""
         self._prepare_token_destination(deployment)
-        environment = self._read_env(deployment.env_file)
+        environment = deployment.environment()
         if "INFLUXDB_PORT" not in environment:
             raise RuntimeDeploymentError(
                 "generated deployment environment does not define INFLUXDB_PORT")
@@ -1172,7 +1272,7 @@ class RuntimeDeploymentManager:
                 (result.stdout or "") + (result.stderr or "")).casefold():
             raise RuntimeDeploymentError(
                 f"unable to remove disposable InfluxDB volume {volume}")
-        environment = self._read_env(deployment.env_file)
+        environment = deployment.environment()
         environment["INFLUXDB_TOKEN"] = ""
         atomic_write(
             deployment.env_file,
@@ -1208,8 +1308,18 @@ class RuntimeDeploymentManager:
                 entered = normalize_onboarding_value(
                     entered, prompt.get("normalizer", ""))
                 if key.endswith(("verify_tls", "enabled")):
-                    settings[key] = entered.casefold() in {
+                    enabled = entered.casefold() in {
                         "1", "true", "yes", "on"}
+                    if key.endswith("verify_tls") and not enabled:
+                        self.output(
+                            "WARNING: TLS verification disabled. This permits "
+                            "traffic interception and server impersonation.")
+                        confirmed = self.input(
+                            "Type DISABLE TLS to confirm for this connector: ").strip()
+                        if confirmed != "DISABLE TLS":
+                            raise RuntimeDeploymentError(
+                                "TLS verification change was not confirmed")
+                    settings[key] = enabled
                 else:
                     settings[key] = entered
                 canonical_values[field_name] = entered
@@ -1252,8 +1362,144 @@ class RuntimeDeploymentManager:
             os.chmod(secret_path, 0o600)
         return connector
 
+    def edit(self, deployment, changes, *, dry_run=False, yes=False):
+        """Validate and atomically edit canonical deployment configuration."""
+        manifest = deployment.load()
+        config = yaml.safe_load(deployment.collectors.read_text()) or {}
+        dashboards = yaml.safe_load(deployment.dashboards.read_text()) or {}
+        environment = deployment.environment()
+        before = {
+            "display_name": manifest.get("display_name"),
+            "site_name": config.get("site_name"),
+            "timezone": manifest.get("timezone"),
+            **(manifest.get("network") or {}),
+            "enabled_collectors": sorted(
+                name for name, item in (config.get("collectors") or {}).items()
+                if isinstance(item, dict) and item.get("enabled")),
+        }
+        proposed = {**before, **{
+            key: value for key, value in changes.items() if value is not None}}
+        try:
+            ZoneInfo(str(proposed["timezone"]))
+        except (ValueError, ZoneInfoNotFoundError) as exc:
+            raise RuntimeDeploymentError("timezone must be a valid IANA name") from exc
+        for key in ("grafana_port", "influxdb_port"):
+            proposed[key] = int(proposed[key])
+            if not 1 <= proposed[key] <= 65535:
+                raise RuntimeDeploymentError(f"{key.replace('_', ' ')} is invalid")
+        if proposed["grafana_port"] == proposed["influxdb_port"]:
+            raise RuntimeDeploymentError("Grafana and InfluxDB ports must differ")
+        if not str(proposed["listen_address"]).strip():
+            raise RuntimeDeploymentError("listening address must not be blank")
+        known = {value.id for value in self.registry.all()}
+        unknown = set(proposed["enabled_collectors"]) - known
+        if unknown:
+            raise RuntimeDeploymentError(
+                "unknown collectors: " + ", ".join(sorted(unknown)))
+        for key in ("grafana_port", "influxdb_port"):
+            if proposed[key] != before[key] and not self.port_available(
+                    proposed["listen_address"], proposed[key]):
+                raise RuntimeDeploymentError(
+                    f"{key.replace('_', ' ').title()} {proposed[key]} is already in use")
+        difference = redacted_diff(before, proposed, SafeRedactor())
+        restart = any(item["field"] in {
+            "timezone", "listen_address", "grafana_port", "influxdb_port",
+            "enabled_collectors"} for item in difference)
+        result = {"deployment_id": deployment.deployment_id,
+                  "changes": difference, "valid": True, "dry_run": dry_run,
+                  "applied": False,
+                  "restart_required": restart, "backup_suffix": ".rollback"}
+        if dry_run or not difference:
+            return result
+        if not yes and self.input("Apply these changes? [y/N]: ").strip().casefold() \
+                not in {"y", "yes"}:
+            return {**result, "applied": False, "cancelled": True}
+        manifest["display_name"] = proposed["display_name"]
+        manifest["timezone"] = proposed["timezone"]
+        manifest["network"] = {
+            "listen_address": proposed["listen_address"],
+            "grafana_port": proposed["grafana_port"],
+            "influxdb_port": proposed["influxdb_port"],
+        }
+        config["site_name"] = proposed["site_name"]
+        config.setdefault("identity", {})["site_name"] = proposed["site_name"]
+        config["identity"]["customer_name"] = proposed["display_name"]
+        for name, item in config.setdefault("collectors", {}).items():
+            if isinstance(item, dict):
+                item["enabled"] = name in proposed["enabled_collectors"]
+        dashboards["enabled_collectors"] = sorted(proposed["enabled_collectors"])
+        sites_path = deployment.generated / "sites.yml"
+        sites = yaml.safe_load(sites_path.read_text()) or {}
+        if sites.get("sites"):
+            sites["sites"][0]["display_name"] = proposed["site_name"]
+        environment.update({
+            "TZ": str(proposed["timezone"]),
+            "GRAFANA_ADDRESS": str(proposed["listen_address"]),
+            "GRAFANA_PORT": str(proposed["grafana_port"]),
+            "INFLUXDB_ADDRESS": str(proposed["listen_address"]),
+            "INFLUXDB_PORT": str(proposed["influxdb_port"]),
+        })
+        targets = {
+            deployment.manifest: yaml.safe_dump(manifest, sort_keys=False),
+            deployment.collectors: yaml.safe_dump(config, sort_keys=False),
+            deployment.dashboards: yaml.safe_dump(dashboards, sort_keys=False),
+            sites_path: yaml.safe_dump(sites, sort_keys=False),
+            deployment.env_file: "".join(
+                f"{key}={value}\n" for key, value in environment.items()),
+        }
+        for path, content in targets.items():
+            rollback = path.with_name(path.name + ".rollback")
+            if path.is_file():
+                atomic_write(rollback, path.read_text())
+            atomic_write(path, content)
+        os.chmod(deployment.env_file, 0o600)
+        return {**result, "applied": True, "cancelled": False}
+
+    def recovery_plan(self, deployment):
+        inventory = self.deployment_inventory_entry(deployment.deployment_id)
+        actions = []
+        if inventory["status"] in {"partial", "stopped"}:
+            actions.append({"id": "resume", "label": "Resume safe deployment phases",
+                            "command": f"./itp deploy --deployment-id {deployment.deployment_id} --force"})
+        actions.extend((
+            {"id": "edit", "label": "Edit deployment configuration",
+             "command": f"./itp deployment edit --deployment {deployment.deployment_id}"},
+            {"id": "doctor", "label": "Run Doctor",
+             "command": f"./itp doctor --deployment {deployment.deployment_id}"},
+            {"id": "logs", "label": "Show safe collector logs",
+             "command": f"./itp logs collector --deployment {deployment.deployment_id}"},
+            {"id": "support", "label": "Export a support bundle",
+             "command": f"./itp support bundle --deployment {deployment.deployment_id}"},
+            {"id": "reset", "label": "Reset generated runtime and preserve telemetry",
+             "command": f"./itp reset --deployment {deployment.deployment_id}"},
+            {"id": "reset_data", "label": "Reset generated runtime and telemetry",
+             "command": f"./itp reset --deployment {deployment.deployment_id} --reset-influx",
+             "destructive": True},
+        ))
+        return {"deployment_id": deployment.deployment_id,
+                "state": inventory["status"], "detected": inventory,
+                "actions": actions}
+
+    def configure_wan(self, deployment, connector, mappings, *, discovered=()):
+        if connector not in {"paloalto", "fortigate"}:
+            raise RuntimeDeploymentError(
+                "WAN interface mapping is supported for Palo Alto and FortiGate")
+        try:
+            validated = validate_wan_selection(mappings, discovered)
+        except ValueError as exc:
+            raise RuntimeDeploymentError(str(exc)) from exc
+        config = yaml.safe_load(deployment.collectors.read_text()) or {}
+        settings = config.setdefault("collectors", {}).setdefault(connector, {})
+        settings["wan_interfaces"] = validated["mappings"]
+        rollback = deployment.collectors.with_name(
+            deployment.collectors.name + ".rollback")
+        atomic_write(rollback, deployment.collectors.read_text())
+        atomic_write(deployment.collectors, yaml.safe_dump(
+            config, sort_keys=False))
+        return validated
+
     def grafana_credentials(self, deployment):
-        environment = self._read_env(deployment.env_file)
+        environment = deployment.environment()
         required = ("GRAFANA_ADMIN_USER", "GRAFANA_ADMIN_PASSWORD")
         missing = [key for key in required if not environment.get(key)]
         if missing:
@@ -1274,7 +1520,7 @@ class RuntimeDeploymentManager:
 
     def collector_readiness(self, deployment):
         config = yaml.safe_load(deployment.collectors.read_text()) or {}
-        runtime_mode = self._read_env(deployment.env_file).get(
+        runtime_mode = deployment.environment().get(
             "ITP_RUNTIME_MODE", "central").strip().casefold()
         environment = {}
         for path in sorted(deployment.secrets_dir.glob("*.env")):

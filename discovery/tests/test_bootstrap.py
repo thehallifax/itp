@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import bootstrap
+from scripts import itp as itp_cli
 
 
 def _python_path(environment):
@@ -230,10 +231,61 @@ def test_launch_forwards_arguments_and_exit_code(tmp_path, monkeypatch):
     assert calls == [[str(python), str(script), "status", "--json"]]
 
 
+def test_launch_does_not_duplicate_child_keyboard_interrupt(tmp_path, monkeypatch):
+    python = tmp_path / ".venv/bin/python"
+    script = tmp_path / "scripts/itp.py"
+    monkeypatch.setattr(
+        bootstrap, "ensure_environment",
+        lambda *args, **kwargs: (python, script))
+
+    def interrupted(_command, **_kwargs):
+        raise KeyboardInterrupt
+
+    assert bootstrap.launch(
+        tmp_path, ["status"], run=interrupted,
+        prerequisite_fn=lambda *args, **kwargs: {}) == 130
+
+
+def test_deploy_prerequisite_failure_stops_before_environment_or_runtime_write(
+        tmp_path, monkeypatch):
+    from analysis.prerequisites import PrerequisiteCheck, PrerequisiteReport
+
+    monkeypatch.setattr(
+        bootstrap, "ensure_environment",
+        lambda *args, **kwargs: pytest.fail("environment must not be created"))
+    report = PrerequisiteReport((PrerequisiteCheck(
+        "git", "Git", "fail", "Git is not installed"),))
+    with pytest.raises(bootstrap.BootstrapError, match="not satisfied"):
+        bootstrap.launch(
+            tmp_path, ["deploy"],
+            prerequisite_fn=lambda *args, **kwargs: report,
+            interactive=False)
+    assert not (tmp_path / "runtime").exists()
+
+
+def test_interactive_deploy_can_cancel_before_environment_creation(
+        tmp_path, monkeypatch):
+    from analysis.prerequisites import PrerequisiteCheck, PrerequisiteReport
+
+    monkeypatch.setattr(
+        bootstrap, "ensure_environment",
+        lambda *args, **kwargs: pytest.fail("environment must not be created"))
+    report = PrerequisiteReport((PrerequisiteCheck(
+        "git", "Git", "pass", "Git is available"),))
+    messages = []
+    assert bootstrap.launch(
+        tmp_path, ["deploy"], prerequisite_fn=lambda *args, **kwargs: report,
+        output=messages.append, input_fn=lambda _prompt: "n",
+        interactive=True) == 0
+    assert messages[-1] == (
+        "Deployment cancelled before runtime files were written.")
+
+
 @pytest.mark.parametrize("arguments,expected", [
     (["help"], False),
     (["demo", "--help"], False),
     (["status", "--json"], True),
+    (["deploy"], True),
     (["demo"], True),
     (["setup"], True),
     (["start"], True),
@@ -544,3 +596,45 @@ def test_unix_launcher_is_location_relative_and_forwards_arguments():
     assert "scripts/itp.py" not in text
     assert "ITP_BOOTSTRAP_SHOW_PROGRESS" in text
     assert "ITP_BOOTSTRAP_PYTHON_VERSION" in text
+
+
+def test_cli_keyboard_interrupt_is_a_single_clean_cancellation(monkeypatch, capsys):
+    monkeypatch.setattr(
+        itp_cli, "main", lambda: (_ for _ in ()).throw(KeyboardInterrupt()))
+    assert itp_cli.run_cli() == 130
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "Operation cancelled. No files were changed.\n"
+    assert "Traceback" not in captured.err
+
+
+def test_cli_eof_is_actionable_without_traceback(monkeypatch, capsys):
+    monkeypatch.setattr(itp_cli, "main", lambda: (_ for _ in ()).throw(EOFError()))
+    assert itp_cli.run_cli() == 2
+    captured = capsys.readouterr()
+    assert "interactive input is unavailable" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_bootstrap_interrupt_is_clean_and_child_cancellation_is_not_duplicated(
+        monkeypatch, capsys):
+    monkeypatch.setattr(
+        bootstrap, "launch", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            KeyboardInterrupt()))
+    assert bootstrap.main([]) == 130
+    assert capsys.readouterr().err == \
+        "Operation cancelled. No files were changed.\n"
+
+    monkeypatch.setattr(bootstrap, "launch", lambda *_args, **_kwargs: 130)
+    assert bootstrap.main([]) == 130
+    assert capsys.readouterr().err == ""
+
+
+def test_bootstrap_eof_is_actionable_without_traceback(monkeypatch, capsys):
+    monkeypatch.setattr(
+        bootstrap, "launch", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            EOFError()))
+    assert bootstrap.main([]) == 2
+    captured = capsys.readouterr()
+    assert "interactive input is unavailable" in captured.err
+    assert "Traceback" not in captured.err

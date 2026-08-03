@@ -11,6 +11,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from analysis.prerequisites import evaluate_prerequisites, render_prerequisites
+
 try:
     import venv
 except ImportError:  # pragma: no cover - platform packaging failure
@@ -22,7 +28,8 @@ BOOTSTRAP_SCHEMA = 1
 MARKER_NAME = ".itp-dependencies.json"
 DEPENDENCY_FILE = "pyproject.toml"
 WINDOWS_RUNTIME_COMMANDS = frozenset({
-    "demo", "setup", "provision", "start", "stop", "restart", "status", "logs",
+    "deploy", "demo", "setup", "provision", "start", "stop",
+    "restart", "status", "logs",
 })
 WINDOWS_FEATURES = (
     "VirtualMachinePlatform",
@@ -47,6 +54,32 @@ def command_requires_runtime(arguments):
         return True
     return len(arguments) > 1 and arguments[0] == "profile" and \
         arguments[1] in {"up", "down", "restart", "status", "logs"}
+
+
+def _argument_value(arguments, name, default):
+    try:
+        return arguments[arguments.index(name) + 1]
+    except (ValueError, IndexError):
+        return default
+
+
+def prerequisite_ports(arguments):
+    """Resolve deploy port flags without importing the application parser."""
+    values = []
+    for name, default in (("--grafana-port", 3000),
+                          ("--influxdb-port", 8181)):
+        try:
+            values.append(int(_argument_value(list(arguments), name, default)))
+        except (TypeError, ValueError):
+            values.append(default)
+    return tuple(values)
+
+
+def existing_deployment_selected(root, arguments):
+    deployment_id = _argument_value(
+        list(arguments), "--deployment-id", "")
+    return bool(deployment_id and (
+        Path(root) / "runtime/deployments" / str(deployment_id)).is_dir())
 
 
 def parse_windows_systeminfo(text):
@@ -448,11 +481,36 @@ def ensure_environment(
 
 def launch(
         root, arguments, *, run=subprocess.run, output=None, verbose=False,
-        prerequisite_fn=None):
+        prerequisite_fn=None, input_fn=input, interactive=None):
     output = output or (lambda message: print(message, file=sys.stderr))
     show_progress = os.getenv("ITP_BOOTSTRAP_SHOW_PROGRESS") == "1"
     prerequisite = None
-    if command_requires_runtime(arguments):
+    if arguments[:1] == ["deploy"]:
+        prerequisite_options = {
+            "ports": prerequisite_ports(arguments), "runner": run}
+        if existing_deployment_selected(root, arguments):
+            prerequisite_options["check_ports"] = False
+        if "--no-start" in arguments:
+            prerequisite_options.update(
+                check_services=False, check_ports=False,
+                check_docker_volume=False)
+        report = (prerequisite_fn or evaluate_prerequisites)(
+            root, **prerequisite_options)
+        if hasattr(report, "checks"):
+            output(render_prerequisites(report))
+            if not report.ready:
+                raise BootstrapError(
+                    "deployment prerequisites are not satisfied; correct the "
+                    "failed checks and rerun the ITP deploy command")
+            non_interactive = "--non-interactive" in arguments
+            should_prompt = (sys.stdin.isatty() if interactive is None else interactive)
+            if should_prompt and not non_interactive:
+                answer = input_fn("Continue with deployment? [Y/n]: ")
+                if str(answer).strip().casefold() in {"n", "no"}:
+                    output("Deployment cancelled before runtime files were written.")
+                    return 0
+        prerequisite = report
+    elif command_requires_runtime(arguments):
         if show_progress:
             output("ITP bootstrap: checking prerequisites")
         prerequisite = (prerequisite_fn or check_runtime_prerequisites)(
@@ -471,6 +529,10 @@ def launch(
         root, run=run, output=output, verbose=verbose)
     try:
         result = run([str(python), str(script), *arguments], check=False)
+    except KeyboardInterrupt:
+        # The child CLI owns the user-facing cancellation message. Returning
+        # its conventional code prevents the bootstrap parent duplicating it.
+        return 130
     except OSError as exc:
         raise BootstrapError(
             "could not launch ITP from .venv; remove .venv and rerun the command"
@@ -486,6 +548,15 @@ def main(arguments=None):
         arguments = arguments[1:]
     try:
         return launch(repository_root(), arguments, verbose=verbose)
+    except KeyboardInterrupt:
+        print("Operation cancelled. No files were changed.", file=sys.stderr)
+        return 130
+    except EOFError:
+        print(
+            "ITP bootstrap error: interactive input is unavailable. Rerun in "
+            "an interactive terminal or use non-interactive options.",
+            file=sys.stderr)
+        return 2
     except BootstrapError as exc:
         print(f"ITP bootstrap error: {exc}.", file=sys.stderr)
         return 1

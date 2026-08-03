@@ -9,6 +9,8 @@
 ./itp collect --deployment customer
 ./itp doctor --deployment customer
 ./itp status --deployment customer
+./itp deployment edit --deployment customer
+./itp collector setup paloalto --deployment customer
 ```
 
 ## Multi-site deployment
@@ -39,6 +41,16 @@ git pull --ff-only
 
 ## Troubleshooting
 
+- **Prerequisite failure:** follow the `Action` printed below the failed item,
+  then rerun `./itp deploy`. No deployment runtime is written before this gate.
+- **Docker CLI present, daemon unavailable:** start Docker Desktop or the Docker
+  service and wait for `docker info` to succeed.
+- **Port occupied:** stop the reported process/PID or choose another Grafana or
+  InfluxDB port.
+- **Low memory or disk:** deployment may continue, but free capacity before
+  retaining substantial telemetry.
+- **Opaque or partial failure:** run `./itp recover --deployment <deployment>`
+  or create evidence with `./itp support bundle --deployment <deployment>`.
 - **Site missing:** check `enabled`, aliases and collector site values.
 - **Duplicate alias:** make each normalized alias unique inside the profile.
 - **Parent not found:** use an ID from the same profile.

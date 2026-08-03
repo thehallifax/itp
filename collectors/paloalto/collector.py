@@ -323,6 +323,11 @@ class PaloAltoCollector(BaseCollector):
             "software_version": parsed["system"].get("software_version"),
             "ha_status": (parsed.get("ha") or {}).get("status", "unavailable"),
             "interface_count": len(parsed.get("interfaces", [])),
+            "interfaces": [{key: value for key, value in item.items()
+                            if key in {"name", "interface_type", "admin_status",
+                                       "operational_status", "speed", "ip_address",
+                                       "zone", "logical", "aggregate_group"}}
+                           for item in parsed.get("interfaces", [])],
             "licence_count": len(parsed.get("licenses", []))}
 
     async def close(self):

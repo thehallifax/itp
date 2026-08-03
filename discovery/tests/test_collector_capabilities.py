@@ -22,7 +22,9 @@ def _write(path, value):
 
 
 def test_declarations_are_complete_and_valid():
-    assert {"paloalto", "papercut", "snmp", "aruba", "framework"} == set(MANIFESTS)
+    assert {
+        "aruba", "fortigate", "framework", "paloalto", "papercut", "snmp",
+    } == set(MANIFESTS)
     for values in MANIFESTS.values():
         assert values and len({value.id for value in values}) == len(values)
         for value in values:

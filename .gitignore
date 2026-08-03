@@ -14,6 +14,7 @@ secrets/**/*.env
 
 # Runtime and generated state
 runtime/
+support/
 !runtime/
 runtime/*
 !runtime/README.md

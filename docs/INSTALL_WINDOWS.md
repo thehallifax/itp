@@ -78,6 +78,14 @@ The PowerShell launcher invokes the shared bootstrap automatically. It creates
 Docker and Compose, and starts the deployment. Running
 `py scripts\bootstrap.py` separately is not required.
 
+Before runtime configuration is written, deployment prints a prerequisite
+report covering Windows, the selected Python architecture and version, venv,
+pip, Git, Docker CLI, Docker daemon, Compose v2, Linux-container mode, Windows
+PowerShell, writable runtime locations, Docker-volume access, memory, disk and
+the requested ports. PowerShell 7 is detected when present but remains optional.
+Failed checks stop deployment; memory and disk shortfalls are warnings. After a
+successful interactive report, confirm `Continue with deployment? [Y/n]`.
+
 If Python is missing, installation never starts without consent. WinGet remains
 the preferred provider. If it is unavailable or fails, ITP identifies CPython
 3.12.10, the native architecture, and `www.python.org` before asking again.
@@ -141,6 +149,12 @@ repeat completed installation or feature work.
 Docker Desktop installation is deliberately manual. If it is absent, install
 Docker Desktop with Linux containers and rerun deployment. If it is installed
 but stopped, start it and wait for the daemon before rerunning.
+
+If a port is occupied, ITP reports the port and, where Windows permits, the
+process name and PID. Stop that process or choose another port, for example
+`--grafana-port 3300`. Missing Git is also blocking because updates, version
+reporting and deployment lifecycle operations depend on it; install Git for
+Windows from <https://git-scm.com/downloads> and rerun deployment.
 
 ### Recover an interrupted InfluxDB credential bootstrap
 
@@ -227,6 +241,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 status --deplo
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 collect --deployment example
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 collector run paloalto --deployment example
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 logs collector --deployment example
+```
+
+Configuration, guided onboarding, support and recovery use the same launcher:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 deployment edit --deployment example
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 collector setup paloalto --deployment example
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 support bundle --deployment example
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\itp.ps1 recover --deployment example
 ```
 
 Set the default explicitly with:

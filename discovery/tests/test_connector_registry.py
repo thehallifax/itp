@@ -38,12 +38,13 @@ def test_complete_inventory_stable_ids_and_deterministic_order(registry):
     assert all(value.remediation_command for value in registry.all())
 
 
-def test_alias_lookup_and_manual_only_inventory(registry):
+def test_alias_lookup_and_guided_setup_inventory(registry):
     assert registry.get("pan-os").id == "paloalto"
     assert registry.get("vcenter").id == "vmware"
-    assert {value.id for value in registry.manual_only()} == EXPECTED
-    assert registry.filter(guided_setup=True) == ()
-    assert {value.id for value in registry.filter(guided_setup=False)} == EXPECTED
+    guided = {"fortigate", "paloalto", "papercut"}
+    assert {value.id for value in registry.manual_only()} == EXPECTED - guided
+    assert {value.id for value in registry.filter(guided_setup=True)} == guided
+    assert {value.id for value in registry.filter(guided_setup=False)} == EXPECTED - guided
 
 
 def test_domain_and_deployment_filters(registry):

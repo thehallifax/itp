@@ -33,16 +33,15 @@ configuration, or make network calls.
 | --- | --- | --- | --- | --- |
 | `snmp` | Multi-vendor SNMP and generated Telegraf polling | switching, wireless, printing, servers, power, environmental | supported | manual |
 | `mist` | Juniper Mist API | switching, wireless | supported | manual |
-| `fortigate` | Fortinet FortiGate API | firewall, internet, switching | supported | manual |
-| `paloalto` | Palo Alto PAN-OS API | firewall, internet | supported | manual |
-| `papercut` | PaperCut MF System Health API | printing, servers | supported | manual |
+| `fortigate` | Fortinet FortiGate API | firewall, internet, switching | supported | guided |
+| `paloalto` | Palo Alto PAN-OS API | firewall, internet | supported | guided |
+| `papercut` | PaperCut MF System Health API | printing, servers | supported | guided |
 | `vmware` | VMware vSphere | virtualisation, servers | profile-only | profile manual |
 | `hyperv` | Microsoft Hyper-V | virtualisation, servers | profile-only | profile manual |
 | `proxmox` | Proxmox VE | virtualisation, servers | profile-only | profile manual |
 
-No connector currently claims guided setup. OOBE-001 continues to bootstrap the
-platform. OOBE-002 Phase 1 exposes accurate connector metadata; a later phase
-may present only entries explicitly marked `guided_setup: true`.
+Palo Alto, FortiGate and PaperCut declare guided setup. Other connectors retain
+their existing manual/profile workflows until a tested setup adapter exists.
 
 Printer, UPS, environmental, server, and generic network evidence can be
 collected through SNMP. PaperCut MF also has a dedicated read-only System

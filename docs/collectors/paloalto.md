@@ -82,6 +82,17 @@ traffic, and default routes never imply a WAN role.
 ./itp logs collector --deployment <deployment>
 ```
 
+Guided setup discovers interfaces and requires explicit WAN selection:
+
+```sh
+./itp collector setup paloalto --deployment <deployment>
+```
+
+Zone, address, status and device metadata inform recommendations only. Device
+aliases become suggested display names; the PAN-OS interface name remains the
+canonical identity. Private trust should be configured with
+`./itp credentials ca add <certificate> --deployment <deployment>`.
+
 Identity is mandatory. HA, interfaces, resources and licences are optional:
 capability-specific failure produces partial health while retaining the asset.
 

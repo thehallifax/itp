@@ -29,3 +29,14 @@ Normalized output is written to `infrastructure_device`, `network_interface`, an
 dual-writes `fortigate_system`, `fortigate_performance`, and `fortigate_interfaces` for
 dashboard compatibility. Telegraf SNMP remains available as fallback and counter
 enrichment. Tokens are never included in diagnostics.
+
+Guided setup uses the existing read-only inspection, presents interface role,
+alias, status and SD-WAN evidence where returned, and requires explicit WAN
+selection:
+
+```sh
+./itp collector setup fortigate --deployment <deployment>
+```
+
+Recommendations never silently classify an interface. The canonical interface
+name and friendly display label remain separate.

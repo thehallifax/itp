@@ -73,6 +73,15 @@ query key is the PAN-OS interface name; `display_name` only labels the panel.
 
 ## Partial or interrupted deployment
 
+Start with a structured, non-destructive recovery plan or support bundle:
+
+```sh
+./itp recover --deployment <deployment>
+./itp support bundle --deployment <deployment>
+```
+
+Recovery prints explicit commands but performs no action automatically.
+
 ```sh
 ./itp deployment list
 ./itp doctor --deployment <deployment>

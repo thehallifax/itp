@@ -16,6 +16,14 @@ starts the stack, and prints the Grafana URL. The launcher bootstraps runtime
 dependencies without installing contributor-only test packages. Developers
 should follow [CONTRIBUTING.md](../CONTRIBUTING.md).
 
+Before configuration is written, a shared prerequisite orchestrator checks
+the host OS, Python interpreter, venv and pip, Git, Docker CLI and daemon,
+Compose v2, runtime permissions, temporary Docker-volume access, available
+memory and disk, and the requested Grafana and InfluxDB ports. Blocking failures
+stop before `runtime/deployments/` is changed. Resource shortfalls are warnings.
+Interactive deployment asks for confirmation after a successful report;
+`--non-interactive` proceeds without prompting.
+
 On a clean deployment, Infrastructure Overview opens with a generated Setup
 Status checklist. **Monitoring not started** means the platform is operating
 normally but no external collector is enabled. Enablement, first collection,
@@ -81,6 +89,26 @@ Commands wrap the repository's existing Compose file. Repeated start and stop
 operations are safe. Lifecycle output reports the resulting service state and
 never prints environment values or credentials.
 
+## Edit, support and recover
+
+```sh
+./itp deployment edit --deployment campus
+./itp deployment edit --deployment campus --grafana-port 3300 --dry-run --json
+./itp support bundle --deployment campus --privacy high
+./itp recover --deployment campus
+```
+
+Editing validates a redacted proposal, writes `.rollback` copies, atomically
+persists canonical configuration, and regenerates managed dashboards. It never
+prints or edits credential values. Network, timezone and collector changes
+require an explicit restart after review.
+
+Support ZIPs exclude secret files, private keys, telemetry databases and
+unrelated Docker resources, and fail closed if a known credential survives.
+Standard bundles may retain infrastructure metadata; high privacy uses stable
+per-bundle pseudonyms. Recovery lists structured actions without executing one.
+Destructive telemetry reset is clearly marked and never the default.
+
 Deployment recovery and removal are explicit:
 
 ```sh
@@ -129,6 +157,12 @@ versions appear under `stack.dashboard_packs` in `./itp status --json`.
   install Python from python.org and disable the conflicting aliases.
 - Windows stack commands distinguish a missing Docker command, missing Compose
   v2 plugin, and a stopped Docker Desktop daemon.
+- Port conflicts include the listening process and PID when the operating
+  system exposes that information. Stop it or select different deployment
+  ports.
+- Git is required for version reporting, updates and lifecycle management;
+  install it from <https://git-scm.com/downloads> when the prerequisite report
+  marks it missing.
 - Dependency installation requires package-index access on the first run.
   Offline deployments must provide pip's cache or an internal package index.
 

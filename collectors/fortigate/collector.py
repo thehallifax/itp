@@ -142,13 +142,21 @@ class FortiGateCollector(BaseCollector):
     async def inspect(self):
         endpoints, diagnostics = await self._snapshot()
         record, points = normalize(endpoints, self.settings)
+        interfaces = [{
+            "interface_name": point["tags"].get("interface_name"),
+            "alias": point["tags"].get("interface_description", ""),
+            "role": point["tags"].get("interface_role", ""),
+            "operational_status": point["fields"].get("operational_status"),
+            "speed": point["fields"].get("speed_bps"),
+        } for point in points if point.get("measurement") == "network_interface"]
         return {"enabled": True, "api_hostname": urlsplit(self.client.base_url).hostname or "",
             "organization_id": "not-applicable", "site_count": 1, "device_count": 1,
             "device_types": {"fortigate": 1}, "measurements": {}, "points_produced": len(points),
             "always_empty_fields": [], "high_cardinality_warnings": [],
             "influx_write_completed": False, "points_written": 0,
             "partial": bool(diagnostics), "diagnostics": [item.category for item in diagnostics],
-            "device_id": record["id"]}
+            "device_id": record["id"], "interface_count": len(interfaces),
+            "interfaces": interfaces}
 
     async def close(self):
         await self.client.close()
