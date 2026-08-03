@@ -244,6 +244,7 @@ def _wan_rows(signals, scopes, service_scopes):
                 str(value.get("role") or "WAN").title()
             rows.append({"scope": scope["scope"],
                 "interface": interface, "label": label, "uplink": interface,
+                "device_id": value.get("device_id") or "",
                 "role": str(value.get("role") or "Unspecified").title(),
                 "state": "Up" if value.get("available") is True else
                          "Down" if value.get("available") is False else "Unknown",
@@ -254,6 +255,7 @@ def _wan_rows(signals, scopes, service_scopes):
                                            or sample.get("tx_bps") is not None):
                     samples.append({"scope": scope["scope"], "time": sample["time"],
                         "interface": interface, "label": label,
+                        "device_id": value.get("device_id") or "",
                         "uplink": interface,
                         "rx_bps": sample.get("rx_bps"), "tx_bps": sample.get("tx_bps")})
     return rows, sorted(samples, key=lambda value: (

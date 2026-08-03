@@ -11,6 +11,8 @@ from collectors.writer import atomic_write
 
 
 DATASOURCE = {"type": "grafana-testdata-datasource", "uid": "itp-runtime-values"}
+INFLUX_DATASOURCE = {"type": "influxdb", "uid": "ffsu5ap2kr5dse"}
+MIXED_DATASOURCE = {"type": "datasource", "uid": "-- Mixed --"}
 HEALTH_COLORS = {"Healthy": "green", "Fresh": "green", "Warning": "orange",
                  "Stale": "orange", "Critical": "red", "Failed": "red",
                  "Unknown": "gray", "Not Enabled": "gray",
@@ -48,6 +50,34 @@ def _scope_filter():
 def _target(csv_content):
     return {"refId": "A", "scenarioId": "csv_content", "csvContent": csv_content,
             "datasource": DATASOURCE}
+
+
+def _sql_literal(value):
+    return "'" + str(value or "").replace("'", "''") + "'"
+
+
+def _wan_sql_target(interface, device_id):
+    filters = [
+        "collector = 'paloalto'",
+        "wan_classified = true",
+        f"interface_name = {_sql_literal(interface)}",
+        "(${site:sqlstring} = 'all' OR site_id = ${site:sqlstring})",
+        "time >= $__timeFrom",
+        "time <= $__timeTo",
+    ]
+    if device_id:
+        filters.insert(3, f"device_id = {_sql_literal(device_id)}")
+    sql = (
+        'SELECT time, rx_bps AS "Download", tx_bps AS "Upload" '
+        "FROM interface WHERE " + " AND ".join(filters) + " ORDER BY time")
+    return {
+        "refId": "A",
+        "datasource": INFLUX_DATASOURCE,
+        "format": "table",
+        "rawQuery": True,
+        "rawSql": sql,
+        "query": sql,
+    }
 
 
 def _mapping(value_colors=None):
@@ -469,39 +499,37 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
 
     prototype = panels["WAN Traffic"]
     interfaces = sorted({
-        (value["interface"], value["label"])
+        (value["interface"], value["label"], value.get("device_id") or "")
         for value in summary["wan"]["uplinks"] if value.get("interface")
-    }, key=lambda value: (value[1].casefold(), value[0].casefold()))
+    }, key=lambda value: (
+        value[1].casefold(), value[0].casefold(), value[2].casefold()))
     wan_panels = []
-    for offset, (interface, label) in enumerate(interfaces, 40):
+    for offset, (interface, label, device_id) in enumerate(interfaces, 40):
         panel = copy.deepcopy(prototype)
         panel.update({"id": offset, "title": f"WAN · {label} · {interface}",
                       "type": "timeseries"})
         samples = [value for value in summary["wan"].get("samples", [])
-                   if value.get("interface") == interface]
-        if not samples:
-            panel["type"] = "text"
-            panel.pop("datasource", None)
-            panel["targets"] = []
-            panel["transformations"] = []
-            panel["options"] = {"mode": "markdown", "content":
-                f"## {label} · {interface}\n\n"
-                "Awaiting throughput telemetry for this WAN interface."}
-            panel["description"] = (
-                f"{label} ({interface}); no download or upload samples.")
-            wan_panels.append(panel)
-            continue
-        panel["targets"] = [_target(_csv(samples,
-            ("scope", "time", "interface", "rx_bps", "tx_bps")))]
-        panel["transformations"] = _scope_filter() + [{
-            "id": "organize", "options": {
-                "excludeByName": {"scope": True, "interface": True},
-                "renameByName": {
-                    "rx_bps": "Download", "tx_bps": "Upload"}}}]
+                   if value.get("interface") == interface
+                   and (not device_id or value.get("device_id") == device_id)]
+        panel["datasource"] = MIXED_DATASOURCE
+        panel["targets"] = [_wan_sql_target(interface, device_id)]
+        if samples:
+            fallback = [{"time": value.get("time"),
+                         "Download": value.get("rx_bps"),
+                         "Upload": value.get("tx_bps")}
+                        for value in samples if value.get("scope") == "all"]
+            fallback_target = _target(_csv(
+                fallback, ("time", "Download", "Upload")))
+            fallback_target.update({"refId": "B", "hide": True})
+            panel["targets"].append(fallback_target)
+        panel["transformations"] = []
         panel["fieldConfig"] = {"defaults": {
             "unit": "bps", "color": {"mode": "palette-classic"},
             "custom": {"drawStyle": "line", "lineWidth": 2,
-                       "fillOpacity": 12, "showPoints": "never"}},
+                       "lineInterpolation": "linear", "fillOpacity": 12,
+                       "showPoints": "never", "spanNulls": False,
+                       "insertNulls": 180000},
+            "noValue": "Awaiting throughput telemetry"},
             "overrides": []}
         panel["options"] = {
             "legend": {
@@ -513,12 +541,11 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
             },
             "tooltip": {"mode": "multi", "sort": "desc"},
         }
-        latest = sorted(samples, key=lambda value: value.get("time", ""))[-1] \
-            if samples else {}
         panel["description"] = (
-            f"{label} ({interface}). Current download: "
-            f"{latest.get('rx_bps', 'unavailable')} bps; current upload: "
-            f"{latest.get('tx_bps', 'unavailable')} bps.")
+            f"{label} ({interface}). Collector-derived canonical interface "
+            "rates at collection cadence. Gaps longer than three minutes are "
+            "not connected. A hidden state-derived CSV target remains available "
+            "for portable inspection.")
         wan_panels.append(panel)
     dashboard["panels"] = [
         panel for panel in dashboard["panels"]

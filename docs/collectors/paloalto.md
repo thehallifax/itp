@@ -105,6 +105,10 @@ The first observation establishes a baseline, so a new process or deployment
 may require two successful collections before throughput appears. Duplicate
 timestamps, missing counters and counter resets produce no rate rather than a
 fabricated or negative value. Optional missing counters do not fail collection.
+Both the Operations Wallboard and Palo Alto Operational Overview query these
+canonical `interface` rate fields across the selected Grafana time range. Chart
+density therefore follows the collector cadence. Missing observations remain
+gaps rather than being converted to zero or connected across a long outage.
 
 Local read-only smoke test:
 

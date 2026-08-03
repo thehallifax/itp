@@ -195,6 +195,7 @@ def build():
         "repeatDirection": "h",
         "maxPerRow": 2,
     })
+    wan_panel["fieldConfig"]["defaults"]["custom"]["insertNulls"] = 180000
     add(wan_panel)
     fault_sql = ("SELECT time, interface_name, rx_errors_total, tx_errors_total, "
         "rx_discards_total "

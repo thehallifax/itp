@@ -155,7 +155,13 @@ class InfrastructureStateEngine:
             site_id = site.get("site_id") if isinstance(site, dict) else asset.get("site_id")
             site_name = site.get("display_name") if isinstance(site, dict) else site
             for value in extensions.get("wan_interfaces") or []:
-                wan_signals.append({**value, "site_id": site_id, "site": site_name})
+                wan_signals.append({
+                    **value,
+                    "site_id": site_id,
+                    "site": site_name,
+                    "device_id": asset.get("canonical_id")
+                    or asset.get("device_id") or asset.get("id"),
+                })
             certificate = extensions.get("device_certificate") or {}
             licenses = extensions.get("licenses") or []
             content = extensions.get("content_packages") or []

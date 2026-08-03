@@ -222,10 +222,10 @@ def test_multiple_authoritative_wan_uplinks_and_samples(tmp_path):
         "WAN · Primary · ethernet1/1",
         "WAN · Secondary · ethernet1/2"]
     assert all(value["type"] == "timeseries" for value in traffic)
-    assert all(value["targets"][0]["scenarioId"] == "csv_content"
+    assert all(value["targets"][0]["datasource"]["type"] == "influxdb"
                for value in traffic)
-    assert all("Download" in value["transformations"][-1]["options"][
-        "renameByName"].values() for value in traffic)
+    assert all(value["targets"][1]["scenarioId"] == "csv_content"
+               and value["targets"][1]["hide"] is True for value in traffic)
     internet = next(value for value in dashboard["panels"]
                     if value["title"] == "Internet")
     assert next(value for value in rows(internet)
@@ -245,8 +245,7 @@ def test_one_wan_renders_one_identified_graph(tmp_path):
            if value["title"].startswith("WAN ·")]
     assert [value["title"] for value in wan] == [
         "WAN · Primary · ethernet1/1"]
-    assert "Current download: 2000 bps" in wan[0]["description"]
-    assert "current upload: 700 bps" in wan[0]["description"]
+    assert "Collector-derived canonical interface rates" in wan[0]["description"]
     assert wan[0]["gridPos"]["w"] == 24
     assert wan[0]["gridPos"]["h"] >= 8
     assert wan[0]["options"]["legend"]["calcs"] == ["lastNotNull"]
@@ -456,10 +455,58 @@ def test_site_summary_security_links_and_supported_csv_contract(tmp_path):
         "/d/mist-infrastructure-overview")
     for panel in dashboard["panels"]:
         for target in panel.get("targets", []):
+            if panel["title"].startswith("WAN ·") and target["refId"] == "A":
+                assert target["datasource"]["type"] == "influxdb"
+                continue
             assert target["scenarioId"] == "csv_content"
             assert list(csv.DictReader(io.StringIO(target["csvContent"])))
-    assert not any("rawSql" in target for panel in dashboard["panels"]
-                   for target in panel.get("targets", []))
+
+
+def test_wallboard_wan_uses_canonical_rates_with_honest_gaps_and_fallback(
+        tmp_path):
+    fixture(tmp_path, signals={"wan": [{
+        "name": "ethernet1/5", "display_name": "WAN 1",
+        "role": "primary", "available": True, "site_id": "site:hq",
+        "device_id": "paloalto:serial-one",
+        "samples": [{"time": "2026-07-23T00:58:00Z",
+                     "rx_bps": 2000, "tx_bps": None}],
+    }]}).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    panel = next(value for value in dashboard["panels"]
+                 if value["title"] == "WAN · WAN 1 · ethernet1/5")
+    sql = panel["targets"][0]["rawSql"]
+    assert 'rx_bps AS "Download"' in sql
+    assert 'tx_bps AS "Upload"' in sql
+    assert "interface_name = 'ethernet1/5'" in sql
+    assert "device_id = 'paloalto:serial-one'" in sql
+    assert "time >= $__timeFrom" in sql and "time <= $__timeTo" in sql
+    assert "LAG(" not in sql and "bytes_total" not in sql
+    assert "COALESCE" not in sql
+    assert panel["fieldConfig"]["defaults"]["custom"]["spanNulls"] is False
+    assert panel["fieldConfig"]["defaults"]["custom"]["insertNulls"] == 180000
+    fallback = panel["targets"][1]
+    assert fallback["hide"] is True
+    assert "2000" in fallback["csvContent"]
+    assert ",0" not in fallback["csvContent"]
+
+
+def test_wallboard_wan_without_summary_samples_still_queries_canonical_data(
+        tmp_path):
+    fixture(tmp_path, signals={"wan": [{
+        "name": "ethernet1/6", "display_name": "WAN 2",
+        "role": "secondary", "available": True, "site_id": "site:hq",
+        "device_id": "paloalto:serial-one", "samples": [],
+    }]}).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    panel = next(value for value in dashboard["panels"]
+                 if value["title"] == "WAN · WAN 2 · ethernet1/6")
+    assert panel["type"] == "timeseries"
+    assert len(panel["targets"]) == 1
+    assert panel["targets"][0]["datasource"]["type"] == "influxdb"
+    assert panel["fieldConfig"]["defaults"]["noValue"] == (
+        "Awaiting throughput telemetry")
 
 
 def test_clean_bootstrap_and_deterministic_generation(tmp_path):

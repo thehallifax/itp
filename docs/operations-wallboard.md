@@ -107,8 +107,14 @@ Each classified interface receives its own responsive graph named with both its
 friendly role and interface name. Download and Upload use bits per second,
 Grafana auto-scaling, and a table legend with the latest value. One WAN uses the
 full row; two WANs use equal columns; an odd final WAN uses the full following
-row. An interface without traffic samples displays an explicit waiting state
-instead of generic No data.
+row. These panels query collector-derived `rx_bps` and `tx_bps` directly from
+the canonical InfluxDB `interface` measurement, bounded by site, device,
+interface and dashboard time range. The state summary retains a hidden CSV
+fallback for portable inspection. The first counter observation establishes a
+baseline; subsequent observations create rates. Missing observations remain
+gaps, are never converted to zero, and are not connected across outages longer
+than three minutes. An interface without samples displays an explicit waiting
+state instead of generic No data.
 
 ## Data binding and filtering
 

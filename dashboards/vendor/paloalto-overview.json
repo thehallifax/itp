@@ -1135,6 +1135,7 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 12,
+            "insertNulls": 180000,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "showPoints": "never",
