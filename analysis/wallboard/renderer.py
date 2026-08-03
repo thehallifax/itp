@@ -499,20 +499,28 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
 
     prototype = panels["WAN Traffic"]
     interfaces = sorted({
-        (value["interface"], value["label"], value.get("device_id") or "")
-        for value in summary["wan"]["uplinks"] if value.get("interface")
+        (value.get("interface_name") or value["interface"],
+         value.get("display_name") or value["label"],
+         value.get("role") or "Unspecified",
+         value.get("device_id") or "")
+        for value in summary["wan"]["uplinks"]
+        if value.get("interface_name") or value.get("interface")
     }, key=lambda value: (
-        value[1].casefold(), value[0].casefold(), value[2].casefold()))
+        value[2].casefold(), value[1].casefold(), value[0].casefold(),
+        value[3].casefold()))
     wan_panels = []
-    for offset, (interface, label, device_id) in enumerate(interfaces, 40):
+    for offset, (interface_name, display_name, role, device_id) in enumerate(
+            interfaces, 40):
         panel = copy.deepcopy(prototype)
-        panel.update({"id": offset, "title": f"WAN · {label} · {interface}",
+        panel.update({"id": offset,
+                      "title": f"WAN · {role} · {display_name}",
                       "type": "timeseries"})
         samples = [value for value in summary["wan"].get("samples", [])
-                   if value.get("interface") == interface
+                   if (value.get("interface_name") or value.get("interface"))
+                   == interface_name
                    and (not device_id or value.get("device_id") == device_id)]
         panel["datasource"] = MIXED_DATASOURCE
-        panel["targets"] = [_wan_sql_target(interface, device_id)]
+        panel["targets"] = [_wan_sql_target(interface_name, device_id)]
         if samples:
             fallback = [{"time": value.get("time"),
                          "Download": value.get("rx_bps"),
@@ -542,7 +550,8 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
             "tooltip": {"mode": "multi", "sort": "desc"},
         }
         panel["description"] = (
-            f"{label} ({interface}). Collector-derived canonical interface "
+            f"{display_name} ({interface_name}, {role}). Collector-derived "
+            "canonical interface "
             "rates at collection cadence. Gaps longer than three minutes are "
             "not connected. A hidden state-derived CSV target remains available "
             "for portable inspection.")

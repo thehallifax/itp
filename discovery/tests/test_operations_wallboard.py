@@ -244,7 +244,7 @@ def test_one_wan_renders_one_identified_graph(tmp_path):
     wan = [value for value in dashboard["panels"]
            if value["title"].startswith("WAN ·")]
     assert [value["title"] for value in wan] == [
-        "WAN · Primary · ethernet1/1"]
+        "WAN · Primary · Primary"]
     assert "Collector-derived canonical interface rates" in wan[0]["description"]
     assert wan[0]["gridPos"]["w"] == 24
     assert wan[0]["gridPos"]["h"] >= 8
@@ -465,7 +465,8 @@ def test_site_summary_security_links_and_supported_csv_contract(tmp_path):
 def test_wallboard_wan_uses_canonical_rates_with_honest_gaps_and_fallback(
         tmp_path):
     fixture(tmp_path, signals={"wan": [{
-        "name": "ethernet1/5", "display_name": "WAN 1",
+        "name": "WAN 1", "interface_name": "ethernet1/5",
+        "display_name": "WAN 1",
         "role": "primary", "available": True, "site_id": "site:hq",
         "device_id": "paloalto:serial-one",
         "samples": [{"time": "2026-07-23T00:58:00Z",
@@ -474,7 +475,7 @@ def test_wallboard_wan_uses_canonical_rates_with_honest_gaps_and_fallback(
     dashboard = json.loads(
         (tmp_path / "grafana/operations-wallboard.json").read_text())
     panel = next(value for value in dashboard["panels"]
-                 if value["title"] == "WAN · WAN 1 · ethernet1/5")
+                 if value["title"] == "WAN · Primary · WAN 1")
     sql = panel["targets"][0]["rawSql"]
     assert 'rx_bps AS "Download"' in sql
     assert 'tx_bps AS "Upload"' in sql
@@ -494,17 +495,25 @@ def test_wallboard_wan_uses_canonical_rates_with_honest_gaps_and_fallback(
 def test_wallboard_wan_without_summary_samples_still_queries_canonical_data(
         tmp_path):
     fixture(tmp_path, signals={"wan": [{
-        "name": "ethernet1/6", "display_name": "WAN 2",
+        "name": "WAN 2", "interface_name": "ethernet1/6",
+        "display_name": "WAN 2",
         "role": "secondary", "available": True, "site_id": "site:hq",
         "device_id": "paloalto:serial-one", "samples": [],
     }]}).run(NOW)
     dashboard = json.loads(
         (tmp_path / "grafana/operations-wallboard.json").read_text())
     panel = next(value for value in dashboard["panels"]
-                 if value["title"] == "WAN · WAN 2 · ethernet1/6")
+                 if value["title"] == "WAN · Secondary · WAN 2")
     assert panel["type"] == "timeseries"
     assert len(panel["targets"]) == 1
     assert panel["targets"][0]["datasource"]["type"] == "influxdb"
+    sql = panel["targets"][0]["rawSql"]
+    assert "interface_name = 'ethernet1/6'" in sql
+    assert "interface_name = 'WAN 2'" not in sql
+    assert "device_id = 'paloalto:serial-one'" in sql
+    assert "site_id = ${site:sqlstring}" in sql
+    assert 'rx_bps AS "Download"' in sql and 'tx_bps AS "Upload"' in sql
+    assert "LAG(" not in sql and "bytes_total" not in sql
     assert panel["fieldConfig"]["defaults"]["noValue"] == (
         "Awaiting throughput telemetry")
 

@@ -31,14 +31,16 @@ def map_snapshot(parsed, config, observed_at):
             continue
         state = str(item.get("operational_status") or "").lower()
         wan_interfaces.append({
-            "name": configured.display_name,
+            "name": configured.name,
             "interface_name": configured.name,
+            "display_name": configured.display_name,
             "role": configured.role,
             "available": True if state in {"up", "active"} else
                          False if state in {"down", "inactive"} else None,
             "classification_authoritative": True,
             "site": config.site_name or config.site, "site_id": config.site,
-            "device": hostname, "observed_at": observed_at,
+            "device": hostname, "device_id": identifier,
+            "observed_at": observed_at,
             "rx_bytes_total": item.get("rx_bytes_total"),
             "tx_bytes_total": item.get("tx_bytes_total"),
         })

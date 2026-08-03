@@ -367,7 +367,8 @@ class ServiceEvaluator:
                 unknown.append(value)
         evidence = tuple({"type": "wan_interface",
             "interface": value.get("interface_name") or value.get("name"),
-            "display_name": value.get("name"), "role": value.get("role"),
+            "display_name": value.get("display_name") or value.get("name"),
+            "role": value.get("role"),
             "available": value.get("available"),
             "observed_at": value.get("observed_at")}
             for value in sorted(signals, key=lambda item: (
@@ -375,7 +376,8 @@ class ServiceEvaluator:
         if stale or unknown:
             return ServiceHealth("Internet", "Unknown",
                 "WAN interface evidence is stale or incomplete.",
-                tuple(sorted(str(value.get("name") or value.get("interface_name"))
+                tuple(sorted(str(value.get("display_name") or value.get("name")
+                                 or value.get("interface_name"))
                              for value in stale + unknown)),
                 severity=STATUS_SEVERITY["Unknown"], evidence=evidence)
         down = [value for value in signals if value.get("available") is False]
@@ -397,7 +399,8 @@ class ServiceEvaluator:
             status = "Healthy"
             summary = "All explicitly configured Internet uplinks are operational."
         return ServiceHealth("Internet", status, summary,
-            tuple(sorted(str(value.get("name") or value.get("interface_name"))
+            tuple(sorted(str(value.get("display_name") or value.get("name")
+                             or value.get("interface_name"))
                          for value in down)),
             severity=STATUS_SEVERITY[status],
             last_change=_latest(value.get("observed_at") for value in signals),

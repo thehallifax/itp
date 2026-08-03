@@ -158,7 +158,8 @@ Content age does not become Critical without an explicit policy.
 
 `wan_interfaces[].name` is the stable PAN-OS interface identifier used in
 telemetry tags and dashboard filters. `display_name` is presentation metadata
-used in titles only. To inspect names before configuration, run a collection
+used in titles only; it is never substituted into an `interface_name` SQL
+predicate. To inspect names before configuration, run a collection
 and open Interface Inventory, or inspect the shared collector diagnostics:
 
 ```sh

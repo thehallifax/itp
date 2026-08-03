@@ -165,6 +165,19 @@ def test_internet_uses_authoritative_uplink_policy(tmp_path, signals, expected):
     assert service(engine.evaluate(NOW), "Internet")["status"] == expected
 
 
+def test_internet_evidence_separates_interface_identity_from_display_name(tmp_path):
+    signal = {"name": "ethernet1/6", "interface_name": "ethernet1/6",
+              "display_name": "WAN 2", "role": "secondary",
+              "available": False, "classification_authoritative": True,
+              "observed_at": "2026-07-23T13:59:00Z"}
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+                        signals={"wan": [signal]})
+    internet = service(engine.evaluate(NOW), "Internet")
+    assert internet["affected_assets"] == ["WAN 2"]
+    assert internet["evidence"][0]["interface"] == "ethernet1/6"
+    assert internet["evidence"][0]["display_name"] == "WAN 2"
+
+
 def test_security_uses_subscription_and_certificate_evidence(tmp_path):
     signal = {"device": "PA-1", "observed_at": "2026-07-23T13:59:00Z",
         "device_certificate": {"classification": "valid", "status": "Valid"},

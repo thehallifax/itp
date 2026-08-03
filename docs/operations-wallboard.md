@@ -104,7 +104,9 @@ directly from authoritative WAN signals and uses evidence-based wording such as
 does not create a second Internet calculation.
 
 Each classified interface receives its own responsive graph named with both its
-friendly role and interface name. Download and Upload use bits per second,
+friendly role and display name. The SQL predicate always uses the canonical
+PAN-OS `interface_name`; `display_name` is presentation metadata only. Download
+and Upload use bits per second,
 Grafana auto-scaling, and a table legend with the latest value. One WAN uses the
 full row; two WANs use equal columns; an odd final WAN uses the full following
 row. These panels query collector-derived `rx_bps` and `tx_bps` directly from

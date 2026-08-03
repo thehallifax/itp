@@ -238,14 +238,23 @@ def _wan_rows(signals, scopes, service_scopes):
                 "latency_ms": "N/A", "packet_loss_percent": "N/A"})
             continue
         for value in sorted(selected, key=lambda item: (
-                str(item.get("role", "")), str(item.get("name") or item.get("interface_name", "")))):
-            interface = value.get("name") or value.get("interface_name") or "WAN"
-            label = value.get("display_name") or value.get("friendly_label") or \
-                str(value.get("role") or "WAN").title()
+                str(item.get("role", "")), str(item.get("interface_name")
+                                               or item.get("name", "")))):
+            interface_name = value.get("interface_name") or value.get("name") or "WAN"
+            display_name = value.get("display_name") or value.get("friendly_label")
+            if not display_name and value.get("interface_name"):
+                # Compatibility with PALO-UX-001 inventory where `name` held
+                # the friendly label and `interface_name` held identity.
+                display_name = value.get("name")
+            display_name = display_name or interface_name
+            role = str(value.get("role") or "Unspecified").title()
             rows.append({"scope": scope["scope"],
-                "interface": interface, "label": label, "uplink": interface,
+                "interface": interface_name, "label": display_name,
+                "interface_name": interface_name,
+                "display_name": display_name,
+                "uplink": interface_name,
                 "device_id": value.get("device_id") or "",
-                "role": str(value.get("role") or "Unspecified").title(),
+                "role": role,
                 "state": "Up" if value.get("available") is True else
                          "Down" if value.get("available") is False else "Unknown",
                 "latency_ms": value.get("latency_ms", "N/A"),
@@ -254,9 +263,12 @@ def _wan_rows(signals, scopes, service_scopes):
                 if sample.get("time") and (sample.get("rx_bps") is not None
                                            or sample.get("tx_bps") is not None):
                     samples.append({"scope": scope["scope"], "time": sample["time"],
-                        "interface": interface, "label": label,
+                        "interface": interface_name, "label": display_name,
+                        "interface_name": interface_name,
+                        "display_name": display_name,
+                        "role": role,
                         "device_id": value.get("device_id") or "",
-                        "uplink": interface,
+                        "uplink": interface_name,
                         "rx_bps": sample.get("rx_bps"), "tx_bps": sample.get("tx_bps")})
     return rows, sorted(samples, key=lambda value: (
         value["scope"], value["time"], value["uplink"]))

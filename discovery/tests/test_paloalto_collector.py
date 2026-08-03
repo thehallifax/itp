@@ -269,6 +269,23 @@ def test_wan_configuration_is_explicit_and_validated(monkeypatch):
             {"name": "ethernet1/2", "role": "primary"}]))
 
 
+def test_wan_inventory_preserves_canonical_and_display_identity():
+    parsed = {
+        "system": parser.system(result(SYSTEM)),
+        "interfaces": parser.interfaces(result(INTERFACES)),
+    }
+    # Use an interface present in the deterministic fixture.
+    settings = validate_settings(config(wan_interfaces=[{
+        "name": "ethernet1/2", "role": "secondary",
+        "display_name": "WAN 2"}]))
+    record, _ = map_snapshot(parsed, settings, "2026-01-01T00:00:00Z")
+    wan = record["extensions"]["wan_interfaces"][0]
+    assert wan["interface_name"] == wan["name"] == "ethernet1/2"
+    assert wan["display_name"] == "WAN 2"
+    assert wan["role"] == "secondary"
+    assert wan["device_id"] == "paloalto:0123456789"
+
+
 def test_expired_perpetual_and_malformed_licence_semantics():
     xml = """<response status="success"><result><licenses>
     <entry name="Expired"><expires>January 01, 2024</expires></entry>

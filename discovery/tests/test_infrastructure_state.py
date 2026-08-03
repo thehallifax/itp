@@ -111,6 +111,33 @@ def test_partial_success_is_warning_not_healthy(tmp_path):
     assert adapter.collect().collectors[0]["status"] == "warning"
 
 
+def test_wan_signal_uses_source_telemetry_device_identity(tmp_path):
+    inventory = tmp_path / "inventory"
+    write(inventory / "assets.json", {"assets": [asset(
+        "paloalto", "paloalto:0123456789", serial_number="0123456789",
+        hostname="PA-460", device_type="firewall", site_id="site:hq",
+        site="HQ", extensions={"wan_interfaces": [{
+            "interface_name": "ethernet1/6", "display_name": "WAN 2",
+            "role": "secondary", "device_id": "paloalto:0123456789",
+        }]},
+    )]})
+    sites = tmp_path / "sites.yml"
+    sites.write_text("""sites:
+  - id: site:hq
+    display_name: HQ
+    aliases: [HQ]
+""")
+    state = InfrastructureStateEngine(
+        inventory, tmp_path / "operations", tmp_path / "state",
+        tmp_path / "dashboard", sites_config=sites,
+        sites_output=tmp_path / "sites").evaluate(NOW)
+    signal = state["signals"]["wan"][0]
+    assert signal["interface_name"] == "ethernet1/6"
+    assert signal["display_name"] == "WAN 2"
+    assert signal["device_id"] == "paloalto:0123456789"
+    assert signal["device_id"] != state["assets"][0]["canonical_id"]
+
+
 def test_same_serial_merges_with_provenance_and_stable_id():
     mist = asset("mist", "m1", serial_number=" ab 12 ", hostname="Vendor-Name", site="HQ", online=True)
     snmp = asset("snmp", "s1", serial_number="AB12", hostname="SNMP-Name", site="HQ", management_ip="192.0.2.10")

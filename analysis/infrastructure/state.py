@@ -159,8 +159,13 @@ class InfrastructureStateEngine:
                     **value,
                     "site_id": site_id,
                     "site": site_name,
-                    "device_id": asset.get("canonical_id")
-                    or asset.get("device_id") or asset.get("id"),
+                    # Prefer the source telemetry identity carried by the WAN
+                    # observation. A fused canonical asset ID is not an Influx
+                    # `device_id` tag and must not be used as a query key.
+                    "device_id": value.get("device_id")
+                    or asset.get("device_id")
+                    or asset.get("source_record_id")
+                    or asset.get("id"),
                 })
             certificate = extensions.get("device_certificate") or {}
             licenses = extensions.get("licenses") or []
