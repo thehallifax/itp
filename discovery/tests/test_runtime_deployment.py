@@ -703,6 +703,35 @@ def test_runtime_collection_skips_only_incomplete_connector(
     assert "must-not-leak" not in str(result)
 
 
+def test_runtime_collection_forwards_developer_influx_debug_flag(
+        tmp_path, monkeypatch):
+    import scripts.itp as cli
+
+    metadata = SimpleNamespace(
+        id="fortigate", display_name="FortiGate", domains=("firewall",))
+    runtime = SimpleNamespace(
+        registry=SimpleNamespace(all=lambda: (metadata,)),
+        collector_readiness=lambda _deployment: ({
+            "id": "fortigate", "display_name": "FortiGate",
+            "state": "configured", "missing": []},))
+    calls = []
+    deployment = SimpleNamespace(
+        deployment_id="example",
+        path=tmp_path / "runtime/deployments/example")
+    deployment.run_compose = lambda *args, **kwargs: (
+        calls.append(args) or subprocess.CompletedProcess(
+            args, 0, '{"points_written": 1}', ""))
+    monkeypatch.setenv("ITP_DEBUG_INFLUX_WRITES", "1")
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+
+    cli.runtime_collection(runtime, deployment, {
+        "deployment": {"name": "example"}, "site": "site:example",
+        "collectors": {"fortigate": {"enabled": True}}})
+
+    assert calls[0][:5] == (
+        "exec", "-T", "-e", "ITP_DEBUG_INFLUX_WRITES=1", "collector")
+
+
 def test_runtime_cli_help_accepts_canonical_deployment_placement():
     deployment_id = "m" + "lc"
     commands = (

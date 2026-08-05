@@ -92,6 +92,31 @@ def test_collect_records_pipeline_run_and_redacts_results(tmp_path):
     assert "Alpha" in render_collect(result)
 
 
+def test_collect_pipeline_and_cli_output_preserve_write_diagnostic(tmp_path):
+    engine = OperatorCollectEngine(
+        tmp_path, config(), registry=Registry(), runtime_dir=tmp_path / "runtime")
+    diagnostic = {
+        "category": "write_failed", "stage": "write", "http_status": 422,
+        "message": "InfluxDB rejected telemetry (HTTP 422): duplicate field",
+        "measurements": ["fortigate_interfaces"],
+        "offending_field": "status",
+        "failing_line": "fortigate_interfaces status=1i",
+    }
+    result = engine.record(
+        [(Registry().all()[1], None)], [{
+            "connector": "beta", "status": "failed", "duration_ms": 4,
+            "value": None, "exception_type": "InfluxWriteError",
+            "reason": diagnostic["message"], "diagnostic": diagnostic,
+        }], started=NOW, completed=NOW,
+        scope_metadata=(Registry().all()[1],))
+    connector = next(value for value in result["connectors"]
+                     if value["connector"] == "beta")
+    assert connector["diagnostic"] == diagnostic
+    assert "HTTP 422" in render_collect(result)
+    assert json.loads(json.dumps(result))["connectors"][0][
+        "diagnostic"]["offending_field"] == "status"
+
+
 def write_run(store, connector, status, completed, *, reason="", points=0):
     store.write({
         "schema_version": 1,

@@ -68,7 +68,10 @@ from analysis.virtualisation.telemetry import points as virtualisation_points
 from collectors.base import ExecutionModeMismatch
 from collectors.capabilities import MANIFESTS
 from collectors.config import load_config
-from collectors.configuration import ConfigurationResolver
+from collectors.configuration import (
+    ConfigurationResolver,
+    influx_write_debug_enabled,
+)
 from collectors.connector_registry import ConnectorMetadataRegistry
 from collectors.file_permissions import restrict_owner_access
 from collectors.hyperv.runner import LocalPowerShellRunner
@@ -841,8 +844,11 @@ def runtime_collection(runtime_manager, deployment, config, connector=None):
             continue
         configured.append((metadata, None))
         started = time.monotonic()
+        compose_arguments = ["exec", "-T"]
+        if influx_write_debug_enabled():
+            compose_arguments.extend(("-e", "ITP_DEBUG_INFLUX_WRITES=1"))
         completed = deployment.run_compose(
-            "exec", "-T", "collector", "python", "-m", "collectors",
+            *compose_arguments, "collector", "python", "-m", "collectors",
             "--config", "/app/config.yml", "collect", metadata.id, "--json",
             capture=True, check=False)
         duration_ms = int((time.monotonic() - started) * 1000)
@@ -858,6 +864,7 @@ def runtime_collection(runtime_manager, deployment, config, connector=None):
             "status": "success" if completed.returncode == 0 else "failed",
             "duration_ms": duration_ms,
             "value": payload,
+            **({"diagnostic": diagnostic} if diagnostic else {}),
             "exception_type": (
                 "" if completed.returncode == 0 else
                 str(diagnostic.get("category") or "CollectorCommandError")),

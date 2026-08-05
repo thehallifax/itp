@@ -191,6 +191,8 @@ class OperatorCollectEngine:
                 "summary": _safe_result(outcome["value"]),
                 "exception_type": outcome["exception_type"],
                 "reason": outcome["reason"],
+                **({"diagnostic": outcome["diagnostic"]}
+                   if isinstance(outcome.get("diagnostic"), dict) else {}),
             })
         connector_results.extend(additional_results)
         connector_results.sort(key=lambda value: value["connector"])

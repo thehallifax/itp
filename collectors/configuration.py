@@ -78,6 +78,13 @@ def parse_bool_default(value, default=True):
     return parse_bool(value)
 
 
+def influx_write_debug_enabled(environment=None):
+    """Resolve the developer-only writer trace flag at the config boundary."""
+    environment = os.environ if environment is None else environment
+    return parse_bool_default(
+        environment.get("ITP_DEBUG_INFLUX_WRITES"), False)
+
+
 def parse_int(value, *, minimum=None, maximum=None):
     try:
         result = int(value)

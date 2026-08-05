@@ -1,5 +1,18 @@
 # Troubleshooting
 
+## Native collector InfluxDB write failures
+
+Collector and scheduler diagnostics retain the bounded InfluxDB response,
+HTTP status, affected measurements, the first reported failing line-protocol
+record, and field or tag details where InfluxDB supplies them. The values are
+available in `./itp collect --json` output and the shared collector logs.
+
+For development diagnostics only, set `ITP_DEBUG_INFLUX_WRITES=1` in the
+collector process. The writer logs the measurement set, point count, first five
+redacted line-protocol records, and the bounded response returned by InfluxDB.
+Tokens and values assigned to credential-like tag or field names are redacted.
+Do not leave this mode enabled during normal operation.
+
 Use deployment-aware commands and replace `<deployment>` with the runtime ID.
 
 ## Grafana provisioning permissions

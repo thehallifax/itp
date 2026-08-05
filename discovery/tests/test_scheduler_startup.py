@@ -19,7 +19,12 @@ def test_scheduler_preserves_safe_write_failure_diagnostic():
 
         async def collect(self):
             raise InfluxWriteError(
-                "InfluxDB rejected telemetry", category="write_failed")
+                "InfluxDB rejected telemetry (HTTP 400): field type conflict",
+                category="write_failed", http_status=400,
+                measurements=("fortigate_performance",),
+                failing_line="fortigate_performance cpu_percent=1.5",
+                offending_field="cpu_percent",
+                field_type_conflict={"received": "float", "existing": "integer"})
 
     scheduler = Scheduler([WriteFailure()])
     outcome = asyncio.run(
@@ -27,7 +32,10 @@ def test_scheduler_preserves_safe_write_failure_diagnostic():
     assert outcome["status"] == "failed"
     assert outcome["failed_stage"] == "write"
     assert outcome["diagnostic_category"] == "write_failed"
-    assert outcome["reason"] == "write: write_failed"
+    assert outcome["reason"].startswith("InfluxDB rejected telemetry")
+    assert outcome["diagnostic"]["http_status"] == 400
+    assert outcome["diagnostic"]["offending_field"] == "cpu_percent"
+    assert scheduler.state.value["last_diagnostic"] == outcome["diagnostic"]
 
 
 class Collector:

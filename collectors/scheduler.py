@@ -77,6 +77,7 @@ class SchedulerStateStore:
             "current_run_id": None,
             "last_error_class": None,
             "last_safe_error_summary": None,
+            "last_diagnostic": None,
             "connectors": {},
             "updated_at": None,
         }
@@ -159,6 +160,7 @@ class Scheduler:
             connector_state[failures] = 0
             connector_state[f"last_{phase}_error_class"] = None
             connector_state[f"last_{phase}_safe_error_summary"] = None
+            connector_state[f"last_{phase}_diagnostic"] = None
             connector_state[f"current_{phase}_skip_reason"] = None
         elif status == "failed":
             connector_state[failures] += 1
@@ -166,6 +168,8 @@ class Scheduler:
                 outcome["exception_type"] or None)
             connector_state[f"last_{phase}_safe_error_summary"] = (
                 outcome["reason"] or None)
+            connector_state[f"last_{phase}_diagnostic"] = outcome.get(
+                "diagnostic")
             connector_state[f"current_{phase}_skip_reason"] = None
             connector_state["last_failure"] = now
             changes["last_failure"] = now
@@ -174,6 +178,7 @@ class Scheduler:
             connector_state[f"current_{phase}_skip_reason"] = outcome["reason"]
             connector_state[f"last_{phase}_error_class"] = None
             connector_state[f"last_{phase}_safe_error_summary"] = None
+            connector_state[f"last_{phase}_diagnostic"] = None
         connector_state.update({
             f"last_{phase}_attempt": attempted_at,
             f"last_{phase}_outcome": status,
@@ -259,6 +264,10 @@ class Scheduler:
             root_errors[0][2] if root_errors else None)
         changes["last_safe_error_summary"] = (
             root_errors[0][3] if root_errors else None)
+        changes["last_diagnostic"] = (
+            connector_states[root_errors[0][0]].get(
+                f"last_{root_errors[0][1]}_diagnostic")
+            if root_errors else None)
         changes["last_skip_reason"] = (
             root_skips[0][2] if root_skips else None)
         self.state.write(**changes)
@@ -333,6 +342,12 @@ class Scheduler:
                     "value": None, "exception_type": "",
                     "reason": exc.reason, "run_id": run_id}
             except Exception as exc:
+                diagnostic = None
+                payload = getattr(exc, "diagnostic_payload", None)
+                if callable(payload):
+                    candidate = payload()
+                    if isinstance(candidate, dict):
+                        diagnostic = candidate
                 if log_exception:
                     self.logger.exception(
                         "collector=%s phase=%s result=failed",
@@ -343,11 +358,16 @@ class Scheduler:
                         collector.name, phase, type(exc).__name__)
                 category = str(getattr(exc, "category", "execution_failed"))
                 stage = str(getattr(exc, "stage", phase))
+                safe_reason = str(
+                    (diagnostic or {}).get("message") or f"{stage}: {category}")
                 outcome = {
                     "connector": collector.name, "status": "failed",
                     "duration_ms": int((self.monotonic() - started) * 1000),
                     "value": None, "exception_type": type(exc).__name__,
-                    "reason": f"{stage}: {category}",
+                    "reason": safe_reason,
+                    "diagnostic": diagnostic or {
+                        "category": category, "stage": stage,
+                        "message": safe_reason},
                     "diagnostic_category": category,
                     "failed_stage": stage, "run_id": run_id}
             finally:
@@ -363,7 +383,10 @@ class Scheduler:
                 f"scheduler.{phase}.complete", collector=collector.name,
                 run_id=run_id, duration_ms=outcome["duration_ms"],
                 outcome=outcome["status"],
-                error_class=outcome["exception_type"])
+                error_class=outcome["exception_type"],
+                diagnostic=(json.dumps(outcome.get("diagnostic"),
+                                       sort_keys=True, separators=(",", ":"))
+                            if outcome.get("diagnostic") else None))
             return outcome
 
     async def _record_health(self, collector, phase, outcome):
