@@ -99,3 +99,14 @@ def test_managed_presentation_normalizes_legacy_empty_labels():
     apply_managed_presentation(dashboard)
     assert dashboard["panels"][0]["fieldConfig"]["defaults"]["noValue"] == (
         PanelState.NOT_COLLECTED.value)
+
+
+def test_query_panel_description_preserves_measurement_diagnostics():
+    dashboard = {"panels": [panel(1, "Devices", 0, 0, 24, 4)]}
+    dashboard["panels"][0]["targets"] = [{
+        "rawSql": "SELECT hostname FROM infrastructure_device"}]
+    apply_managed_presentation(dashboard)
+    description = dashboard["panels"][0]["description"]
+    assert "`infrastructure_device`" in description
+    assert "missing column" in description
+    assert "Query failures remain visible" in description

@@ -349,12 +349,19 @@ def test_influx_debug_mode_logs_bounded_redacted_lines_and_response(
             for target in panel.get("targets", [])]
         variables = payload.get("templating", {}).get("list", [])
         queries.extend(str(value.get("query") or "") for value in variables)
-        assert not any(" site LIKE " in query for query in queries)
+        mist_compatibility = relative.endswith(
+            "mist-infrastructure-overview.json")
+        if mist_compatibility:
+            assert any(" site LIKE " in query for query in queries)
+            assert not any("site_id LIKE" in query for query in queries)
+        else:
+            assert not any(" site LIKE " in query for query in queries)
         site = next(
             (value for value in variables if value.get("name") == "site"),
             None)
         if site:
-            assert "site_id" in str(site["query"])
+            identity = "site" if mist_compatibility else "site_id"
+            assert identity in str(site["query"])
             assert "__value" in str(site["query"])
 
 

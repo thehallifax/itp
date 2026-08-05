@@ -143,11 +143,13 @@ def test_enabled_papercut_pack_is_provisioned_in_printing(tmp_path):
     panels = {panel["title"]: panel for panel in dashboard["panels"]}
     assert panels["Uptime"]["options"]["colorMode"] == "none"
     assert "informational" in panels["Uptime"]["description"]
-    for title in (
-            "Printer and Device Summary", "Licensing",
-            "Active Operational Findings"):
+    for title in ("Printer and Device Summary", "Licensing"):
         assert panels[title]["fieldConfig"]["defaults"]["noValue"] == \
                 "Not Yet Collected"
+    assert panels["Active Operational Findings"]["fieldConfig"][
+        "defaults"]["noValue"] == "No current operational findings"
+    assert panels["Collector Health"]["fieldConfig"]["defaults"][
+        "noValue"] == "Awaiting first collection"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes are not authoritative")

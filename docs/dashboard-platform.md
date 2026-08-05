@@ -23,6 +23,12 @@ unavailable table sections become compact information cards. Static SQL
 dashboards retain their queries because generation cannot infer whether an
 arbitrary operator-selected time range will return rows.
 
+Connector panel coverage and exact measurement dependencies are maintained in
+[the dashboard support matrix](dashboard-support-matrix.md). Straightforward
+SQL references are regression-checked against representative normalizer output;
+this catches missing measurements and stale identity columns without treating
+the validator as a complete SQL parser.
+
 ## Static packs and runtime snapshots
 
 Connector dashboards such as Palo Alto and PaperCut are static managed

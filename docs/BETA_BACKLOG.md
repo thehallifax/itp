@@ -269,6 +269,12 @@ The goal is to batch usability improvements into dedicated housekeeping sprints 
 - Consider optional Git installation after explicit consent.
 - Consider Docker installation guidance; do not blindly install Docker Desktop
   on Windows Server.
+- PaperCut consumable and toner percentages remain unavailable through the
+  documented System Health APIs. Revisit only if PaperCut publishes a supported
+  read-only endpoint; do not scrape administrative HTML.
+- Mist per-device CPU, memory, client, and traffic fields vary by device class
+  and tenant response. Expand panels only after captured API contracts prove a
+  field is consistently available.
 
 ## Deferred operations work
 

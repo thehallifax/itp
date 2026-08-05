@@ -1,0 +1,24 @@
+{
+  "sites": [
+    {"id": "site-a", "name": "Example Campus"}
+  ],
+  "inventory": [
+    {"id": "ap-1", "site_id": "site-a", "type": "ap", "model": "AP45", "name": "AP-LIBRARY", "serial": "EXAMPLE-AP-1"},
+    {"id": "switch-1", "site_id": "site-a", "type": "switch", "model": "EX4400", "name": "SW-CORE", "serial": "EXAMPLE-SW-1"},
+    {"id": "ap-2", "site_id": "site-a", "type": "ap", "model": "AP34", "name": "AP-HALL", "serial": "EXAMPLE-AP-2"}
+  ],
+  "stats": [
+    {"id": "ap-1", "site_id": "site-a", "status": "connected", "uptime": 86400, "cpu_util": 18.5, "mem_used_percent": 42.0, "num_clients": 17, "rx_bps": 12000, "tx_bps": 4200},
+    {"id": "switch-1", "site_id": "site-a", "status": "connected", "uptime": 172800, "cpu_util": 11.0, "mem_used_percent": 31.0},
+    {"id": "ap-2", "site_id": "site-a", "status": "disconnected", "uptime": 7200, "num_clients": 0}
+  ],
+  "collector_health": {
+    "success": true,
+    "duration_ms": 240,
+    "devices_returned": 3,
+    "points_written": 18,
+    "api_requests": 3,
+    "retry_count": 0,
+    "error_count": 0
+  }
+}

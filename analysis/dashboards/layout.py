@@ -4,6 +4,8 @@ from __future__ import annotations
 import copy
 from enum import Enum
 
+from .contracts import query_measurements
+
 GRID_WIDTH = 24
 
 
@@ -102,4 +104,19 @@ def apply_managed_presentation(dashboard):
         current = defaults.get("noValue")
         defaults["noValue"] = aliases.get(
             current, current or PanelState.NOT_COLLECTED.value)
+        measurements = sorted({measurement
+                               for target in panel.get("targets", [])
+                               for measurement in query_measurements(
+                                   target.get("rawSql") or "")})
+        if measurements:
+            evidence = (
+                "Telemetry measurement"
+                + ("s" if len(measurements) != 1 else "")
+                + ": " + ", ".join(f"`{value}`" for value in measurements)
+                + ". Query failures remain visible; inspect the panel query "
+                  "for the missing column and validate the collector contract.")
+            existing = str(panel.get("description") or "").strip()
+            if evidence not in existing:
+                panel["description"] = (
+                    f"{existing}\n\n{evidence}".strip())
     return reflow_classic_dashboard(dashboard)
