@@ -70,11 +70,74 @@ METRIC_FIELDS = {
 }
 
 
+def _count(value):
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        return int(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _sum_counts(value):
+    direct = _count(value)
+    if direct is not None:
+        return direct
+    if isinstance(value, dict):
+        values = [_sum_counts(item) for item in value.values()]
+    elif isinstance(value, (list, tuple)):
+        values = [_sum_counts(item) for item in value]
+    else:
+        return None
+    values = [item for item in values if item is not None]
+    return sum(values) if values else None
+
+
+def _client_fields(value):
+    """Flatten Mist client summaries without emitting nested Influx fields."""
+    if not isinstance(value, dict):
+        count = _count(value)
+        return {"client_count": count} if count is not None else {}
+    normalized = {
+        str(key).strip().casefold().replace("-", "_"): _sum_counts(item)
+        for key, item in value.items()}
+    normalized = {key: item for key, item in normalized.items()
+                  if item is not None}
+    aliases = {
+        "wireless_client_count": (
+            "wireless", "wifi", "wlan", "wireless_clients",
+            "num_wireless_clients"),
+        "wired_client_count": (
+            "wired", "lan", "wired_clients", "num_wired_clients"),
+    }
+    result = {}
+    for target, names in aliases.items():
+        selected = next((normalized[name] for name in names
+                         if name in normalized), None)
+        if selected is not None:
+            result[target] = selected
+    total = next((normalized[name] for name in (
+        "total", "all", "count", "client_count", "num_clients")
+        if name in normalized), None)
+    if total is None and result:
+        total = sum(result.values())
+    if total is None and normalized:
+        total = sum(normalized.values())
+    if total is not None:
+        result["client_count"] = total
+    return result
+
+
 def metric_fields(stats):
     values = {"online": str(stats.get("status", "")).lower() in ("connected", "online")}
     if "status" not in stats: values.pop("online")
     for source, target in METRIC_FIELDS.items():
-        if source in stats and stats[source] not in (None, ""): values[target] = stats[source]
+        if source not in stats or stats[source] in (None, ""):
+            continue
+        if target == "client_count":
+            values.update(_client_fields(stats[source]))
+        else:
+            values[target] = stats[source]
     if "memory_used_percent" not in values and stats.get("mem_total_kb") and stats.get("mem_used_kb") is not None:
         values["memory_used_percent"] = 100.0 * stats["mem_used_kb"] / stats["mem_total_kb"]
     return values

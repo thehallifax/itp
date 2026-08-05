@@ -186,6 +186,11 @@ def normalize_point(point, metadata, point_number=1):
             point_number)
     tags = metadata.apply(point.get("tags", {}))
     collector = str(tags.get("collector") or "unknown")
+    if measurement == "infrastructure_device" and \
+            "model" in (point.get("fields") or {}):
+        raise TelemetryValidationError(
+            measurement, "model", "tag", "field",
+            collector, point_number)
     fields = {}
     for field, value in sorted((point.get("fields") or {}).items()):
         expected = FIELD_TYPES.get(measurement, {}).get(field)

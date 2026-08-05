@@ -142,6 +142,28 @@ def test_missing_metric_fields_are_not_zero():
         "infrastructure_device", "wireless_access_point", "device", "availability", "wireless"}
 
 
+def test_nested_client_counts_are_flattened_to_primitive_fields():
+    fields = metric_fields({"num_clients": {
+        "wireless": {"2.4": 5, "5": 7}, "wired": "3"}})
+    assert fields == {
+        "client_count": 15,
+        "wired_client_count": 3,
+        "wireless_client_count": 12,
+    }
+    record = {"id": "mist:one", "customer": "c", "site": "s",
+              "vendor": "juniper", "platform": "wireless-access-point",
+              "device_role": "access-point", "collector": "mist",
+              "hostname": "ap", "model": "AP34"}
+    points = metric_points(record, {"num_clients": {
+        "wireless": 12, "wired": 3}})
+    infrastructure = next(point for point in points
+                          if point["measurement"] == "infrastructure_device")
+    assert infrastructure["tags"]["model"] == "AP34"
+    assert "model" not in infrastructure["fields"]
+    assert all(not isinstance(value, (dict, list, tuple, set))
+               for point in points for value in point["fields"].values())
+
+
 def test_line_protocol_escaping_and_field_types():
     line = InfluxWriter.line_protocol({"measurement": "test metric", "tags": {"site": "a,b=c"},
         "fields": {"integer": 2, "float": 1.5, "boolean": True, "string": 'a"b\nline'}})

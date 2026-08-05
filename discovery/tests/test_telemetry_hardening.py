@@ -106,6 +106,33 @@ def test_schema_failure_identifies_measurement_field_connector_and_line():
         "Received: str; Connector: papercut; Line: 3")
 
 
+def test_infrastructure_device_model_is_a_tag_contract():
+    metadata = DeploymentMetadata()
+    valid = normalize_point({
+        "measurement": "infrastructure_device",
+        "tags": {"collector": "mist", "model": "AP34"},
+        "fields": {"online": True}}, metadata)
+    assert valid["tags"]["model"] == "AP34"
+    with pytest.raises(TelemetryValidationError) as raised:
+        normalize_point({
+            "measurement": "infrastructure_device",
+            "tags": {"collector": "fortigate"},
+            "fields": {"online": True, "model": "FG-100F"}}, metadata)
+    assert raised.value.expected == "tag"
+    assert raised.value.received == "field"
+
+
+def test_every_collector_infrastructure_device_producer_is_covered():
+    producers = {
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / "collectors").rglob("*.py")
+        if '"measurement": "infrastructure_device"' in path.read_text()}
+    assert producers == {
+        "collectors/fortigate/normalizer.py",
+        "collectors/mist/normalizer.py",
+    }
+
+
 def test_framework_health_contains_success_skip_and_diagnostics_contract():
     point = CollectorHealth.from_outcome({
         "connector": "fortigate",

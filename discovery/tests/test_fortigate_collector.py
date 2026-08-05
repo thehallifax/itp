@@ -377,6 +377,10 @@ def test_stable_identity_normalization_and_snmp_compatibility():
     assert record["id"] == "fortigate:FGSERIAL"
     assert record["ip"] == "10.0.0.1"
     assert record["source_asset_id"] == "FGSERIAL"
+    infrastructure = next(point for point in points
+                          if point["measurement"] == "infrastructure_device")
+    assert infrastructure["tags"]["model"] == "FG-100F"
+    assert "model" not in infrastructure["fields"]
     assert {point["measurement"] for point in points} == {
         "infrastructure_device", "network_interface", "security_appliance",
         "device", "availability", "performance", "interface", "firewall"}

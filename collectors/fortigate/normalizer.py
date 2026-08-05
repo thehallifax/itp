@@ -60,20 +60,22 @@ def normalize(endpoints, config):
                                   "model", "vendor", "platform", "device_role", "firmware_version"]}
     common = {"collector": "fortigate", "customer": config.customer, "site": config.site,
               "device_id": device_id, "hostname": hostname, "vendor": "fortinet",
-              "platform": "fortigate", "device_role": "firewall"}
+              "platform": "fortigate", "device_role": "firewall",
+              "model": model}
     fields = {"online": True}
     if uptime is not None:
         try: fields["uptime_seconds"] = float(uptime)
         except (TypeError, ValueError): pass
     if cpu is not None: fields["cpu_percent"] = cpu
     if memory is not None: fields["memory_used_percent"] = memory
-    if model: fields["model"] = model
     if serial: fields["serial"] = serial
     if firmware: fields["firmware"] = firmware
-    points = [{"measurement": "infrastructure_device", "tags": common, "fields": fields}]
+    points = [{"measurement": "infrastructure_device", "tags": common,
+               "fields": fields}]
     points.append({"measurement": "device", "tags": common,
-                   "fields": {key: value for key, value in fields.items()
-                              if key in ("online", "uptime_seconds", "model", "serial", "firmware")}})
+                   "fields": {**{key: value for key, value in fields.items()
+                              if key in ("online", "uptime_seconds", "serial", "firmware")},
+                              **({"model": model} if model else {})}})
     points.append({"measurement": "availability", "tags": common, "fields": {"available": True}})
     performance = {key: value for key, value in fields.items()
                    if key in ("cpu_percent", "memory_used_percent", "uptime_seconds")}
