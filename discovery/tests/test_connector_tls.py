@@ -18,6 +18,7 @@ from collectors.tls import (
     classify_certificate_issuer,
     connector_tls_context,
     inspect_tls_peer,
+    merge_tls_evidence,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -103,7 +104,8 @@ def synthetic_public_leaf():
     return certificate.public_bytes(serialization.Encoding.DER)
 
 
-@pytest.mark.parametrize("chain_mode", ["unavailable", "raises"])
+@pytest.mark.parametrize(
+    "chain_mode", ["unavailable", "attribute_unavailable", "raises"])
 def test_inspection_only_connection_decodes_leaf_in_memory_and_chain_is_optional(
         monkeypatch, chain_mode):
     der = synthetic_public_leaf()
@@ -115,7 +117,8 @@ def test_inspection_only_connection_decodes_leaf_in_memory_and_chain_is_optional
                 raise RuntimeError("chain API unavailable")
 
     class Wrapped:
-        _sslobj = SSLObject()
+        if chain_mode != "attribute_unavailable":
+            _sslobj = SSLObject()
         def __enter__(self): return self
         def __exit__(self, *_args): calls.append("tls.closed")
         def getpeercert(self, *, binary_form=False):
@@ -153,6 +156,35 @@ def test_inspection_only_connection_decodes_leaf_in_memory_and_chain_is_optional
     source = (ROOT / "collectors/tls.py").read_text()
     assert "NamedTemporaryFile" not in source
     assert "Authorization" not in source
+
+
+def test_tls_evidence_merge_preserves_inspection_and_authoritative_fields():
+    inspection = {
+        "host": "wrong.example.test",
+        "issuer": "organizationName=Let's Encrypt, commonName=YR2",
+        "public_issuer": True,
+        "inspection_status": "complete",
+        "hostname_match": True,
+        "presented_chain_length": None,
+        "trust": "trusted",
+        "verify_code": None,
+        "verify_message": None,
+        "unbounded_unknown_field": "discarded",
+    }
+    merged = merge_tls_evidence(
+        "firewall.example.test", inspection,
+        verify_code=20, verify_message="unable to get local issuer certificate")
+    assert merged == {
+        "host": "firewall.example.test",
+        "hostname_match": True,
+        "inspection_status": "complete",
+        "issuer": "organizationName=Let's Encrypt, commonName=YR2",
+        "presented_chain_length": None,
+        "public_issuer": True,
+        "trust": "failed",
+        "verify_code": 20,
+        "verify_message": "unable to get local issuer certificate",
+    }
 
 
 def test_inspection_connection_failure_preserves_bounded_partial_evidence(

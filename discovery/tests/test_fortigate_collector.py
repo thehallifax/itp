@@ -319,6 +319,27 @@ def test_ambiguous_chain_failure_remains_neutral_trust_failure():
     assert "Do not disable TLS verification" in error.remediation
 
 
+def test_inspection_exception_retains_authoritative_failure_evidence():
+    def unavailable(*_args):
+        raise AttributeError("runtime chain inspection unavailable")
+
+    api = FortiGateClient(
+        "fg.example.test", "token", client=object(),
+        tls_inspector=unavailable)
+    error = asyncio.run(api._tls_error(verification_error(
+        20, "unable to get local issuer certificate")))
+    payload = error.diagnostic_payload()
+    assert type(error) is FortiGateTLSError
+    assert payload["tls"] == {
+        "host": "fg.example.test",
+        "inspection_status": "failed",
+        "public_issuer": None,
+        "trust": "failed",
+        "verify_code": 20,
+        "verify_message": "unable to get local issuer certificate",
+    }
+
+
 def test_optional_endpoint_and_partial_collection(tmp_path):
     class Client:
         api_requests = 0; retry_count = 0; base_url = "https://fg.example.test"

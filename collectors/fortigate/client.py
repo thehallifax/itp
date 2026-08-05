@@ -10,6 +10,7 @@ from collectors.tls import (
     classify_certificate_issuer,
     connector_tls_context,
     inspect_tls_peer,
+    merge_tls_evidence,
 )
 from .models import (
     EndpointResult,
@@ -65,20 +66,23 @@ class FortiGateClient:
 
     async def _tls_error(self, exc):
         parsed = urlsplit(self.base_url)
-        evidence = {}
+        inspection = {}
         try:
-            evidence = await asyncio.to_thread(
+            inspection = await asyncio.to_thread(
                 self.tls_inspector, parsed.hostname, parsed.port or 443)
         except Exception:
             # The original verified handshake remains authoritative. Failure
             # to obtain optional leaf metadata must not mask it.
-            evidence = {"host": parsed.hostname, "trust": "failed"}
+            inspection = {"inspection_status": "failed"}
         verification = self._verification_error(exc)
         verify_message = str(
             getattr(verification, "verify_message", "")
             or verification or exc)
         message = verify_message.casefold()
         code = getattr(verification, "verify_code", None)
+        evidence = merge_tls_evidence(
+            parsed.hostname, inspection,
+            verify_code=code, verify_message=verify_message)
         issuer = str(evidence.get("issuer") or "").casefold()
         subject = str(evidence.get("subject") or "").casefold()
         public_issuer = evidence.get("public_issuer")
@@ -87,8 +91,6 @@ class FortiGateClient:
                 evidence.get("subject_attributes") or {"display": subject},
                 evidence.get("issuer_attributes") or {"display": issuer})
         evidence["public_issuer"] = public_issuer
-        evidence["verify_code"] = code
-        evidence["verify_message"] = verify_message
         chain_failure = (
             code in {2, 18, 19, 20, 21}
             or "unable to get issuer" in message
