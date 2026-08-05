@@ -13,6 +13,16 @@ Criteria:
 
 # High Priority
 
+## PaperCut consumable evidence
+
+**Status:** Deferred
+
+PaperCut System Health provides supported per-printer operational status via
+`/api/health/printers`, but its documented JSON contract does not expose toner
+percentages. Add consumable evidence only when a supported read-only API or a
+separate canonical printer collector is selected. Do not scrape the PaperCut
+administrator UI or treat server health as consumable health.
+
 ## BETA-026 — Prerequisite Bootstrap
 
 **Status:** Implemented

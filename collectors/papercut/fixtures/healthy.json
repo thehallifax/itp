@@ -60,5 +60,12 @@
       }
     ]
   },
+  "printers": {
+    "printers": [
+      {"name": "print-srv-01\\Library", "status": "OK", "heldJobsCount": 1},
+      {"name": "print-srv-01\\Office", "status": "OK", "heldJobsCount": 1}
+    ]
+  },
+  "endpoint_states": {"devices": "collected", "printers": "collected"},
   "partial": false
 }

@@ -248,15 +248,28 @@ class PaperCutClient:
                 not isinstance(base.get("database"), dict):
             raise PaperCutUnsupportedResponseError(
                 "PaperCut System Health response is missing required sections")
-        partial = False
-        try:
-            devices = await self.get("/api/health/devices")
-        except PaperCutAuthenticationError:
-            raise
-        except PaperCutError:
-            devices = {}
-            partial = True
-        return {"health": base, "devices": devices, "partial": partial}
+        components = {}
+        endpoint_states = {}
+        for name in ("devices", "printers"):
+            try:
+                value = await self.get(f"/api/health/{name}")
+                if not isinstance(value.get(name), list):
+                    raise PaperCutUnsupportedResponseError(
+                        f"PaperCut System Health {name} response is missing "
+                        f"the {name} list")
+                components[name] = value
+                endpoint_states[name] = "collected"
+            except PaperCutAuthenticationError:
+                raise
+            except PaperCutError:
+                components[name] = {}
+                endpoint_states[name] = "unavailable"
+        return {
+            "health": base, **components,
+            "endpoint_states": endpoint_states,
+            "partial": any(value != "collected"
+                           for value in endpoint_states.values()),
+        }
 
     async def close(self):
         if self._owns_client:

@@ -117,7 +117,7 @@ capability because firewall collectors provide the available security evidence.
 | Internet | Authoritatively classified WAN signals | Critical when all configured uplinks are down; Warning for degraded redundancy; Healthy only with positive current uplink evidence | Internet card and per-WAN graphs |
 | Security | Firewall assets/signals plus security, subscription and certificate findings | Highest explicit availability or security degradation; summary states whether availability, certificate, or subscription evidence requires attention | Security, Firewall and Certificates cards |
 | Monitoring | Enabled collector records and collector findings | Critical/Warning for failed, stale or partial coverage; Healthy only with successful current collector evidence | Monitoring card and Collector Health |
-| Printing | Printer/server assets and printing findings | Critical/Warning for unavailable services or actionable device conditions; otherwise Healthy with current PaperCut evidence | Printing card and printer exception table |
+| Printing | Print-server health, per-printer operational evidence, queue state, and canonical consumable conditions | Critical for explicit printer errors/offline state or toner at 10% or less; Warning for toner at 30% or less, stale/partial evidence, or non-critical conditions; Healthy requires current per-printer evidence, not API reachability alone; unavailable printer detail is Unknown | Printing card and printer exception table |
 | Switching | Switch assets, availability and network findings | State follows authoritative switch availability and findings; no evidence remains Unknown | Switching card/detail |
 | Wireless | AP/client assets and wireless findings | State follows authoritative AP/client evidence; absent capability is Not Enabled | Wireless card/detail |
 | Identity | Identity service assets and findings | Explicit outage/degradation wins; no enabled capability is Not Enabled | Identity service card |
@@ -129,6 +129,13 @@ capability because firewall collectors provide the available security evidence.
 Every emitted row contains the selected status, human explanation, affected
 assets/users where inferable, last change, and evidence. Dashboards render this
 projection; they do not re-evaluate the decision.
+
+PaperCut server/API health and printer fleet health are independent evidence.
+The System Health `/api/health/printers` endpoint supplies operational printer
+states and held-job counts. Its documented JSON contract does not provide toner
+percentages, so the PaperCut consumables capability is unsupported. Canonical
+consumable evidence from another supported source uses default thresholds of
+10% (Critical) and 30% (Warning).
 
 Internet evaluation first selects enabled collectors whose manifests declare
 the `wan_classification` Internet service capability. It never selects a firewall vendor merely

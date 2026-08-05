@@ -9,6 +9,7 @@ import pytest
 
 from analysis.operations.models import OperationalContext
 from analysis.operations.rules import PaperCutHealthRule
+from collectors.capabilities import MANIFESTS
 from collectors.papercut.client import PaperCutClient
 from collectors.papercut.collector import PaperCutCollector
 from collectors.papercut.models import (
@@ -20,6 +21,7 @@ from collectors.papercut.models import (
     PaperCutUnknownIssuerError, PaperCutWrongEndpointError,
 )
 from collectors.papercut.normalizer import normalize
+from collectors.writer import InfluxWriter
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,7 +66,8 @@ def test_healthy_fixture_normalizes_inventory_and_canonical_telemetry():
         fixture("healthy.json"), settings(), "2026-01-01T00:00:00Z")
     assert conditions == []
     assert [value["hostname"] for value in records] == [
-        "print.example.invalid", "Library MFD", "Office MFD"]
+        "print.example.invalid", "Library MFD", "Office MFD",
+        "print-srv-01\\Library", "print-srv-01\\Office"]
     assert {value["measurement"] for value in points} == {
         "device", "availability", "performance", "license"}
     app = next(value for value in points
@@ -88,6 +91,82 @@ def test_device_errors_and_offline_services_generate_explainable_conditions():
         fixture("offline-services.json"), settings(), "2026-01-01T00:00:00Z")
     assert {value["code"] for value in offline} == {
         "print_provider_offline"}
+
+
+def test_printer_endpoint_normalizes_operational_health_without_nested_fields():
+    records, points, _ = normalize(
+        fixture("device-errors.json"), settings(), "2026-01-01T00:00:00Z")
+    printer = next(value for value in records
+                   if value.get("device_role") == "print-queue")
+    assert printer["hostname"] == "print-srv-01\\FollowMe (B&W)"
+    assert printer["online"] is False
+    assert printer["extensions"]["printer_conditions"] == [{
+        "condition": "In Error", "condition_type": "operational_error",
+        "severity": "Critical", "actionable": True,
+        "message": "Printer is in error"}]
+    point = next(value for value in points
+                 if value.get("tags", {}).get("device_id") == printer["id"])
+    assert point["tags"]["printer_name"] == printer["hostname"]
+    assert point["fields"]["error_state"] is True
+    assert point["fields"]["operational_status"] == "error"
+    assert all(isinstance(value, (str, int, float, bool))
+               for value in point["fields"].values())
+    line = InfluxWriter.line_protocol(point)
+    assert "error_state=true" in line
+    assert "operational_status=\"error\"" in line
+    assert "{" not in line and "[" not in line
+
+
+def test_current_api_declares_consumables_unavailable_not_fabricated():
+    snapshot = fixture("printing-attention.json")
+    records, points, _ = normalize(
+        snapshot["papercut_snapshot"], settings(), "2026-01-01T00:00:00Z")
+    assert any(value.get("device_role") == "print-queue" for value in records)
+    assert all("toner" not in key.casefold()
+               for point in points for key in point["fields"])
+    assert all("percent_remaining" not in (
+        value.get("extensions") or {}).get("printer_health", {})
+        for value in records)
+    capabilities = {value.id: value for value in MANIFESTS["papercut"]}
+    assert capabilities["printer_consumables"].support == "unsupported"
+    assert capabilities["printer_operational_status"].support == "conditional"
+    assert capabilities["server_health"].support == "supported"
+
+
+def test_collection_reports_independent_capability_states(tmp_path):
+    snapshot = fixture("healthy.json")
+
+    class Client:
+        api_requests = 0
+        retry_count = 0
+        base_url = "https://print.example.invalid"
+
+        async def snapshot(self):
+            self.api_requests += 3
+            return snapshot
+
+    writes = []
+
+    class Writer:
+        def write(self, points):
+            writes.extend(points)
+            return len(points)
+
+    collector = PaperCutCollector({
+        "deployment_id": "example", "customer": "example",
+        "site": "site:example", "collectors": {"papercut": {
+            "enabled": True, "base_url": "https://print.example.invalid",
+            "site": "site:example"}}},
+        tmp_path / "inventory/devices.json", client=Client(), writer=Writer())
+    result = asyncio.run(collector.collect())
+    assert result["capability_states"] == {
+        "server_health": "collected", "device_inventory": "collected",
+        "printer_operational_status": "collected",
+        "print_queue_health": "collected"}
+    assert result["capability_resources"] == {
+        "server_health": 1, "device_inventory": 2,
+        "printer_operational_status": 2, "print_queue_health": 2}
+    assert any(point["measurement"] == "collector_health" for point in writes)
 
 
 def test_conditions_are_promoted_to_canonical_operational_findings():
@@ -256,8 +335,35 @@ def test_client_rejects_malformed_response_and_reports_partial_detail():
         "https://print.example.invalid", max_retries=0,
         client=httpx.AsyncClient(
             transport=httpx.MockTransport(partial_handler)))
-    assert asyncio.run(partial.snapshot())["partial"] is True
+    partial_snapshot = asyncio.run(partial.snapshot())
+    assert partial_snapshot["partial"] is True
+    assert partial_snapshot["endpoint_states"] == {
+        "devices": "unavailable", "printers": "unavailable"}
     asyncio.run(partial.client.aclose())
+
+
+def test_snapshot_collects_printer_and_device_endpoints_independently():
+    requests = []
+    healthy = fixture("healthy.json")
+
+    async def handler(request):
+        requests.append(request.url.path)
+        if request.url.path == "/api/health":
+            return httpx.Response(200, json=healthy["health"])
+        if request.url.path == "/api/health/devices":
+            return httpx.Response(200, json=healthy["devices"])
+        return httpx.Response(200, json=healthy["printers"])
+
+    client = PaperCutClient(
+        "https://print.example.invalid", max_retries=0,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    snapshot = asyncio.run(client.snapshot())
+    assert requests == [
+        "/api/health", "/api/health/devices", "/api/health/printers"]
+    assert snapshot["endpoint_states"] == {
+        "devices": "collected", "printers": "collected"}
+    assert snapshot["partial"] is False
+    asyncio.run(client.client.aclose())
 
 
 def test_invalid_endpoint_and_connectivity_fail_safely():

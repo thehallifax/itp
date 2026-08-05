@@ -1,0 +1,32 @@
+{
+  "papercut_snapshot": {
+    "health": {
+      "applicationServer": {
+        "systemInfo": {"version": "24.0.3", "operatingSystem": "Windows", "processors": 4},
+        "systemMetrics": {"uptimeHours": 96}
+      },
+      "database": {"status": "OK"},
+      "printers": {"count": 16, "inErrorCount": 1, "heldJobsCountTotal": 0},
+      "devices": {"count": 0, "inErrorCount": 0},
+      "printProviders": {"count": 1, "offlineCount": 0, "status": "OK"},
+      "license": {"valid": true, "upgradeAssuranceRemainingDays": 120}
+    },
+    "devices": {"devices": []},
+    "printers": {
+      "printers": [
+        {"name": "print-srv-01\\FollowMe (B&W)", "status": "ERROR"},
+        {"name": "print-srv-01\\Healthy Queue", "status": "OK"}
+      ]
+    },
+    "endpoint_states": {"devices": "collected", "printers": "collected"},
+    "partial": false
+  },
+  "canonical_consumable_assets": [
+    {"name": "print-srv-01\\MFP-Gym-Foyer", "toner_percent": 2},
+    {"name": "print-srv-01\\MFP-SNR-GF", "toner_percent": 4},
+    {"name": "print-srv-01\\MFP-Repo-Right", "toner_percent": 5},
+    {"name": "print-srv-01\\MFP-Repo-Left", "toner_percent": 8},
+    {"name": "print-srv-01\\MFP-HER-Staff", "toner_percent": 25}
+  ],
+  "fixture_note": "Toner values exercise the canonical consumable model only; PaperCut System Health does not return toner percentages."
+}

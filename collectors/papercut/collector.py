@@ -153,10 +153,32 @@ class PaperCutCollector(BaseCollector):
             category = "partial" if partial else "success"
             written = await asyncio.to_thread(self.writer.write, points)
             success = True
+            endpoint_states = snapshot.get("endpoint_states", {})
+            printer_resources = max(
+                0, sum(record.get("device_role") == "print-queue"
+                       for record in records))
+            device_resources = max(
+                0, sum(record.get("device_role") == "embedded-print-device"
+                       for record in records))
             return {
                 "status": category, "points_written": written,
                 "assets_returned": len(records),
-                "findings": len(conditions), "partial": partial}
+                "findings": len(conditions), "partial": partial,
+                "capability_states": {
+                    "server_health": "collected",
+                    "device_inventory": endpoint_states.get(
+                        "devices", "unavailable"),
+                    "printer_operational_status": endpoint_states.get(
+                        "printers", "unavailable"),
+                    "print_queue_health": endpoint_states.get(
+                        "printers", "unavailable"),
+                },
+                "capability_resources": {
+                    "server_health": 1,
+                    "device_inventory": device_resources,
+                    "printer_operational_status": printer_resources,
+                    "print_queue_health": printer_resources,
+                }}
         except Exception as exc:
             category = getattr(
                 exc, "category",
@@ -224,7 +246,8 @@ class PaperCutCollector(BaseCollector):
                 "authentication_successful": True,
                 "valid_json": True,
                 "tls_verification_enabled": self.settings.verify_tls,
-                "partial_collection": bool(snapshot["partial"])},
+                "partial_collection": bool(snapshot["partial"]),
+                "endpoint_states": snapshot.get("endpoint_states", {})},
             "findings": len(conditions)}
 
     async def close(self):

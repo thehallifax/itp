@@ -81,14 +81,21 @@ Warning or Critical service result.
 
 ## Printer exception policy
 
-Included conditions are printer offline, paper jam, waste-toner full or
-critically depleted, toner below 5%, staples empty, and explicitly classified
-service-blocking faults.
+Included conditions are printer offline, explicit error, paper jam,
+waste-toner full or critically depleted, toner at 30% or less, staples empty,
+and explicitly classified service-blocking faults. Explicit errors sort first,
+then offline devices, then toner from lowest percentage upward.
 
 Paper tray empty, low paper, healthy inventory, general printer counts, and
 informational or user-remediable consumables are excluded. With no actionable
-condition the panel shows **No printer action required**. When Printing is Not
+condition the panel shows **No printers require attention**. When Printing is Not
 Enabled, the section is omitted.
+
+The Printing tile comes from canonical Service Health. A reachable PaperCut
+server is not sufficient for Healthy: per-printer evidence must be collected.
+Unavailable printer detail is Unknown, while partial or stale evidence is
+Warning. The wallboard consumes normalized printer conditions and does not
+query PaperCut-specific structures.
 
 ## Capabilities, WAN and drill-down
 

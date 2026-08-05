@@ -62,6 +62,9 @@ WAN_CONFIGURATION_GUIDANCE = {
         "collector configuration."),
 }
 
+PRINTER_TONER_CRITICAL_PERCENT = 10
+PRINTER_TONER_WARNING_PERCENT = 30
+
 
 def _internet_declarations(context):
     """Return Internet declarations for enabled collectors only."""
@@ -213,6 +216,13 @@ class ServiceEvaluator:
                 evidence=capability_evidence)
         if definition.name == "Security":
             return self._security(context)
+        if definition.name == "Printing" and any(
+                value.get("id") in {
+                    "server_health", "device_inventory",
+                    "printer_operational_status", "printer_consumables",
+                    "print_queue_health"}
+                for _, value in declared):
+            return self._printing(context, declared, capability_evidence)
         if definition.name in VIRTUAL_SERVICE_IDS:
             return self._virtualisation(context)
 
@@ -316,6 +326,119 @@ class ServiceEvaluator:
         return ServiceHealth(definition.name, status, summaries[status], tuple(affected),
             _affected_users(findings + signals), severity, last_change,
             tuple(evidence))
+
+    @staticmethod
+    def _printing(context, declared, capability_evidence):
+        """Evaluate printer evidence independently from PaperCut server health."""
+        capabilities = {value.get("id"): value for _, value in declared}
+        printer_state = capabilities.get(
+            "printer_operational_status", {}).get("collection")
+        assets = [value for value in context["assets"]
+                  if "print" in _text(value)]
+        printers = [value for value in assets if str(
+            value.get("device_type") or "").casefold() == "printer"]
+        findings = [value for value in context["findings"]
+                    if ServiceEvaluator._matches_finding(
+                        DEFINITIONS[3], value)]
+        conditions = []
+        aggregate_errors = 0
+        partial = printer_state == "partial"
+        for asset in assets:
+            extensions = asset.get("extensions") or {}
+            if not isinstance(extensions, dict):
+                continue
+            printing_health = extensions.get("printing_health") or {}
+            if isinstance(printing_health, dict):
+                aggregate_errors = max(
+                    aggregate_errors,
+                    int(printing_health.get("printer_error_count") or 0))
+                partial = partial or printing_health.get("partial") is True
+            for condition in extensions.get("printer_conditions") or []:
+                value = condition if isinstance(condition, dict) else {
+                    "condition": str(condition)}
+                percentage = value.get("percent_remaining")
+                severity = str(value.get("severity") or "")
+                kind = str(value.get("condition_type") or "")
+                if percentage is not None:
+                    percentage = float(percentage)
+                    severity = (
+                        "Critical" if percentage <= PRINTER_TONER_CRITICAL_PERCENT
+                        else "Warning" if percentage <= PRINTER_TONER_WARNING_PERCENT
+                        else "Info")
+                    kind = kind or "consumable"
+                if not severity:
+                    severity = "Critical" if kind in {
+                        "offline", "operational_error"} else "Warning"
+                conditions.append({
+                    **value, "asset": _asset_name(asset),
+                    "severity": severity, "condition_type": kind,
+                    **({"percent_remaining": percentage}
+                       if percentage is not None else {}),
+                })
+        stale = [value for value in printers if value.get(
+            "lifecycle_state") in {"stale", "missing"}]
+        critical = [value for value in conditions
+                    if value["severity"] == "Critical"]
+        warnings = [value for value in conditions
+                    if value["severity"] == "Warning"]
+        critical_findings = [value for value in findings
+                             if value.get("kind") == "issue" and
+                             value.get("severity") in {"Critical", "High"}]
+        warning_findings = [value for value in findings
+                            if value not in critical_findings]
+        if critical or critical_findings or aggregate_errors:
+            status = "Critical"
+        elif warnings or warning_findings or stale or partial:
+            status = "Warning"
+        elif printer_state == "collected":
+            status = "Healthy"
+        else:
+            status = "Unknown"
+        affected = tuple(sorted({value["asset"] for value in critical + warnings}
+                                | {_asset_name(value) for value in stale}
+                                | {_finding_asset(value) for value in findings
+                                   if _finding_asset(value)}))
+        if aggregate_errors and not affected:
+            affected = (f"{aggregate_errors} printer(s) in error",)
+        summaries = {
+            "Critical": (
+                f"Printing has {len(affected) or aggregate_errors or 1} "
+                "critical printer condition(s)."),
+            "Warning": (
+                "Printing device evidence is partial or has conditions "
+                "requiring attention."),
+            "Healthy": (
+                "PaperCut server and per-printer health evidence are current "
+                "with no active printer conditions."),
+            "Unknown": (
+                "PaperCut server health is available, but per-printer health "
+                "has not been collected."),
+        }
+        evidence = list(capability_evidence)
+        evidence.extend({
+            "type": "printer_condition", "asset": value["asset"],
+            "condition": value.get("condition", ""),
+            "condition_type": value.get("condition_type", ""),
+            "severity": value["severity"],
+            **({"percent_remaining": value["percent_remaining"]}
+               if "percent_remaining" in value else {}),
+        } for value in sorted(conditions, key=lambda item: (
+            item["asset"], item.get("condition", ""))))
+        if aggregate_errors:
+            evidence.append({"type": "printer_summary",
+                             "printers_in_error": aggregate_errors})
+        evidence.extend({"type": "asset", "asset": _asset_name(value),
+                         "status": "stale"} for value in sorted(
+                             stale, key=_asset_name))
+        return ServiceHealth(
+            "Printing", status, summaries[status], affected,
+            severity=("Critical" if status == "Critical" else
+                      "Medium" if status == "Warning" else
+                      STATUS_SEVERITY[status]),
+            last_change=_latest([
+                value.get("last_seen_at") or value.get("source_last_seen_at")
+                for value in assets]),
+            evidence=tuple(evidence))
 
     def _virtualisation(self, context):
         definition = self.definition

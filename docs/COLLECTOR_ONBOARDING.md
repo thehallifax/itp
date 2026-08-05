@@ -37,6 +37,12 @@ requested twice.
 - PaperCut accepts `hostname[:port]` or an HTTPS origin. A trailing
   `/api/health` is safely removed, and the optional authorization key is hidden.
 
+PaperCut onboarding validates the base System Health endpoint independently
+from the embedded-device and printer-detail endpoints. A successful server test
+with unavailable `/api/health/printers` evidence is partial, not a healthy
+printer fleet. Current System Health JSON does not provide toner percentages;
+do not advertise consumable health from server reachability.
+
 Connection tests execute the registered read-only collector inspection and
 return redacted output. Consult the collector-specific document when an
 endpoint, role, certificate, or regional API setting is required.

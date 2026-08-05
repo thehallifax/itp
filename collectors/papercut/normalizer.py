@@ -33,6 +33,41 @@ def _service(name, value):
             "offline": offline}
 
 
+PRINTER_ERROR_STATES = {
+    "PAPER_JAM", "PAPER_OUT", "PAPER_PROBLEM", "OUTPUT_BIN_FULL",
+    "NOT_AVAILABLE", "NO_TONER", "OUT_OF_MEMORY", "OFFLINE",
+    "DOOR_OPEN", "USER_INTERVENTION", "ERROR",
+}
+
+
+def _condition(status, description=""):
+    """Return a bounded vendor-neutral printer condition when actionable."""
+    if status not in PRINTER_ERROR_STATES and status != "UNKNOWN":
+        return None
+    labels = {
+        "ERROR": "In Error", "OFFLINE": "Offline",
+        "NOT_AVAILABLE": "Not Available", "NO_TONER": "Toner Empty",
+        "PAPER_JAM": "Paper Jam", "PAPER_OUT": "Paper Out",
+        "PAPER_PROBLEM": "Paper Problem", "OUTPUT_BIN_FULL": "Output Bin Full",
+        "OUT_OF_MEMORY": "Out of Memory", "DOOR_OPEN": "Door Open",
+        "USER_INTERVENTION": "User Intervention", "UNKNOWN": "Unknown Status",
+    }
+    return {
+        "condition": labels.get(status, status.replace("_", " ").title()),
+        "condition_type": (
+            "offline" if status in {"OFFLINE", "NOT_AVAILABLE"}
+            else "unknown" if status == "UNKNOWN" else "operational_error"),
+        "severity": "Warning" if status == "UNKNOWN" else "Critical",
+        "actionable": status != "UNKNOWN",
+        **({"message": str(description)} if description else {}),
+    }
+
+
+def _printer_identity(identifier, name, supplied=""):
+    return str(supplied or "").strip() or "papercut-printer:" + hashlib.sha256(
+        f"{identifier}|{name}".casefold().encode()).hexdigest()[:24]
+
+
 def normalize(snapshot, config, observed_at):
     root = _dict(snapshot.get("health"))
     application = _dict(root.get("applicationServer"))
@@ -49,6 +84,9 @@ def normalize(snapshot, config, observed_at):
     device_values = _list(devices_payload.get("devices"))
     if not device_values:
         device_values = _list(devices_summary.get("inError"))
+    printers_payload = _dict(snapshot.get("printers"))
+    printer_values = _list(printers_payload.get("printers"))
+    endpoint_states = _dict(snapshot.get("endpoint_states"))
     services = [
         _service("Mobility Print", root.get("mobilityPrintServers")),
         _service("Print Providers", root.get("printProviders")),
@@ -107,7 +145,15 @@ def normalize(snapshot, config, observed_at):
         "device_role": "print-management-server",
         "firmware_version": info.get("version"), "online": True,
         "source_last_seen_at": observed_at,
-        "extensions": {"papercut": {
+        "extensions": {"printing_health": {
+            "server_health_available": True,
+            "device_health_available": endpoint_states.get("devices") == "collected",
+            "printer_health_available": endpoint_states.get("printers") == "collected",
+            "printer_count": printers.get("count"),
+            "printer_error_count": printers.get("inErrorCount"),
+            "held_jobs": printers.get("heldJobsCountTotal"),
+            "partial": bool(snapshot.get("partial")),
+        }, "papercut": {
             "application": {"system_info": info, "metrics": metrics},
             "database": database, "printers": printers,
             "devices": devices_summary, "services": services,
@@ -127,6 +173,7 @@ def normalize(snapshot, config, observed_at):
         status = _status(device.get("status") or device.get("state"))
         device_id = "papercut-device:" + hashlib.sha256(
             f"{identifier}|{name}".casefold().encode()).hexdigest()[:24]
+        condition = _condition(status, device.get("statusDescription"))
         records.append({
             "id": device_id, "source": "papercut",
             "collector": "papercut", "source_asset_id": name,
@@ -142,10 +189,52 @@ def normalize(snapshot, config, observed_at):
                       else None,
             "operational_status": status.casefold(),
             "source_last_seen_at": observed_at,
-            "extensions": {"papercut": {
+            "extensions": {
+                **({"printer_conditions": [condition]} if condition else {}),
+                "papercut": {
                 "status": status,
                 "status_description": device.get("statusDescription"),
                 "last_job_age_seconds": device.get("lastJobSeconds")}},
+            "_authoritative_fields": [
+                "customer_id", "site_id", "hostname", "vendor", "platform",
+                "device_type", "device_role", "online"],
+        })
+    for printer in sorted(
+            (_dict(value) for value in printer_values),
+            key=lambda value: str(value.get("name") or "").casefold()):
+        name = str(printer.get("name") or "").strip()
+        if not name:
+            continue
+        status = _status(printer.get("status") or printer.get("state"))
+        description = printer.get("statusDescription") or printer.get("message")
+        condition = _condition(status, description)
+        printer_id = _printer_identity(
+            identifier, name, printer.get("id") or printer.get("printerId"))
+        server_name = name.split("\\", 1)[0] if "\\" in name else hostname
+        records.append({
+            "id": printer_id, "source": "papercut", "collector": "papercut",
+            "source_asset_id": printer_id, "source_record_id": printer_id,
+            "deployment_id": config.deployment_id,
+            "customer_id": config.customer, "customer": config.customer,
+            "site_id": config.site, "site": config.site_name or config.site,
+            "hostname": name, "display_name": name,
+            "vendor": "PaperCut managed", "platform": "PaperCut Printer",
+            "device_type": "printer", "device_role": "print-queue",
+            "online": True if status == "OK" else False if status in {
+                "OFFLINE", "NOT_AVAILABLE", "ERROR"} else None,
+            "operational_status": status.casefold(),
+            "source_last_seen_at": observed_at,
+            "extensions": {
+                **({"printer_conditions": [condition]} if condition else {}),
+                "printer_health": {
+                    "printer_id": printer_id, "printer_name": name,
+                    "server_name": server_name,
+                    "operational_status": status.casefold(),
+                    "error_state": status in PRINTER_ERROR_STATES,
+                    "error_message": str(description or ""),
+                    "held_jobs": printer.get("heldJobsCount"),
+                    "source": "papercut-system-health",
+                    "last_seen": observed_at}},
             "_authoritative_fields": [
                 "customer_id", "site_id", "hostname", "vendor", "platform",
                 "device_type", "device_role", "online"],
@@ -209,6 +298,28 @@ def normalize(snapshot, config, observed_at):
              "device_count": devices_summary.get("count"),
              "device_errors": devices_summary.get("inErrorCount")})},
     ]
+    for record in records:
+        printer_health = _dict(
+            _dict(record.get("extensions")).get("printer_health"))
+        if not printer_health:
+            continue
+        points.append({
+            "measurement": "device",
+            "tags": {
+                **tags, "device_id": record["id"],
+                "hostname": record["hostname"],
+                "printer_id": printer_health["printer_id"],
+                "printer_name": printer_health["printer_name"],
+                "server_name": printer_health["server_name"],
+                "platform": "PaperCut Printer"},
+            "fields": _fields({
+                "online": record.get("online"),
+                "operational_status": printer_health["operational_status"],
+                "error_state": printer_health["error_state"],
+                "error_message": printer_health["error_message"],
+                "held_jobs": printer_health["held_jobs"],
+                "last_seen": printer_health["last_seen"]}),
+        })
     for service in services:
         points.append({
             "measurement": "availability",

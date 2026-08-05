@@ -11,5 +11,7 @@
     "license": {"valid": true}
   },
   "devices": {"devices": []},
+  "printers": {"printers": []},
+  "endpoint_states": {"devices": "collected", "printers": "collected"},
   "partial": false
 }

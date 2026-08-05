@@ -97,6 +97,86 @@ def test_enabled_without_evidence_is_unknown_not_healthy(tmp_path):
     assert value["summary"].startswith("No trustworthy")
 
 
+def printing_manifest(state="collected"):
+    return {"papercut": {"capabilities": [
+        {"id": "server_health", "services": ["Printing"],
+         "support": "supported", "collection": "collected"},
+        {"id": "printer_operational_status", "services": ["Printing"],
+         "support": "conditional", "collection": state},
+        {"id": "printer_consumables", "services": ["Printing"],
+         "support": "unsupported", "collection": "not_applicable"},
+    ]}}
+
+
+def printing_service(tmp_path, assets, state="collected"):
+    engine, _ = fixture(
+        tmp_path, capabilities=["printing"], assets=assets,
+        enabled_collectors=["papercut"],
+        collector_capabilities={"papercut": ["printing"]},
+        capability_manifests=printing_manifest(state))
+    return service(engine.evaluate(NOW), "Printing")
+
+
+def printer(name, *, online=True, conditions=(), lifecycle="active"):
+    return {
+        "canonical_id": "printer:" + name, "hostname": name,
+        "device_type": "printer", "online": online,
+        "lifecycle_state": lifecycle,
+        "last_seen_at": "2026-07-23T13:59:00Z",
+        "extensions": {"printer_conditions": list(conditions)},
+    }
+
+
+def test_papercut_server_healthy_without_device_health_is_unknown(tmp_path):
+    server = {"canonical_id": "server:print", "hostname": "PRINT-1",
+              "device_type": "server", "device_role": "print-management-server",
+              "online": True, "extensions": {"printing_health": {
+                  "server_health_available": True,
+                  "printer_health_available": False}}}
+    value = printing_service(tmp_path, [server], "unavailable")
+    assert value["status"] == "Unknown"
+    assert "per-printer health has not been collected" in value["summary"]
+
+
+@pytest.mark.parametrize(("percentage", "expected"), [
+    (2, "Critical"), (10, "Critical"), (11, "Warning"), (30, "Warning")])
+def test_printing_toner_thresholds_are_deterministic(
+        tmp_path, percentage, expected):
+    value = printing_service(tmp_path, [printer("PRN-1", conditions=[{
+        "condition": "Low toner", "condition_type": "consumable",
+        "percent_remaining": percentage}])])
+    assert value["status"] == expected
+
+
+def test_printing_explicit_error_partial_stale_and_healthy_states(tmp_path):
+    error = printing_service(tmp_path / "error", [printer("PRN-ERROR", online=False,
+        conditions=[{"condition": "In Error",
+                     "condition_type": "operational_error"}])])
+    partial = printing_service(tmp_path / "partial", [printer("PRN-OK")], "partial")
+    stale = printing_service(tmp_path / "stale", [printer(
+        "PRN-STALE", lifecycle="stale")])
+    healthy = printing_service(tmp_path / "healthy", [printer("PRN-OK")])
+    assert error["status"] == "Critical"
+    assert partial["status"] == "Warning"
+    assert stale["status"] == "Warning"
+    assert healthy["status"] == "Healthy"
+
+
+def test_printing_multiple_assets_are_ordered_and_vendor_data_does_not_leak(tmp_path):
+    value = printing_service(tmp_path, [
+        printer("PRN-Z", conditions=[{"condition": "Low toner",
+            "condition_type": "consumable", "percent_remaining": 25}]),
+        printer("PRN-A", online=False, conditions=[{"condition": "In Error",
+            "condition_type": "operational_error"}]),
+    ])
+    assert value["status"] == "Critical"
+    assert value["affected_assets"] == ["PRN-A", "PRN-Z"]
+    condition_evidence = [item for item in value["evidence"]
+                          if item.get("type") == "printer_condition"]
+    assert all("papercut" not in json.dumps(item).casefold()
+               for item in condition_evidence)
+
+
 def test_multi_collector_canonical_asset_is_counted_once_and_vendor_names_are_irrelevant(tmp_path):
     asset = {"canonical_id": "asset:firewall:1", "hostname": "EDGE-1",
              "device_type": "firewall", "online": False,

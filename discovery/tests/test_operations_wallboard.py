@@ -192,7 +192,7 @@ def test_printer_filter_includes_only_service_blocking_conditions(tmp_path):
         "issues": [], "risks": [], "recommendations": []}).run(NOW)
     conditions = [value["condition"] for value in result["printer_exceptions"]
                   if value["scope"] == "all"]
-    assert conditions == ["Black toner (4% remaining)", "Paper jam", "Staples empty"]
+    assert conditions == ["Black toner (4%)", "Paper jam", "Staples empty"]
     assert all("paper tray" not in value.lower() and "low paper" not in value.lower()
                for value in conditions)
     dashboard = json.loads(
@@ -204,6 +204,39 @@ def test_printer_filter_includes_only_service_blocking_conditions(tmp_path):
             if value["scope"] == "all"} == {"PRN-1"}
     assert set(rendered[0]) == {
         "scope", "asset", "location", "condition", "last_seen"}
+
+
+def test_sanitized_printing_attention_rows_are_complete_and_deterministic(tmp_path):
+    source = json.loads((ROOT / "collectors/papercut/fixtures/printing-attention.json").read_text())
+    assets = [{
+        "canonical_id": "printer:error", "hostname": "print-srv-01\\FollowMe (B&W)",
+        "device_type": "printer", "online": False,
+        "site": {"site_id": "site:hq", "display_name": "HQ"},
+        "extensions": {"printer_conditions": [{
+            "condition": "In Error", "condition_type": "operational_error",
+            "severity": "Critical", "actionable": True}]},
+    }]
+    assets.extend({
+        "canonical_id": f"printer:toner:{index}", "hostname": value["name"],
+        "device_type": "printer", "online": True,
+        "site": {"site_id": "site:hq", "display_name": "HQ"},
+        "extensions": {"printer_conditions": [{
+            "condition": "Low toner", "condition_type": "consumable",
+            "percent_remaining": value["toner_percent"]}]},
+    } for index, value in enumerate(source["canonical_consumable_assets"]))
+    result = fixture(tmp_path, assets=assets, operations={
+        "issues": [], "risks": [], "recommendations": []}).run(NOW)
+    rows = [value for value in result["printer_exceptions"]
+            if value["scope"] == "all"]
+    assert [(value["asset"], value["condition"]) for value in rows] == [
+        ("print-srv-01\\FollowMe (B&W)", "In Error"),
+        ("print-srv-01\\MFP-Gym-Foyer", "Low toner (2%)"),
+        ("print-srv-01\\MFP-SNR-GF", "Low toner (4%)"),
+        ("print-srv-01\\MFP-Repo-Right", "Low toner (5%)"),
+        ("print-srv-01\\MFP-Repo-Left", "Low toner (8%)"),
+        ("print-srv-01\\MFP-HER-Staff", "Low toner (25%)"),
+    ]
+    assert all(value["asset"] != "No printers require attention" for value in rows)
 
 
 def test_multiple_authoritative_wan_uplinks_and_samples(tmp_path):

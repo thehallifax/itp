@@ -24,5 +24,14 @@
       "lastJobSeconds": 7200
     }]
   },
+  "printers": {
+    "printers": [{
+      "name": "print-srv-01\\FollowMe (B&W)",
+      "status": "ERROR",
+      "statusDescription": "Printer is in error",
+      "heldJobsCount": 3
+    }]
+  },
+  "endpoint_states": {"devices": "collected", "printers": "collected"},
   "partial": false
 }

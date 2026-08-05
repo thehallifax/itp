@@ -172,7 +172,8 @@ def _action_rows(operations, scopes, enabled_collectors, capabilities=None,
 def _printer_exceptions(assets, operations, scopes):
     """Select only service-blocking printer conditions."""
     include = ("offline", "paper jam", "waste toner full", "toner empty",
-               "staples empty", "service blocking", "service-blocking")
+               "staples empty", "in error", "service blocking",
+               "service-blocking")
     exclude = ("paper tray empty", "low paper")
     values = []
     for asset in assets:
@@ -180,16 +181,23 @@ def _printer_exceptions(assets, operations, scopes):
         name = asset.get("display_name") or asset.get("hostname") or asset.get("canonical_id")
         common = {"asset": name, "location": asset.get("location") or "Unknown",
                   "site_id": _site_id(asset), "last_seen": asset.get("last_seen_at") or "Unknown"}
-        if asset.get("online") is False:
+        printer_conditions = (asset.get("extensions") or {}).get(
+            "printer_conditions", [])
+        explicit_error = any(
+            isinstance(condition, dict) and (
+                condition.get("condition_type") == "operational_error"
+                or "error" in str(condition.get("condition") or "").casefold())
+            for condition in printer_conditions)
+        if asset.get("online") is False and not explicit_error:
             values.append({**common, "condition": "Offline"})
-        for condition in (asset.get("extensions") or {}).get("printer_conditions", []):
+        for condition in printer_conditions:
             condition = condition if isinstance(condition, dict) else {"condition": str(condition)}
             label = str(condition.get("condition") or condition.get("name") or "")
             lowered = label.lower()
             percentage = condition.get("percent_remaining")
             actionable = condition.get("actionable") is True or any(token in lowered for token in include)
-            if "toner" in lowered and percentage is not None and float(percentage) < 5:
-                actionable = True; label = f"{label} ({float(percentage):g}% remaining)"
+            if "toner" in lowered and percentage is not None and float(percentage) <= 30:
+                actionable = True; label = f"{label} ({float(percentage):g}%)"
             if any(token in lowered for token in exclude): actionable = False
             if actionable:
                 values.append({**common, "condition": label,
@@ -210,9 +218,22 @@ def _printer_exceptions(assets, operations, scopes):
         selected = [value for value in deduplicated.values()
                     if scope["scope"] == "all" or value.get("site_id") == scope["scope"]]
         if selected:
+            def order(item):
+                condition = str(item.get("condition") or "").casefold()
+                if "in error" in condition or "error" in condition:
+                    rank = 0
+                elif "offline" in condition or "not available" in condition:
+                    rank = 1
+                elif "toner" in condition:
+                    match = re.search(r"\((\d+(?:\.\d+)?)%", condition)
+                    rank = 2
+                    return (rank, float(match.group(1)) if match else 101,
+                            str(item.get("asset", "")).casefold(), condition)
+                else:
+                    rank = 3
+                return (rank, 0, str(item.get("asset", "")).casefold(), condition)
             rows.extend({"scope": scope["scope"], **value}
-                        for value in sorted(selected, key=lambda item: (
-                            item["asset"], item["condition"])))
+                        for value in sorted(selected, key=order))
         else:
             rows.append({"scope": scope["scope"], "asset": "No printers require attention",
                 "location": "", "condition": "", "last_seen": ""})

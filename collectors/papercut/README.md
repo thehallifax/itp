@@ -30,7 +30,8 @@ collectors:
 ## HTTP request contract
 
 ITP sends an HTTP `GET` request to the application-server origin plus
-`/api/health`, followed by a separate `GET /api/health/devices` request.
+`/api/health`, followed by separate `GET /api/health/devices` and
+`GET /api/health/printers` requests.
 The System Health authorization key is encoded once as the `Authorization`
 query parameter:
 
@@ -63,8 +64,17 @@ PaperCut. It is intended only for trusted internal networks and creates a
 traffic-interception and server-impersonation risk. Doctor, status, collector
 test, and the collector log report the disabled policy explicitly. It does not
 change TLS verification for any other HTTPS connector.
-The connector reads `/api/health` and `/api/health/devices`; a failure of the
-optional device-detail request is reported as a partial collection.
+The base endpoint provides server, database, service, licensing, and aggregate
+printer counts. The devices endpoint provides PaperCut embedded-device health.
+The printers endpoint provides per-printer names, operational states, and held
+job counts. A failure of either detail endpoint is reported as a partial
+collection without discarding successful server health.
+
+These are separate capability dimensions: server health, embedded-device
+inventory, printer operational status, print-queue health, and printer
+consumables. PaperCut System Health does not expose toner percentages or
+consumable levels. ITP therefore reports consumables as unsupported and never
+uses healthy API/server evidence to claim that consumables are healthy.
 
 Thresholds for disk, JVM memory, held jobs, Upgrade Assurance, and long uptime
 are configurable in `discovery/config.example.yml`. Operational findings are
@@ -79,11 +89,10 @@ Authentication, TLS, timeout, connectivity, malformed-response, and partial
 failures are categorized without logging the endpoint key.
 
 PaperCut populations are intentionally distinct: `printer_count` is the
-configured printer-object aggregate reported by System Health; embedded-device
-count is the number of detailed device records; canonical operational printer
-assets are only individually identified embedded devices admitted by
-normalisation. These values are labelled separately and are not forced to
-match.
+configured printer-object aggregate; embedded-device count covers card readers
+and embedded application records; `/api/health/printers` supplies canonical
+printer/queue assets. These values are labelled separately and are not forced
+to match.
 
 ```sh
 ./itp collector test papercut --deployment <deployment>
