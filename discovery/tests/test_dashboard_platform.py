@@ -38,9 +38,9 @@ def test_managed_dashboard_empty_states_come_from_capability_manifest(tmp_path):
     ).read_text())
     panels = {value["title"]: value for value in dashboard["panels"]}
     assert panels["Certificate Expiry"]["fieldConfig"]["defaults"]["noValue"] == \
-        "Feature Not Enabled"
+        "Capability not enabled"
     assert panels["Recent Configuration Commits"]["fieldConfig"][
-        "defaults"]["noValue"] == "Collection Failed"
+        "defaults"]["noValue"] == "Collection unavailable"
     assert "Authoritative expiry is not collected." in panels[
         "Certificate Expiry"]["description"]
 
@@ -106,6 +106,27 @@ def test_enabled_vendor_dashboards_and_capabilities_are_selected(tmp_path):
     assert len(list((tmp_path / "managed/vendor").glob("*.json"))) == 3
 
 
+def test_every_managed_dashboard_uses_shared_dense_layout_and_empty_states(
+        tmp_path):
+    registry(tmp_path, {
+        "mist": True, "fortigate": True, "paloalto": True,
+        "papercut": True, "snmp": True,
+    }).generate()
+    for path in sorted((tmp_path / "managed").glob("*/*.json")):
+        dashboard = json.loads(path.read_text())
+        occupied = set()
+        for panel in dashboard["panels"]:
+            defaults = panel.get("fieldConfig", {}).get("defaults", {})
+            assert defaults.get("noValue") != "No Matching Records"
+            grid = panel["gridPos"]
+            cells = {(x, y)
+                     for x in range(grid["x"], grid["x"] + grid["w"])
+                     for y in range(grid["y"], grid["y"] + grid["h"])}
+            assert not occupied & cells, f"overlap in {path}: {panel['title']}"
+            occupied.update(cells)
+        assert "elements" not in dashboard and "layout" not in dashboard
+
+
 def test_enabled_papercut_pack_is_provisioned_in_printing(tmp_path):
     resolved = registry(tmp_path, {"papercut": True}).generate()
     assert {value["uid"] for value in resolved["dashboards"]} == {
@@ -126,7 +147,7 @@ def test_enabled_papercut_pack_is_provisioned_in_printing(tmp_path):
             "Printer and Device Summary", "Licensing",
             "Active Operational Findings"):
         assert panels[title]["fieldConfig"]["defaults"]["noValue"] == \
-            "No Matching Records"
+                "Not Yet Collected"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes are not authoritative")

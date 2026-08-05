@@ -1,22 +1,30 @@
 """Deterministic collector manifest and Grafana provisioning registry."""
 from __future__ import annotations
 
-import json
 import csv
 import io
+import json
 import os
-from datetime import datetime, timezone
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
-from collectors.writer import atomic_write
-from collectors.connector_registry import ConnectorMetadataRegistry
-from analysis.readiness import credentials_ready, evaluate_readiness
-from analysis.readiness import empty_infrastructure_summary
+from analysis.dashboards.layout import (
+    PanelState,
+    apply_managed_presentation,
+    compact_information_panel,
+)
 from analysis.operations.renderer import render_dashboard
+from analysis.readiness import (
+    credentials_ready,
+    empty_infrastructure_summary,
+    evaluate_readiness,
+)
 from analysis.wallboard import WallboardEngine
+from collectors.connector_registry import ConnectorMetadataRegistry
+from collectors.writer import atomic_write
 
 
 FOLDERS = {
@@ -204,14 +212,11 @@ class DashboardPackRegistry:
                                             "value": deployment_id}]
         dashboard["tags"] = sorted(tags)
         dashboard["editable"] = False
-        for panel in dashboard.get("panels", []):
-            panel.setdefault("fieldConfig", {}).setdefault(
-                "defaults", {}).setdefault("noValue", "No Matching Records")
         self._apply_capability_states(dashboard, declaration)
         if dashboard.get("uid") == "itp-collector-health":
             self._collector_health_empty_state(
                 dashboard, getattr(self, "_readiness", {}))
-        return dashboard
+        return apply_managed_presentation(dashboard)
 
     def _apply_capability_states(self, dashboard, declaration):
         """Apply canonical empty-state labels without changing panel queries."""
@@ -222,12 +227,12 @@ class DashboardPackRegistry:
         manifest = self._read(
             runtime / f"capabilities/{collector}.json", {})
         labels = {
-            "disabled": "Feature Not Enabled",
-            "not_yet_collected": "Awaiting First Collection",
-            "unavailable": "Feature Unavailable",
-            "failed": "Collection Failed",
-            "partial": "Partial Data",
-            "not_applicable": "Feature Not Enabled",
+            "disabled": PanelState.DISABLED.value,
+            "not_yet_collected": PanelState.WAITING.value,
+            "unavailable": PanelState.UNAVAILABLE.value,
+            "failed": PanelState.UNAVAILABLE.value,
+            "partial": PanelState.CONFIGURATION_REQUIRED.value,
+            "not_applicable": PanelState.DISABLED.value,
         }
         for capability in manifest.get("capabilities", []):
             state = capability.get("collection")
@@ -241,15 +246,19 @@ class DashboardPackRegistry:
                 defaults = panel.setdefault("fieldConfig", {}).setdefault(
                     "defaults", {})
                 if capability.get("support") == "unsupported":
-                    defaults["noValue"] = "Feature Unavailable From Collector"
+                    label = PanelState.UNSUPPORTED.value
                 else:
-                    defaults["noValue"] = labels.get(
-                        state, "No Matching Records")
+                    label = labels.get(state, PanelState.NOT_COLLECTED.value)
+                defaults["noValue"] = label
                 explanation = capability.get("explanation")
                 if explanation:
                     existing = str(panel.get("description") or "").strip()
                     panel["description"] = (
                         f"{existing}\n\nCapability state: {explanation}".strip())
+                if panel.get("type") == "table" and state in {
+                        "disabled", "not_yet_collected", "unavailable",
+                        "failed", "not_applicable"}:
+                    compact_information_panel(panel, label, explanation or "")
 
     @staticmethod
     def _read(path, fallback):

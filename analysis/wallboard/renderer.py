@@ -1,14 +1,14 @@
 """Grafana-compatible wallboard summary and dashboard rendering."""
 from __future__ import annotations
 
-import csv
 import copy
+import csv
 import io
 import json
 from pathlib import Path
 
+from analysis.dashboards.layout import pack_row
 from collectors.writer import atomic_write
-
 
 DATASOURCE = {"type": "grafana-testdata-datasource", "uid": "itp-runtime-values"}
 INFLUX_DATASOURCE = {"type": "influxdb", "uid": "ffsu5ap2kr5dse"}
@@ -214,11 +214,7 @@ def _layout(dashboard):
                                     "w": 4, "h": 3}
     if service_titles:
         y += ((len(service_titles) + 5) // 6) * 3
-    compact_width = 5 if len(infrastructure) == 3 else \
-                    6 if len(infrastructure) == 2 else 8
-    for index, title in enumerate(infrastructure):
-        panels[title]["gridPos"] = {"x": index * compact_width, "y": y,
-                                    "w": compact_width, "h": 4}
+    pack_row((panels[title] for title in infrastructure), y=y, height=4)
 
 
 def _topology(panel, topology):
@@ -293,7 +289,6 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     for panel in dashboard["panels"]:
         panel["title"] = title_changes.get(panel["title"], panel["title"])
     panels = {value["title"]: value for value in dashboard["panels"]}
-    freshness = summary["freshness"]
     readiness = summary.get("readiness") or {}
     readiness_state = readiness.get("overall", {}).get("state")
     issue_rows = [{"scope": scope["scope"],
@@ -650,6 +645,9 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
     panels["Monitoring"]["links"] = links("itp-collector-health")
     disabled_panels = {title for title, name in service_titles.items()
                        if name not in enabled_service_names}
+    # Inventory health cards already include the canonical service status;
+    # separate Wireless and Switching service tiles duplicate that evidence.
+    disabled_panels.update({"Wireless Service", "Switching Service"})
     service_for_domain = {"Wireless Access Points": "Wireless",
                           "Switches": "Switching", "Servers": "Compute"}
     disabled_panels.update(title for title, service in service_for_domain.items()

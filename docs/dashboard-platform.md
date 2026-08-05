@@ -1,5 +1,28 @@
 # Dashboard platform
 
+## Managed presentation contract
+
+All managed dashboards pass through the shared adaptive layout helpers in
+`analysis/dashboards/layout.py`. The helper preserves panel IDs, removes only
+panels explicitly marked unavailable by a generator, closes vertical gaps, and
+expands remaining panels across Grafana's 24-column classic grid. Generators
+declare content state and leave packing to the shared helper.
+
+Managed panels use deterministic operator-facing empty states:
+
+- `Healthy - No issues detected` for an evaluated empty exception set;
+- `Awaiting first collection` before initial evidence exists;
+- `Capability not enabled` for disabled capabilities;
+- `Additional telemetry required` when configuration is incomplete;
+- `Not available for this platform` for unsupported capability evidence;
+- `Collection unavailable` for a current collection failure;
+- `Not Yet Collected` when no more specific state is known.
+
+Absence of telemetry is never translated to Healthy. Known disabled or
+unavailable table sections become compact information cards. Static SQL
+dashboards retain their queries because generation cannot infer whether an
+arbitrary operator-selected time range will return rows.
+
 ## Static packs and runtime snapshots
 
 Connector dashboards such as Palo Alto and PaperCut are static managed

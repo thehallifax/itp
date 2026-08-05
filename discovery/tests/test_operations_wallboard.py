@@ -677,6 +677,19 @@ def test_vendor_neutral_wan_without_collector_uses_safe_identity_filters(
     assert "interface_name = 'uplink0'" in sql
 
 
+def test_inventory_cards_replace_duplicate_wireless_and_switching_services(
+        tmp_path):
+    fixture(tmp_path).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    panels = {value["title"]: value for value in dashboard["panels"]}
+    assert "Wireless Service" not in panels
+    assert "Switching Service" not in panels
+    assert panels["Wireless Access Points"]["gridPos"]["w"] == 8
+    assert panels["Switches"]["gridPos"]["w"] == 8
+    assert panels["Servers"]["gridPos"]["w"] == 8
+
+
 def test_clean_bootstrap_and_deterministic_generation(tmp_path):
     engine = WallboardEngine(tmp_path / "missing-infrastructure.json",
         tmp_path / "missing-operations.json", tmp_path / "missing-sites.json",

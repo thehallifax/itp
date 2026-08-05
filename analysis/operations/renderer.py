@@ -6,6 +6,11 @@ import io
 import json
 from pathlib import Path
 
+from analysis.dashboards.layout import (
+    PanelState,
+    compact_information_panel,
+    reflow_classic_dashboard,
+)
 from collectors.writer import atomic_write
 
 SHARED_FILE_MODE = 0o644
@@ -288,20 +293,29 @@ def render_dashboard(template_path, output_path, result, infrastructure_summary=
     _setup_status(setup, readiness)
     capability_values = set(readiness.get("capabilities") or [])
     readiness_state = readiness.get("observability", {}).get("state")
-    for title in ("WAN Latency", "WAN Packet Loss", "WAN Bandwidth"):
-        panel = next(value for value in dashboard["panels"]
-                     if value.get("title") == title)
+    wan_panels = [value for value in dashboard["panels"]
+                  if value.get("title") in {
+                      "WAN Latency", "WAN Packet Loss", "WAN Bandwidth"}]
+    if wan_panels:
+        primary = next(value for value in wan_panels
+                       if value.get("title") == "WAN Latency")
+        primary["title"] = "WAN Path Telemetry"
         if "internet" not in capability_values:
-            message = "Not configured\n\nEnable a collector with Internet capability."
+            state = PanelState.DISABLED
+            detail = "Enable a collector with Internet capability."
         elif readiness_state == "waiting_first_collection":
-            message = "Waiting for WAN telemetry\n\nComplete the first collection."
+            state = PanelState.WAITING
+            detail = "Complete the first successful collection."
         elif readiness_state == "unavailable":
-            message = "WAN telemetry unavailable\n\nReview Collector Health."
-        elif title == "WAN Bandwidth":
-            message = "WAN interface not classified\n\nConfigure an authoritative WAN role."
+            state = PanelState.UNAVAILABLE
+            detail = "Review Collector Health."
         else:
-            message = "Awaiting path telemetry"
-        panel["options"]["content"] = f"### {title.removeprefix('WAN ')}\n\n{message}"
+            state = PanelState.CONFIGURATION_REQUIRED
+            detail = "Latency, packet loss, and path bandwidth require WAN path telemetry."
+        compact_information_panel(primary, state, detail)
+        for panel in wan_panels:
+            if panel is not primary:
+                panel["_itp_omit"] = True
     collector_readiness = {
         value.get("collector"): value
         for value in readiness.get("collectors", [])}
@@ -345,6 +359,7 @@ def render_dashboard(template_path, output_path, result, infrastructure_summary=
         panel for panel in dashboard["panels"]
         if panel_capabilities.get(panel.get("title")) in capability_values
         or panel.get("title") not in panel_capabilities]
+    reflow_classic_dashboard(dashboard)
     dashboard["version"] = int(dashboard.get("version", 0)) + 1
     atomic_write(
         output_path, json.dumps(dashboard, indent=2, sort_keys=True) + "\n",

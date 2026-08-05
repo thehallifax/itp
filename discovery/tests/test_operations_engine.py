@@ -95,6 +95,21 @@ def test_engine_is_deterministic_explainable_and_sorted(tmp_path):
     assert any(item["rule_id"] == "collector.failed" for item in first["recommendations"])
 
 
+def test_infrastructure_overview_condenses_unavailable_wan_placeholders(tmp_path):
+    engine, output = fixture(tmp_path)
+    engine.run(NOW)
+    dashboard = json.loads(
+        (output / "dashboard/infrastructure-overview.json").read_text())
+    panels = {value["title"]: value for value in dashboard["panels"]}
+    assert "WAN Path Telemetry" in panels
+    assert not {"WAN Latency", "WAN Packet Loss", "WAN Bandwidth"} & set(panels)
+    wan = panels["WAN Path Telemetry"]
+    assert wan["type"] == "text"
+    assert wan["targets"] == []
+    assert "Additional telemetry required" in wan["options"]["content"]
+    assert wan["gridPos"]["h"] == 3
+
+
 def test_outputs_and_runtime_dashboard_are_generated(tmp_path):
     engine, output = fixture(tmp_path); result = engine.run(NOW)
     assert json.loads((output / "operations.json").read_text()) == result

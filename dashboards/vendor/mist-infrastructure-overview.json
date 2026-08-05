@@ -412,6 +412,7 @@
             },
             "inspect": false
           },
+          "noValue": "Healthy - No current operational findings",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -476,6 +477,7 @@
             },
             "inspect": false
           },
+          "noValue": "Healthy - No current operational findings",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -528,6 +530,7 @@
             },
             "inspect": false
           },
+          "noValue": "Healthy - No current operational findings",
           "thresholds": {
             "mode": "absolute",
             "steps": [
