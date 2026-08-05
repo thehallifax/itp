@@ -63,11 +63,12 @@ METRIC_FIELDS = {
     "uptime": "uptime_seconds", "uptime_seconds": "uptime_seconds", "cpu_util": "cpu_percent",
     "cpu_percent": "cpu_percent", "mem_used_percent": "memory_used_percent",
     "memory_used_percent": "memory_used_percent", "temperature": "temperature_celsius",
-    "temperature_celsius": "temperature_celsius", "num_clients": "client_count",
+    "temperature_celsius": "temperature_celsius",
     "temp": "temperature_celsius",
-    "client_count": "client_count", "rx_bytes": "rx_bytes", "tx_bytes": "tx_bytes",
+    "rx_bytes": "rx_bytes", "tx_bytes": "tx_bytes",
     "rx_bps": "rx_bps", "tx_bps": "tx_bps",
 }
+CLIENT_COUNT_FIELDS = ("num_clients", "client_count")
 
 
 def _count(value):
@@ -134,10 +135,10 @@ def metric_fields(stats):
     for source, target in METRIC_FIELDS.items():
         if source not in stats or stats[source] in (None, ""):
             continue
-        if target == "client_count":
+        values[target] = stats[source]
+    for source in CLIENT_COUNT_FIELDS:
+        if source in stats and stats[source] not in (None, ""):
             values.update(_client_fields(stats[source]))
-        else:
-            values[target] = stats[source]
     if "memory_used_percent" not in values and stats.get("mem_total_kb") and stats.get("mem_used_kb") is not None:
         values["memory_used_percent"] = 100.0 * stats["mem_used_kb"] / stats["mem_total_kb"]
     return values

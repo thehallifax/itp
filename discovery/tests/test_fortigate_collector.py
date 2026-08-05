@@ -19,6 +19,7 @@ from collectors.fortigate.models import (
     FortiGatePermissionError, FortiGatePrivateCAError, FortiGateTimeoutError,
     FortiGateTLSError)
 from collectors.fortigate.normalizer import normalize, stable_id
+from collectors.writer import InfluxWriter
 
 
 def config(**overrides):
@@ -381,6 +382,10 @@ def test_stable_identity_normalization_and_snmp_compatibility():
                           if point["measurement"] == "infrastructure_device")
     assert infrastructure["tags"]["model"] == "FG-100F"
     assert "model" not in infrastructure["fields"]
+    line = InfluxWriter.line_protocol(infrastructure)
+    tag_set, field_set = line.split(" ", 1)
+    assert ",model=FG-100F" in tag_set
+    assert "model=" not in field_set
     assert {point["measurement"] for point in points} == {
         "infrastructure_device", "network_interface", "security_appliance",
         "device", "availability", "performance", "interface", "firewall"}

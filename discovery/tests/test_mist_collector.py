@@ -162,6 +162,13 @@ def test_nested_client_counts_are_flattened_to_primitive_fields():
     assert "model" not in infrastructure["fields"]
     assert all(not isinstance(value, (dict, list, tuple, set))
                for point in points for value in point["fields"].values())
+    lines = [InfluxWriter.line_protocol(point) for point in points]
+    assert all(isinstance(line, str) for line in lines)
+    assert all("{'" not in line and "[" not in line for line in lines)
+    infrastructure_line = next(
+        line for line in lines if line.startswith("infrastructure_device,"))
+    assert ",model=AP34" in infrastructure_line.split(" ", 1)[0]
+    assert "client_count=15i" in infrastructure_line
 
 
 def test_line_protocol_escaping_and_field_types():
