@@ -1,14 +1,24 @@
 import ssl
+import socket
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
 import certifi
 import pytest
 import yaml
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 from collectors.paloalto.api import PaloAltoClient
 from collectors.papercut.client import PaperCutClient
-from collectors.tls import classify_certificate_issuer, connector_tls_context
+from collectors.tls import (
+    classify_certificate_issuer,
+    connector_tls_context,
+    inspect_tls_peer,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -69,6 +79,96 @@ def test_internal_microsoft_ca_is_not_mistaken_for_public_microsoft_root():
     assert classify_certificate_issuer(
         {"commonName": "firewall.example.test"},
         {"commonName": "Active Directory Enterprise CA"}) is False
+
+
+def synthetic_public_leaf():
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = datetime.now(timezone.utc)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, "*.example.edu.au")]))
+        .issuer_name(x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Let's Encrypt"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "YR2")]))
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=30))
+        .add_extension(x509.SubjectAlternativeName([
+            x509.DNSName("*.example.edu.au"),
+            x509.DNSName("example.edu.au")]), critical=False)
+        .sign(key, hashes.SHA256()))
+    return certificate.public_bytes(serialization.Encoding.DER)
+
+
+@pytest.mark.parametrize("chain_mode", ["unavailable", "raises"])
+def test_inspection_only_connection_decodes_leaf_in_memory_and_chain_is_optional(
+        monkeypatch, chain_mode):
+    der = synthetic_public_leaf()
+    calls = []
+
+    class SSLObject:
+        if chain_mode == "raises":
+            def get_unverified_chain(self):
+                raise RuntimeError("chain API unavailable")
+
+    class Wrapped:
+        _sslobj = SSLObject()
+        def __enter__(self): return self
+        def __exit__(self, *_args): calls.append("tls.closed")
+        def getpeercert(self, *, binary_form=False):
+            assert binary_form is True
+            calls.append("leaf.der")
+            return der
+
+    class Context:
+        check_hostname = True
+        verify_mode = ssl.CERT_REQUIRED
+        def wrap_socket(self, raw, *, server_hostname):
+            assert raw == "raw-socket"
+            assert server_hostname == "firewall.example.edu.au"
+            calls.append("tls.wrap")
+            return Wrapped()
+
+    class Raw:
+        def __enter__(self): return "raw-socket"
+        def __exit__(self, *_args): calls.append("tcp.closed")
+
+    monkeypatch.setattr(ssl, "SSLContext", lambda _protocol: Context())
+    monkeypatch.setattr("collectors.tls.socket.gethostbyname",
+                        lambda host: "192.0.2.10")
+    monkeypatch.setattr("collectors.tls.socket.create_connection",
+                        lambda address, timeout: Raw())
+
+    evidence = inspect_tls_peer("firewall.example.edu.au", 8443, timeout=3)
+
+    assert evidence["public_issuer"] is True
+    assert evidence["issuer_attributes"]["organizationName"] == "Let's Encrypt"
+    assert evidence["hostname_match"] is True
+    assert evidence["expired"] is False
+    assert evidence["presented_chain_length"] is None
+    assert calls == ["tls.wrap", "leaf.der", "tls.closed", "tcp.closed"]
+    source = (ROOT / "collectors/tls.py").read_text()
+    assert "NamedTemporaryFile" not in source
+    assert "Authorization" not in source
+
+
+def test_inspection_connection_failure_preserves_bounded_partial_evidence(
+        monkeypatch):
+    monkeypatch.setattr("collectors.tls.socket.gethostbyname",
+                        lambda host: "192.0.2.11")
+    monkeypatch.setattr(
+        "collectors.tls.socket.create_connection",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(socket.timeout()))
+    evidence = inspect_tls_peer("firewall.example.test", 8443, timeout=1)
+    assert evidence == {
+        "host": "firewall.example.test",
+        "resolved_address": "192.0.2.11",
+        "inspection_status": "connection_failed",
+        "trust": "failed",
+    }
 
 
 def test_custom_ca_extends_default_public_trust(monkeypatch, tmp_path):

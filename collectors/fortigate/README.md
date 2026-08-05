@@ -19,6 +19,11 @@ Diagnostics distinguish expiry, hostname mismatch, incomplete public chains,
 untrusted private CAs, and generic trust failures. `verify_tls: false` is a
 diagnostic-only escape hatch and is not recommended for production.
 
+After a verified handshake fails, ITP may open a second short-lived,
+unauthenticated TLS connection solely to decode bounded leaf-certificate
+metadata. It sends no HTTP request, API token, or authorization header; the
+original verified request remains authoritative and trust remains failed.
+
 For example, if a FortiGate presents only its wildcard leaf and that leaf is
 issued by Let's Encrypt, install the full chain (including the required public
 intermediate) on the FortiGate. Do not import Let's Encrypt roots or

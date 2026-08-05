@@ -154,6 +154,41 @@ def test_http_401_after_tls_is_authentication_not_tls_failure():
     asyncio.run(client.aclose())
 
 
+def test_tls_inspection_runs_only_after_verified_failure_and_receives_no_secret():
+    inspected = []
+
+    async def successful(request):
+        return httpx.Response(200, request=request, json={"status": "success"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(successful))
+    api = FortiGateClient(
+        "fg.example.test", "secret-token", client=client,
+        tls_inspector=lambda *values: inspected.append(values))
+    assert asyncio.run(api.request("/test")) == {"status": "success"}
+    assert inspected == []
+    asyncio.run(client.aclose())
+
+    class FailedClient:
+        async def get(self, *_args, **_kwargs):
+            try:
+                raise verification_error(
+                    20, "unable to get local issuer certificate")
+            except ssl.SSLError as cause:
+                raise httpx.ConnectError("verified TLS failed") from cause
+
+    def inspect(host, port):
+        inspected.append((host, port))
+        return {"host": host, "issuer": "CN=Unknown",
+                "hostname_match": True, "expired": False, "trust": "failed"}
+
+    api = FortiGateClient(
+        "fg.example.test:8443", "secret-token", client=FailedClient(),
+        tls_inspector=inspect)
+    with pytest.raises(FortiGateTLSError):
+        asyncio.run(api.request("/test"))
+    assert inspected == [("fg.example.test", 8443)]
+
+
 def test_tls_defaults_timeout_and_retry(monkeypatch):
     captured = {}
     class AsyncClient:

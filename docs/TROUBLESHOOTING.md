@@ -146,3 +146,7 @@ installation; do not import Let's Encrypt roots or intermediates into ITP.
 
 The runtime image already contains public roots. Do not import public roots per
 deployment and do not use `verify_tls: false` as a production fix.
+
+To classify the failure, ITP may make a second unauthenticated TLS-only
+connection. It reads bounded leaf metadata, closes immediately, sends no API
+token or HTTP request, and never changes the failed trust result.

@@ -38,6 +38,12 @@ Never include private keys in a CA input file. TLS verification remains enabled
 by default; disabling it is suitable only for bounded diagnosis because it
 permits endpoint impersonation.
 
+After a connector's authoritative verified handshake fails, ITP may use a
+separate short-timeout, unverified TLS socket to inspect bounded public
+certificate metadata. This inspection performs no HTTP request and sends no
+credentials or authorization headers. It cannot convert the failed connection
+into a trusted one; it exists only to select accurate remediation.
+
 ## Support bundles
 
 `./itp support bundle` excludes secret environment files, credential files,

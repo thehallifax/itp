@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import ssl
 import socket
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+from cryptography import x509
+from cryptography.x509.oid import NameOID
 
 
 PUBLIC_CA_IDENTITIES = (
@@ -59,22 +61,77 @@ def deployment_ca_bundle(config):
     return str(value.get("ca_bundle") or "").strip() or None
 
 
-def _name(value):
-    return ", ".join(
-        f"{key}={item}" for group in value or () for key, item in group)[:1024]
+NAME_LABELS = {
+    NameOID.COMMON_NAME: "commonName",
+    NameOID.COUNTRY_NAME: "countryName",
+    NameOID.LOCALITY_NAME: "localityName",
+    NameOID.ORGANIZATION_NAME: "organizationName",
+    NameOID.ORGANIZATIONAL_UNIT_NAME: "organizationalUnitName",
+    NameOID.STATE_OR_PROVINCE_NAME: "stateOrProvinceName",
+}
 
 
 def _name_attributes(value):
     result = {}
-    for group in value or ():
-        for key, item in group:
-            normalized_key = str(key)[:64]
-            if len(result) < 32 or normalized_key in result:
-                values = result.setdefault(normalized_key, [])
-                if len(values) < 10:
-                    values.append(str(item)[:512])
+    for attribute in value:
+        normalized_key = NAME_LABELS.get(
+            attribute.oid, attribute.oid.dotted_string)[:64]
+        if len(result) < 32 or normalized_key in result:
+            values = result.setdefault(normalized_key, [])
+            if len(values) < 10:
+                values.append(str(attribute.value)[:512])
     return {key: values[0] if len(values) == 1 else values
             for key, values in sorted(result.items())}
+
+
+def _display_name(attributes):
+    return ", ".join(
+        f"{key}={value}" for key, value in attributes.items())[:1024]
+
+
+def _decode_peer_certificate(der, hostname):
+    """Decode bounded leaf metadata entirely in memory."""
+    certificate = x509.load_der_x509_certificate(der)
+    subject_attributes = _name_attributes(certificate.subject)
+    issuer_attributes = _name_attributes(certificate.issuer)
+    try:
+        sans = sorted(certificate.extensions.get_extension_for_class(
+            x509.SubjectAlternativeName).value.get_values_for_type(
+                x509.DNSName))[:100]
+    except x509.ExtensionNotFound:
+        sans = []
+    common_names = certificate.subject.get_attributes_for_oid(
+        NameOID.COMMON_NAME)
+    match_data = {"subjectAltName": [("DNS", value) for value in sans]}
+    if common_names:
+        match_data["subject"] = ((
+            ("commonName", str(common_names[0].value)[:512]),),)
+    try:
+        ssl.match_hostname(match_data, hostname)
+        hostname_match = True
+    except ssl.CertificateError:
+        hostname_match = False
+    if hasattr(certificate, "not_valid_before_utc"):
+        not_before_value = certificate.not_valid_before_utc
+        not_after_value = certificate.not_valid_after_utc
+    else:  # cryptography < 42 compatibility
+        not_before_value = certificate.not_valid_before.replace(
+            tzinfo=timezone.utc)
+        not_after_value = certificate.not_valid_after.replace(
+            tzinfo=timezone.utc)
+    return {
+        "subject": _display_name(subject_attributes),
+        "issuer": _display_name(issuer_attributes),
+        "subject_attributes": subject_attributes,
+        "issuer_attributes": issuer_attributes,
+        "public_issuer": classify_certificate_issuer(
+            subject_attributes, issuer_attributes),
+        "subject_alt_names": sans,
+        "hostname_match": hostname_match,
+        "not_before": not_before_value.isoformat().replace("+00:00", "Z"),
+        "not_after": not_after_value.isoformat().replace("+00:00", "Z"),
+        "expired": not_after_value < datetime.now(timezone.utc),
+    }
 
 
 def classify_certificate_issuer(subject, issuer):
@@ -102,66 +159,43 @@ def inspect_tls_peer(hostname, port=443, timeout=5):
     This is diagnostic evidence only. The connector's real request still uses
     strict verification through :func:`connector_tls_context`.
     """
+    evidence = {"host": hostname, "trust": "failed"}
+    try:
+        resolved_address = socket.gethostbyname(hostname)
+        evidence["resolved_address"] = resolved_address
+    except (OSError, socket.gaierror):
+        evidence["inspection_status"] = "dns_failure"
+        return evidence
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
-    resolved_address = socket.gethostbyname(hostname)
     presented_chain_length = None
-    with socket.create_connection((hostname, int(port)), timeout=timeout) as raw:
-        with context.wrap_socket(raw, server_hostname=hostname) as wrapped:
-            der = wrapped.getpeercert(binary_form=True)
-            get_chain = getattr(wrapped._sslobj, "get_unverified_chain", None)
-            if get_chain:
-                try:
-                    presented_chain_length = len(get_chain())
-                except Exception:
-                    # Chain length is optional diagnostic evidence. Runtime
-                    # SSL implementations expose this through a private API,
-                    # so incompatibility must not discard leaf metadata.
-                    pass
-    pem = ssl.DER_cert_to_PEM_cert(der)
-    temporary = None
     try:
-        with tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False) as handle:
-            handle.write(pem)
-            temporary = Path(handle.name)
-        decoded = ssl._ssl._test_decode_cert(str(temporary))
-    finally:
-        if temporary:
-            temporary.unlink(missing_ok=True)
-    subject = _name(decoded.get("subject"))
-    issuer = _name(decoded.get("issuer"))
-    subject_attributes = _name_attributes(decoded.get("subject"))
-    issuer_attributes = _name_attributes(decoded.get("issuer"))
-    sans = sorted(
-        value for kind, value in decoded.get("subjectAltName", ())
-        if kind == "DNS")[:100]
+        with socket.create_connection(
+                (hostname, int(port)), timeout=timeout) as raw:
+            with context.wrap_socket(raw, server_hostname=hostname) as wrapped:
+                der = wrapped.getpeercert(binary_form=True)
+                get_chain = getattr(
+                    wrapped._sslobj, "get_unverified_chain", None)
+                if get_chain:
+                    try:
+                        presented_chain_length = len(get_chain())
+                    except Exception:
+                        # Chain length is optional diagnostic evidence. Runtime
+                        # SSL implementations expose this through a private API,
+                        # so incompatibility must not discard leaf metadata.
+                        pass
+    except (OSError, socket.timeout, ssl.SSLError):
+        evidence["inspection_status"] = "connection_failed"
+        return evidence
+    evidence["presented_chain_length"] = presented_chain_length
+    if not der:
+        evidence["inspection_status"] = "certificate_unavailable"
+        return evidence
     try:
-        ssl.match_hostname(decoded, hostname)
-        hostname_match = True
-    except ssl.CertificateError:
-        hostname_match = False
-    not_before = decoded.get("notBefore", "")
-    not_after = decoded.get("notAfter", "")
-    expired = False
-    if not_after:
-        expired = datetime.fromtimestamp(
-            ssl.cert_time_to_seconds(not_after), timezone.utc) < datetime.now(
-                timezone.utc)
-    return {
-        "host": hostname,
-        "resolved_address": resolved_address,
-        "subject": subject,
-        "issuer": issuer,
-        "subject_attributes": subject_attributes,
-        "issuer_attributes": issuer_attributes,
-        "public_issuer": classify_certificate_issuer(
-            subject_attributes, issuer_attributes),
-        "subject_alt_names": sans,
-        "hostname_match": hostname_match,
-        "not_before": not_before,
-        "not_after": not_after,
-        "expired": expired,
-        "presented_chain_length": presented_chain_length,
-        "trust": "failed",
-    }
+        evidence.update(_decode_peer_certificate(der, hostname))
+    except (TypeError, ValueError, x509.UnsupportedAlgorithm):
+        evidence["inspection_status"] = "decode_failed"
+        return evidence
+    evidence["inspection_status"] = "complete"
+    return evidence
