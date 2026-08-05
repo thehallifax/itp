@@ -57,17 +57,19 @@ def _sql_literal(value):
     return "'" + str(value or "").replace("'", "''") + "'"
 
 
-def _wan_sql_target(interface, device_id):
+def _wan_sql_target(interface, device_id, collector=None):
     filters = [
-        "collector = 'paloalto'",
         "wan_classified = true",
         f"interface_name = {_sql_literal(interface)}",
         "(${site:sqlstring} = 'all' OR site_id = ${site:sqlstring})",
         "time >= $__timeFrom",
         "time <= $__timeTo",
     ]
+    if collector:
+        filters.insert(0, f"collector = {_sql_literal(collector)}")
     if device_id:
-        filters.insert(3, f"device_id = {_sql_literal(device_id)}")
+        filters.insert(2 if collector else 1,
+                       f"device_id = {_sql_literal(device_id)}")
     sql = (
         'SELECT time, rx_bps AS "Download", tx_bps AS "Upload" '
         "FROM interface WHERE " + " AND ".join(filters) + " ORDER BY time")
@@ -504,14 +506,16 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         (value.get("interface_name") or value["interface"],
          value.get("display_name") or value["label"],
          value.get("role") or "Unspecified",
-         value.get("device_id") or "")
+         value.get("device_id") or "",
+         value.get("collector") or "")
         for value in summary["wan"]["uplinks"]
         if value.get("interface_name") or value.get("interface")
     }, key=lambda value: (
         value[2].casefold(), value[1].casefold(), value[0].casefold(),
-        value[3].casefold()))
+        value[3].casefold(), value[4].casefold()))
     wan_panels = []
-    for offset, (interface_name, display_name, role, device_id) in enumerate(
+    for offset, (interface_name, display_name, role, device_id,
+                 source_collector) in enumerate(
             interfaces, 40):
         panel = copy.deepcopy(prototype)
         panel.update({"id": offset,
@@ -522,7 +526,8 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
                    == interface_name
                    and (not device_id or value.get("device_id") == device_id)]
         panel["datasource"] = MIXED_DATASOURCE
-        panel["targets"] = [_wan_sql_target(interface_name, device_id)]
+        panel["targets"] = [_wan_sql_target(
+            interface_name, device_id, source_collector)]
         if samples:
             fallback = [{"time": value.get("time"),
                          "Download": value.get("rx_bps"),

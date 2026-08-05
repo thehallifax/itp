@@ -155,10 +155,17 @@ class InfrastructureStateEngine:
             site_id = site.get("site_id") if isinstance(site, dict) else asset.get("site_id")
             site_name = site.get("display_name") if isinstance(site, dict) else site
             for value in extensions.get("wan_interfaces") or []:
+                asset_sources = sorted(set(asset.get("sources") or []))
+                source_collector = (value.get("collector")
+                                    or value.get("source_collector")
+                                    or (asset_sources[0]
+                                        if len(asset_sources) == 1 else None))
                 wan_signals.append({
                     **value,
                     "site_id": site_id,
                     "site": site_name,
+                    **({"collector": source_collector}
+                       if source_collector else {}),
                     # Prefer the source telemetry identity carried by the WAN
                     # observation. A fused canonical asset ID is not an Influx
                     # `device_id` tag and must not be used as a query key.

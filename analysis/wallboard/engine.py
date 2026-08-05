@@ -269,12 +269,15 @@ def _wan_rows(signals, scopes, service_scopes):
                 display_name = value.get("name")
             display_name = display_name or interface_name
             role = str(value.get("role") or "Unspecified").title()
+            source_collector = (value.get("collector")
+                                or value.get("source_collector") or "")
             rows.append({"scope": scope["scope"],
                 "interface": interface_name, "label": display_name,
                 "interface_name": interface_name,
                 "display_name": display_name,
                 "uplink": interface_name,
                 "device_id": value.get("device_id") or "",
+                "collector": source_collector,
                 "role": role,
                 "state": "Up" if value.get("available") is True else
                          "Down" if value.get("available") is False else "Unknown",
@@ -289,6 +292,7 @@ def _wan_rows(signals, scopes, service_scopes):
                         "display_name": display_name,
                         "role": role,
                         "device_id": value.get("device_id") or "",
+                        "collector": source_collector,
                         "uplink": interface_name,
                         "rx_bps": sample.get("rx_bps"), "tx_bps": sample.get("tx_bps")})
     return rows, sorted(samples, key=lambda value: (

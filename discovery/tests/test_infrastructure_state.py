@@ -136,6 +136,7 @@ def test_wan_signal_uses_source_telemetry_device_identity(tmp_path):
     assert signal["display_name"] == "WAN 2"
     assert signal["device_id"] == "paloalto:0123456789"
     assert signal["device_id"] != state["assets"][0]["canonical_id"]
+    assert signal["collector"] == "paloalto"
 
 
 def test_same_serial_merges_with_provenance_and_stable_id():

@@ -519,6 +519,7 @@ def test_wallboard_wan_uses_canonical_rates_with_honest_gaps_and_fallback(
         "name": "WAN 1", "interface_name": "ethernet1/5",
         "display_name": "WAN 1",
         "role": "primary", "available": True, "site_id": "site:hq",
+        "collector": "paloalto",
         "device_id": "paloalto:serial-one",
         "samples": [{"time": "2026-07-23T00:58:00Z",
                      "rx_bps": 2000, "tx_bps": None}],
@@ -532,6 +533,7 @@ def test_wallboard_wan_uses_canonical_rates_with_honest_gaps_and_fallback(
     assert 'tx_bps AS "Upload"' in sql
     assert "interface_name = 'ethernet1/5'" in sql
     assert "device_id = 'paloalto:serial-one'" in sql
+    assert "collector = 'paloalto'" in sql
     assert "time >= $__timeFrom" in sql and "time <= $__timeTo" in sql
     assert "LAG(" not in sql and "bytes_total" not in sql
     assert "COALESCE" not in sql
@@ -549,6 +551,7 @@ def test_wallboard_wan_without_summary_samples_still_queries_canonical_data(
         "name": "WAN 2", "interface_name": "ethernet1/6",
         "display_name": "WAN 2",
         "role": "secondary", "available": True, "site_id": "site:hq",
+        "collector": "paloalto",
         "device_id": "paloalto:serial-one", "samples": [],
     }]}).run(NOW)
     dashboard = json.loads(
@@ -562,11 +565,116 @@ def test_wallboard_wan_without_summary_samples_still_queries_canonical_data(
     assert "interface_name = 'ethernet1/6'" in sql
     assert "interface_name = 'WAN 2'" not in sql
     assert "device_id = 'paloalto:serial-one'" in sql
+    assert "collector = 'paloalto'" in sql
     assert "site_id = ${site:sqlstring}" in sql
     assert 'rx_bps AS "Download"' in sql and 'tx_bps AS "Upload"' in sql
     assert "LAG(" not in sql and "bytes_total" not in sql
     assert panel["fieldConfig"]["defaults"]["noValue"] == (
         "Awaiting throughput telemetry")
+
+
+@pytest.mark.parametrize(("collector", "device_id", "interface_name"), [
+    ("fortigate", "fortigate:serial-one", "x2"),
+    ("paloalto", "paloalto:serial-two", "ethernet1/1"),
+])
+def test_wallboard_wan_sql_uses_authoritative_signal_collector(
+        tmp_path, collector, device_id, interface_name):
+    fixture(tmp_path, signals={"wan": [{
+        "interface_name": interface_name,
+        "display_name": "Primary Internet", "role": "primary",
+        "available": True, "classification_authoritative": True,
+        "site_id": "site:hq", "collector": collector,
+        "device_id": device_id, "samples": [],
+    }]}).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    panel = next(value for value in dashboard["panels"]
+                 if value["title"] == "WAN · Primary · Primary Internet")
+    sql = panel["targets"][0]["rawSql"]
+    assert f"collector = '{collector}'" in sql
+    assert f"device_id = '{device_id}'" in sql
+    assert f"interface_name = '{interface_name}'" in sql
+    mismatched = "paloalto" if collector == "fortigate" else "fortigate"
+    assert f"collector = '{mismatched}'" not in sql
+    assert 'rx_bps AS "Download"' in sql
+    assert 'tx_bps AS "Upload"' in sql
+    assert "LAG(" not in sql
+    assert "FROM interface" in sql
+    assert "network_interface" not in sql
+
+
+def test_mixed_wan_panels_keep_each_source_collector_deterministically(tmp_path):
+    signals = [
+        {"interface_name": "x2", "display_name": "Forti Primary",
+         "role": "primary", "available": True,
+         "classification_authoritative": True, "site_id": "site:hq",
+         "collector": "fortigate", "device_id": "fortigate:serial-one"},
+        {"interface_name": "ethernet1/1", "display_name": "PA Backup",
+         "role": "secondary", "available": True,
+         "classification_authoritative": True, "site_id": "site:hq",
+         "collector": "paloalto", "device_id": "paloalto:serial-two"},
+    ]
+    fixture(tmp_path, signals={"wan": list(reversed(signals))}).run(NOW)
+    first = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    fixture(tmp_path, signals={"wan": signals}).run(NOW)
+    second = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    first_panels = {value["title"]: value["targets"][0]["rawSql"]
+                    for value in first["panels"]
+                    if value["title"].startswith("WAN ·")}
+    second_panels = {value["title"]: value["targets"][0]["rawSql"]
+                     for value in second["panels"]
+                     if value["title"].startswith("WAN ·")}
+    assert first_panels == second_panels
+    assert "collector = 'fortigate'" in first_panels[
+        "WAN · Primary · Forti Primary"]
+    assert "collector = 'paloalto'" in first_panels[
+        "WAN · Secondary · PA Backup"]
+
+
+def test_sanitized_fortigate_site_fixture_generates_fortigate_wan_queries(
+        tmp_path):
+    fixture(tmp_path, signals={"wan": [
+        {"interface_name": "x2", "display_name": "Primary",
+         "role": "primary", "available": True,
+         "classification_authoritative": True, "site_id": "site:school",
+         "collector": "fortigate", "device_id": "fortigate:example-serial"},
+        {"interface_name": "port9", "display_name": "Backup",
+         "role": "secondary", "available": True,
+         "classification_authoritative": True, "site_id": "site:school",
+         "collector": "fortigate", "device_id": "fortigate:example-serial"},
+    ]}).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    queries = {
+        value["title"]: value["targets"][0]["rawSql"]
+        for value in dashboard["panels"] if value["title"].startswith("WAN ·")
+    }
+    assert set(queries) == {
+        "WAN · Primary · Primary", "WAN · Secondary · Backup"}
+    assert all("collector = 'fortigate'" in sql for sql in queries.values())
+    assert all("collector = 'paloalto'" not in sql for sql in queries.values())
+    assert "interface_name = 'x2'" in queries["WAN · Primary · Primary"]
+    assert "interface_name = 'port9'" in queries["WAN · Secondary · Backup"]
+
+
+def test_vendor_neutral_wan_without_collector_uses_safe_identity_filters(
+        tmp_path):
+    fixture(tmp_path, signals={"wan": [{
+        "interface_name": "uplink0", "display_name": "Primary",
+        "role": "primary", "available": True,
+        "classification_authoritative": True, "site_id": "site:hq",
+        "device_id": "firewall:stable-one", "samples": [],
+    }]}).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    sql = next(value for value in dashboard["panels"]
+               if value["title"] == "WAN · Primary · Primary")["targets"][0][
+                   "rawSql"]
+    assert "collector =" not in sql
+    assert "device_id = 'firewall:stable-one'" in sql
+    assert "interface_name = 'uplink0'" in sql
 
 
 def test_clean_bootstrap_and_deterministic_generation(tmp_path):
