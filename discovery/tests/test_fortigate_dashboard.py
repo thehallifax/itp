@@ -66,14 +66,14 @@ def test_fortigate_queries_match_confirmed_live_schema() -> None:
     assert "Top Interfaces by Traffic" in panels
 
     reachable = panels["Device Reachable"]["targets"][0]["rawSql"]
-    assert "fortigate_system" in reachable
-    assert "fortigate_performance" in reachable
-    assert "fortigate_interfaces" in reachable
-    assert "INTERVAL '2 minutes'" in reachable
+    assert "FROM availability" in reachable
+    assert "available" in reachable
+    assert "COUNT(*) = 0 THEN -1" in reachable
 
-    assert panels["HA Status"]["targets"][0]["rawSql"] == (
-        "SELECT 'Not collected' AS ha_status"
-    )
+    ha = panels["HA Status"]["targets"][0]["rawSql"]
+    assert "FROM firewall" in ha
+    assert "ha_status" in ha and "ha_mode" in ha
+    assert "Not applicable" in ha
 
     system_information = panels["System Information"]["targets"][0]["rawSql"]
     assert "description" not in system_information
@@ -95,5 +95,45 @@ def test_fortigate_queries_match_confirmed_live_schema() -> None:
     assert "LIKE 'wan%'" not in interface_queries
     assert "LIKE 'lan%'" not in interface_queries
 
-    assert 'AS "CPU"' in panels["CPU %"]["targets"][0]["rawSql"]
-    assert 'AS "Memory"' in panels["Memory %"]["targets"][0]["rawSql"]
+    cpu = panels["CPU %"]["targets"][0]["rawSql"]
+    memory = panels["Memory %"]["targets"][0]["rawSql"]
+    assert "FROM performance" in cpu and "cpu_percent" in cpu
+    assert "FROM performance" in memory and "memory_used_percent" in memory
+    assert 'AS "CPU"' in cpu
+    assert 'AS "Memory"' in memory
+    assert "FROM performance" in panels["CPU History"]["targets"][0]["rawSql"]
+    assert "FROM performance" in panels["Memory History"]["targets"][0]["rawSql"]
+
+    interface_status = panels["Interface Status"]["targets"][0]["rawSql"]
+    assert "FROM network_interface" in interface_status
+    for value in ("interface_name", "interface_description", "wan_role",
+                  "operational_status", "speed_bps", "rx_bytes", "tx_bytes",
+                  "receive_bps", "transmit_bps"):
+        assert value in interface_status
+    for title in ("Throughput by Interface", "Top Interfaces by Traffic"):
+        assert panels[title]["transformations"] == [{
+            "id": "partitionByValues", "options": {"fields": ["interface_name"]}}]
+
+
+def test_fortigate_variables_use_valid_canonical_identity_sources() -> None:
+    dashboard = _load(FORTIGATE_DASHBOARD)
+    variables = {value["name"]: value for value in dashboard["templating"]["list"]}
+    for name in ("customer", "site", "device"):
+        query = variables[name]["query"]
+        assert "FROM infrastructure_device" in query
+        assert "collector = 'fortigate'" in query
+        assert " = ' THEN" not in query
+    assert "customer_id AS __value" in variables["customer"]["query"]
+    assert "site_id AS __value" in variables["site"]["query"]
+    assert "hostname AS __value" in variables["device"]["query"]
+
+
+def test_fortigate_stat_empty_states_preserve_valid_zero() -> None:
+    panels = {panel["title"]: panel for panel in
+              _load(FORTIGATE_DASHBOARD)["panels"]}
+    assert panels["Device Reachable"]["fieldConfig"]["defaults"][
+        "mappings"][0]["options"]["-1"]["text"] == "No telemetry collected"
+    for title in ("CPU %", "Memory %"):
+        assert panels[title]["fieldConfig"]["defaults"]["min"] == 0
+        assert panels[title]["fieldConfig"]["defaults"][
+            "noValue"] == "No telemetry collected"

@@ -65,4 +65,24 @@ selection:
 ```
 
 Recommendations never silently classify an interface. The canonical interface
-name and friendly display label remain separate.
+name and friendly display label remain separate. Setup requires exactly one
+primary interface when mappings are supplied, permits secondary/failover
+interfaces, previews the YAML before saving, and creates
+`collectors.yml.rollback` when a mapping changes. Use `--dry-run` to inspect the
+selection without writing it.
+
+```yaml
+collectors:
+  fortigate:
+    wan_interfaces:
+      - name: wan1
+        display_name: Primary Internet
+        role: primary
+      - name: wan2
+        display_name: Backup Internet
+        role: secondary
+```
+
+Configured observations are projected into the canonical WAN signal contract;
+missing configured interfaces remain visible as warnings instead of being
+silently removed. Unclassified interfaces never become WANs automatically.

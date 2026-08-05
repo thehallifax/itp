@@ -69,6 +69,14 @@ class FortiGateConfig:
     discovery_interval_seconds: int = 21600
     collection_interval_seconds: int = 60
     max_retries: int = 2
+    wan_interfaces: tuple["WanInterface", ...] = ()
+
+
+@dataclass(frozen=True)
+class WanInterface:
+    name: str
+    role: str
+    display_name: str
 
 
 @dataclass

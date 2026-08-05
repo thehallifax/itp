@@ -3,6 +3,7 @@ import json
 import ssl
 import subprocess
 import sys
+from pathlib import Path
 
 import httpx
 import pytest
@@ -11,7 +12,7 @@ from collectors.__main__ import _enabled_collectors
 from collectors.base import ExecutionModeMismatch, RuntimePlacementCollector
 from collectors.config import load_config
 from collectors.fortigate.client import FortiGateClient
-from collectors.fortigate.collector import FortiGateCollector
+from collectors.fortigate.collector import FortiGateCollector, _legacy_points
 from collectors.fortigate.models import (
     EndpointResult, FortiGateCertificateExpiredError,
     FortiGateCredentialError,
@@ -20,6 +21,9 @@ from collectors.fortigate.models import (
     FortiGateTLSError)
 from collectors.fortigate.normalizer import normalize, stable_id
 from collectors.writer import InfluxWriter
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def config(**overrides):
@@ -404,3 +408,109 @@ def test_stable_identity_normalization_and_snmp_compatibility():
         "device", "availability", "performance", "interface", "firewall"}
     fallback = stable_id({"hostname": "FG-A"}, "10.0.0.1")
     assert fallback == stable_id({"hostname": "fg-a"}, "10.0.0.1")
+
+
+def test_fortigate_wan_mapping_projects_canonical_primitive_signals():
+    settings = type("Settings", (), {
+        "base_url": "https://192.0.2.1", "customer": "example",
+        "site": "site:example", "wan_interfaces": (
+            type("WAN", (), {"name": "port9", "role": "primary",
+                             "display_name": "Primary"})(),
+            type("WAN", (), {"name": "x2", "role": "secondary",
+                             "display_name": "Backup"})(),
+        )})()
+    interfaces = json.loads((FIXTURES /
+        "fortigate_interfaces_sanitized.json").read_text())
+    endpoints = {
+        "system": {"results": {"hostname": "example-fw",
+            "serial": "FG-EXAMPLE", "model": "FG6H1E", "version": "7.4"}},
+        "resources": {"results": {"cpu": 0, "memory": 0}},
+        "interfaces": interfaces,
+        "ha": {"results": {}},
+    }
+    record, points = normalize(
+        endpoints, settings, "2026-08-05T00:00:00Z")
+    wan = record["extensions"]["wan_interfaces"]
+    assert [(value["interface_name"], value["display_name"], value["role"],
+             value["available"]) for value in wan] == [
+        ("port9", "Primary", "primary", True),
+        ("x2", "Backup", "secondary", True),
+    ]
+    assert record["extensions"]["wan_validation"] == {
+        "configured": True, "missing": []}
+    interface_points = [point for point in points
+                        if point["measurement"] == "network_interface"]
+    by_name = {point["tags"]["interface_name"]: point
+               for point in interface_points}
+    assert by_name["port9"]["fields"]["wan_role"] == "primary"
+    assert by_name["x1"]["fields"]["wan_classified"] is False
+    assert any(point["fields"].get("cpu_percent") == 0
+               for point in points if point["measurement"] == "performance")
+    assert any(point["fields"].get("memory_used_percent") == 0
+               for point in points if point["measurement"] == "performance")
+    assert all(not isinstance(value, (dict, list, set, tuple))
+               for point in points for value in point["fields"].values())
+
+
+def test_fortigate_emitted_measurement_contract_is_deterministic():
+    settings = type("Settings", (), {
+        "base_url": "https://192.0.2.1", "customer": "example",
+        "site": "site:example", "wan_interfaces": ()})()
+    endpoints = {
+        "system": {"results": {"hostname": "example-fw", "serial": "FG1",
+            "model": "FG6H1E", "version": "7.4", "uptime": 100}},
+        "resources": {"results": {"cpu": 5, "memory": 40,
+                                    "session_count": 12}},
+        "interfaces": {"results": [{"name": "port1", "alias": "Example",
+            "admin_status": True, "operational_status": True, "speed": 1000,
+            "in_octets": 10, "out_octets": 20, "in_errors": 0,
+            "out_errors": 0}]},
+        "ha": {"results": {}},
+    }
+    record, canonical = normalize(
+        endpoints, settings, "2026-08-05T00:00:00Z")
+    points = canonical + _legacy_points(record, canonical)
+    by_measurement = {}
+    for point in points:
+        by_measurement.setdefault(point["measurement"], []).append(point)
+        assert "timestamp" not in point
+        assert all(isinstance(value, (bool, int, float, str))
+                   for value in point["fields"].values())
+    assert set(by_measurement) == {
+        "availability", "device", "firewall", "fortigate_interfaces",
+        "fortigate_performance", "fortigate_system", "infrastructure_device",
+        "interface", "network_interface", "performance", "security_appliance",
+    }
+    assert set(by_measurement["availability"][0]["fields"]) == {"available"}
+    assert {"cpu_percent", "memory_used_percent", "uptime_seconds"} == set(
+        by_measurement["performance"][0]["fields"])
+    assert {"ha_mode", "ha_status", "session_count"} <= set(
+        by_measurement["firewall"][0]["fields"])
+    interface = by_measurement["network_interface"][0]
+    assert {"interface_id", "interface_name", "interface_description"} <= set(
+        interface["tags"])
+    assert {"admin_status", "operational_status", "speed_bps", "rx_bytes",
+            "tx_bytes", "rx_errors", "tx_errors"} <= set(interface["fields"])
+    for point in points:
+        assert InfluxWriter.line_protocol(point)
+
+
+@pytest.mark.parametrize("wan_interfaces,match", [
+    ([{"name": "port9", "role": "secondary"}], "exactly one primary"),
+    ([{"name": "port9", "role": "primary"},
+      {"name": "port9", "role": "secondary"}], "duplicate"),
+])
+def test_fortigate_wan_configuration_validation(wan_interfaces, match):
+    with pytest.raises(ValueError, match=match):
+        FortiGateCollector(config(wan_interfaces=wan_interfaces),
+            client=object(), writer=object())
+
+
+def test_fortigate_allows_multiple_secondary_wan_interfaces():
+    collector = FortiGateCollector(config(wan_interfaces=[
+        {"name": "port9", "role": "primary", "display_name": "Primary"},
+        {"name": "x2", "role": "secondary", "display_name": "Backup"},
+        {"name": "port8", "role": "backup", "display_name": "Legacy"},
+    ]), client=object(), writer=object())
+    assert [value.role for value in collector.settings.wan_interfaces] == [
+        "primary", "secondary", "backup"]

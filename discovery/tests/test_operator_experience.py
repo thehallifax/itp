@@ -8,8 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
+import yaml
+
+from analysis.doctor import DoctorEngine
 from analysis.onboarding import inspect_tls, validate_wan_selection, wan_candidate
 from analysis.doctor.models import DiagnosticCheck, DoctorReport
+from analysis.operator import OperatorStatusEngine
 from analysis.operator_ux import SafeRedactor
 from analysis.runtime_deployment import (
     RuntimeDeployment,
@@ -19,11 +23,15 @@ from analysis.runtime_deployment import (
 )
 from analysis.runtime_deployment import RuntimeDeploymentError
 from analysis.support import SupportBundleBuilder
+from collectors.connector_registry import ConnectorMetadataRegistry
 from scripts.itp import (
     deployment_edit_should_prompt,
     deployment_verification_failure,
     load_deployment_environment,
 )
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass
@@ -178,6 +186,95 @@ def test_fortigate_sdwan_is_recommended_and_missing_manual_mapping_warns():
         {"name": "wan2", "role": "primary", "display_name": "Backup"}],
         [{"interface_name": "wan1"}])
     assert result["missing"] == ["wan2"]
+
+
+def test_fortigate_wan_configuration_dry_run_rollback_and_rerun(tmp_path):
+    runtime = manager(tmp_path)
+    deployment = runtime.create(
+        name="Example", non_interactive=True, collectors=["fortigate"])
+    original = deployment.collectors.read_text()
+    mappings = [
+        {"name": "port9", "role": "primary", "display_name": "Primary"},
+        {"name": "x2", "role": "secondary", "display_name": "Backup"},
+    ]
+    discovered = [{"interface_name": "port9"}]
+    preview = runtime.configure_wan(
+        deployment, "fortigate", mappings,
+        discovered=discovered, dry_run=True)
+    assert preview["dry_run"] is True
+    assert preview["missing"] == ["x2"]
+    assert deployment.collectors.read_text() == original
+    assert not deployment.collectors.with_name(
+        deployment.collectors.name + ".rollback").exists()
+
+    applied = runtime.configure_wan(
+        deployment, "fortigate", mappings, discovered=discovered)
+    assert applied["changed"] is True
+    rollback = deployment.collectors.with_name(
+        deployment.collectors.name + ".rollback")
+    assert rollback.read_text() == original
+    changed = deployment.collectors.read_text()
+    repeated = runtime.configure_wan(
+        deployment, "fortigate", mappings, discovered=discovered)
+    assert repeated["changed"] is False
+    assert deployment.collectors.read_text() == changed
+
+
+def test_fortigate_configuration_preserves_existing_paloalto_wan_mappings(
+        tmp_path):
+    runtime = manager(tmp_path)
+    deployment = runtime.create(name="Example", non_interactive=True,
+        collectors=["paloalto", "fortigate"])
+    config = yaml.safe_load(deployment.collectors.read_text())
+    paloalto = [
+        {"name": "ethernet1/1", "role": "primary",
+         "display_name": "Primary"},
+        {"name": "ethernet1/2", "role": "secondary",
+         "display_name": "Backup"},
+    ]
+    config["collectors"]["paloalto"]["wan_interfaces"] = paloalto
+    deployment.collectors.write_text(yaml.safe_dump(config, sort_keys=False))
+    runtime.configure_wan(deployment, "fortigate", [{
+        "name": "wan1", "role": "primary", "display_name": "FortiGate WAN",
+    }], discovered=[{"interface_name": "wan1"}])
+    result = yaml.safe_load(deployment.collectors.read_text())
+    assert result["collectors"]["paloalto"]["wan_interfaces"] == paloalto
+
+
+def test_status_doctor_readiness_and_recovery_are_read_only_for_wan_mappings(
+        tmp_path):
+    runtime = manager(tmp_path, runner=lambda *_args, **_kwargs:
+                      SimpleNamespace(returncode=0, stdout="", stderr=""))
+    deployment = runtime.create(name="Example", non_interactive=True,
+        collectors=["paloalto"])
+    config = yaml.safe_load(deployment.collectors.read_text())
+    config["collectors"]["paloalto"]["wan_interfaces"] = [{
+        "name": "ethernet1/1", "role": "primary",
+        "display_name": "Primary",
+    }]
+    deployment.collectors.write_text(yaml.safe_dump(config, sort_keys=False))
+    before = deployment.collectors.read_bytes()
+    registry = ConnectorMetadataRegistry.load(ROOT)
+
+    # Exercise the same read-only engines and projections used by the three CLI
+    # commands rather than merely checking their parser contract.
+    runtime.deployment_inventory_entry(deployment.deployment_id)
+    readiness = runtime.collector_readiness(deployment)
+    OperatorStatusEngine(
+        ROOT, config, registry=registry, runtime_dir=deployment.path,
+        readiness=readiness).run()
+    DoctorEngine(
+        ROOT, offline=True, runtime_deployment=deployment,
+        env_path=deployment.env_file, config_path=deployment.collectors,
+        registry=registry).run()
+    runtime.recovery_plan(deployment)
+
+    assert deployment.collectors.read_bytes() == before
+    assert yaml.safe_load(deployment.collectors.read_text())[
+        "collectors"]["paloalto"]["wan_interfaces"] == [{
+            "name": "ethernet1/1", "role": "primary",
+            "display_name": "Primary",
+        }]
 
 
 def test_tls_diagnostics_distinguish_dns_tcp_and_private_trust():

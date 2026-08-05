@@ -1,5 +1,6 @@
 import json
 import os
+import copy
 import subprocess
 import sys
 import urllib.error
@@ -11,6 +12,7 @@ import pytest
 import yaml
 import certifi
 
+from analysis.dashboards import DashboardRegistry
 from analysis.runtime_deployment import (
     RuntimeDeployment,
     RuntimeDeploymentError,
@@ -51,6 +53,34 @@ def test_collector_writes_managed_dashboards_to_grafana_provisioned_tree():
         "${ITP_PROFILE:-legacy}/generated/dashboard/provisioning/"
         "dashboards.yml"
     ) in compose
+
+
+def test_dashboard_generation_does_not_mutate_paloalto_wan_configuration(
+        tmp_path):
+    config = {
+        "deployment_id": "example",
+        "customer_id": "example",
+        "site_id": "site:example",
+        "collectors": {"paloalto": {
+            "enabled": True,
+            "wan_interfaces": [
+                {"name": "ethernet1/1", "role": "primary",
+                 "display_name": "Primary"},
+                {"name": "ethernet1/2", "role": "secondary",
+                 "display_name": "Backup"},
+            ],
+        }},
+    }
+    before = copy.deepcopy(config)
+    generated = tmp_path / "runtime/example/generated"
+    result = DashboardRegistry(
+        ROOT, config, generated / "dashboard/managed",
+        generated / "dashboard/provisioning/dashboards.yml",
+        registry_validation_mode="runtime").generate()
+    assert config == before
+    assert config["collectors"]["paloalto"]["wan_interfaces"] == before[
+        "collectors"]["paloalto"]["wan_interfaces"]
+    assert "paloalto" in result["enabled_collectors"]
 
 
 @dataclass

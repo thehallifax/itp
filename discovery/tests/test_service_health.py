@@ -269,6 +269,110 @@ def internet_manifest(collector, support="conditional", collection="unavailable"
     }]}}
 
 
+def _paloalto_internet(tmp_path, signals):
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+        enabled_collectors=["paloalto"],
+        collector_capabilities={"paloalto": ["internet"]},
+        capability_manifests=internet_manifest(
+            "paloalto", collection="collected"),
+        signals={"wan": signals})
+    return service(engine.evaluate(NOW), "Internet")
+
+
+def test_paloalto_only_valid_primary_wan_is_healthy(tmp_path):
+    internet = _paloalto_internet(tmp_path, [{
+        "interface_name": "ethernet1/1", "display_name": "Primary",
+        "role": "primary", "available": True,
+        "classification_authoritative": True,
+        "observed_at": "2026-07-23T13:59:00Z",
+    }])
+    assert internet["status"] == "Healthy"
+    assert internet["affected_assets"] == []
+
+
+def test_paloalto_primary_up_remains_healthy(tmp_path):
+    internet = _paloalto_internet(tmp_path, [
+        {"interface_name": "ethernet1/1", "display_name": "Primary",
+         "role": "primary", "available": True,
+         "classification_authoritative": True,
+         "observed_at": "2026-07-23T13:59:00Z"},
+        {"interface_name": "ethernet1/2", "display_name": "Backup",
+         "role": "secondary", "available": True,
+         "classification_authoritative": True,
+         "observed_at": "2026-07-23T13:59:00Z"},
+    ])
+    assert internet["status"] == "Healthy"
+
+
+def test_paloalto_primary_down_secondary_up_is_warning(tmp_path):
+    internet = _paloalto_internet(tmp_path, [
+        {"interface_name": "ethernet1/1", "display_name": "Primary",
+         "role": "primary", "available": False,
+         "classification_authoritative": True,
+         "observed_at": "2026-07-23T13:59:00Z"},
+        {"interface_name": "ethernet1/2", "display_name": "Backup",
+         "role": "secondary", "available": True,
+         "classification_authoritative": True,
+         "observed_at": "2026-07-23T13:59:00Z"},
+    ])
+    assert internet["status"] == "Warning"
+    assert internet["affected_assets"] == ["Primary"]
+
+
+def test_all_paloalto_wans_down_is_critical(tmp_path):
+    internet = _paloalto_internet(tmp_path, [
+        {"interface_name": "ethernet1/1", "display_name": "Primary",
+         "role": "primary", "available": False,
+         "classification_authoritative": True,
+         "observed_at": "2026-07-23T13:59:00Z"},
+        {"interface_name": "ethernet1/2", "display_name": "Backup",
+         "role": "secondary", "available": False,
+         "classification_authoritative": True,
+         "observed_at": "2026-07-23T13:59:00Z"},
+    ])
+    assert internet["status"] == "Critical"
+    assert internet["affected_assets"] == ["Backup", "Primary"]
+
+
+def test_paloalto_wan_evaluation_requires_no_fortigate_specific_fields(tmp_path):
+    signal = {
+        "interface_name": "ethernet1/1", "display_name": "Primary",
+        "role": "primary", "available": True,
+        "classification_authoritative": True,
+        "observed_at": "2026-07-23T13:59:00Z",
+    }
+    assert not {"missing", "collector", "wan_classified"} & set(signal)
+    assert _paloalto_internet(tmp_path, [signal])["status"] == "Healthy"
+
+
+def test_mixed_paloalto_and_fortigate_wan_sources_are_deterministic(tmp_path):
+    manifests = {
+        **internet_manifest("paloalto", collection="collected"),
+        **internet_manifest("fortigate", collection="collected"),
+    }
+    signals = [
+        {"interface_name": "ethernet1/1", "display_name": "PA Primary",
+         "role": "primary", "available": True,
+         "classification_authoritative": True,
+         "observed_at": "2026-07-23T13:59:00Z"},
+        {"interface_name": "wan1", "display_name": "FG Primary",
+         "role": "primary", "available": True,
+         "classification_authoritative": True,
+         "observed_at": "2026-07-23T13:59:00Z"},
+    ]
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+        enabled_collectors=["paloalto", "fortigate"],
+        collector_capabilities={
+            "paloalto": ["internet"], "fortigate": ["internet"]},
+        capability_manifests=manifests, signals={"wan": signals})
+    first = service(engine.evaluate(NOW), "Internet")
+    second = service(engine.evaluate(NOW), "Internet")
+    assert first == second
+    assert first["status"] == "Healthy"
+    assert [value["interface"] for value in first["evidence"]] == [
+        "ethernet1/1", "wan1"]
+
+
 def test_fortigate_internet_configuration_guidance_is_vendor_aware(tmp_path):
     engine, _ = fixture(tmp_path, capabilities=["internet"],
         enabled_collectors=["fortigate"],
@@ -279,6 +383,25 @@ def test_fortigate_internet_configuration_guidance_is_vendor_aware(tmp_path):
     assert internet["summary"] == (
         "Configure one or more WAN interfaces in the FortiGate collector configuration.")
     assert "Palo Alto" not in json.dumps(internet)
+
+
+def test_fortigate_missing_configured_wan_is_warning(tmp_path):
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+        enabled_collectors=["fortigate"],
+        collector_capabilities={"fortigate": ["internet"]},
+        capability_manifests=internet_manifest(
+            "fortigate", collection="collected"),
+        signals={"wan": [{
+            "interface_name": "wan-example", "display_name": "Primary",
+            "role": "primary", "available": None, "missing": True,
+            "classification_authoritative": True,
+            "observed_at": "2026-07-23T13:59:00Z",
+        }]})
+    internet = service(engine.evaluate(NOW), "Internet")
+    assert internet["status"] == "Warning"
+    assert internet["summary"] == (
+        "A configured WAN interface was not discovered.")
+    assert internet["affected_assets"] == ["Primary"]
 
 
 def test_paloalto_internet_configuration_guidance_is_vendor_aware(tmp_path):

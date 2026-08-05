@@ -1009,6 +1009,8 @@ def main():
             collector_actions.add_parser(action))
         item.add_argument("collector")
         item.add_argument("--json", action="store_true")
+        if action == "setup":
+            item.add_argument("--dry-run", action="store_true")
     support = commands.add_parser("support", help="create sanitised support evidence")
     support_actions = support.add_subparsers(dest="support_action", required=True)
     support_bundle = add_local_deployment_selector(
@@ -1572,15 +1574,30 @@ def main():
                                 f"Display name [{candidate['suggested_display_name']}]: ").strip() or candidate["suggested_display_name"]
                             mappings.append({"name": candidate["interface_name"],
                                              "role": role, "display_name": label})
-                        result["wan"] = runtime_manager.configure_wan(
-                            deployment, item.id, mappings, discovered=candidates)
+                        preview = runtime_manager.configure_wan(
+                            deployment, item.id, mappings,
+                            discovered=candidates, dry_run=True)
+                        result["wan"] = preview
+                        print(yaml.safe_dump({"wan_interfaces":
+                            preview["mappings"]}, sort_keys=False).rstrip())
+                        confirmed = args.dry_run or input(
+                            "Save this WAN mapping? [y/N]: ").strip().casefold() \
+                            in {"y", "yes"}
+                        if confirmed and not args.dry_run:
+                            result["wan"] = runtime_manager.configure_wan(
+                                deployment, item.id, mappings,
+                                discovered=candidates)
+                        elif not args.dry_run:
+                            result["wan"]["cancelled"] = True
                         if result["wan"]["missing"]:
                             print("WARNING: configured WAN interfaces were not "
                                   "currently discovered: " + ", ".join(
                                       result["wan"]["missing"]))
-                if result["success"] and not args.json and input(
+                if (result["success"] and not args.json
+                        and not result.get("wan", {}).get("cancelled")
+                        and not args.dry_run and input(
                         "Run the first collection now? [Y/n]: ").strip().casefold() \
-                        not in {"n", "no"}:
+                        not in {"n", "no"}):
                     result["first_collection"] = runtime_collection(
                         runtime_manager, deployment,
                         load_config(deployment.collectors), item.id)

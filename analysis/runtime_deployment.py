@@ -1546,7 +1546,8 @@ class RuntimeDeploymentManager:
                 "state": inventory["status"], "detected": inventory,
                 "actions": actions}
 
-    def configure_wan(self, deployment, connector, mappings, *, discovered=()):
+    def configure_wan(self, deployment, connector, mappings, *, discovered=(),
+                      dry_run=False):
         if connector not in {"paloalto", "fortigate"}:
             raise RuntimeDeploymentError(
                 "WAN interface mapping is supported for Palo Alto and FortiGate")
@@ -1556,6 +1557,12 @@ class RuntimeDeploymentManager:
             raise RuntimeDeploymentError(str(exc)) from exc
         config = yaml.safe_load(deployment.collectors.read_text()) or {}
         settings = config.setdefault("collectors", {}).setdefault(connector, {})
+        previous = list(settings.get("wan_interfaces") or [])
+        validated["previous"] = previous
+        validated["changed"] = previous != validated["mappings"]
+        validated["dry_run"] = bool(dry_run)
+        if dry_run or not validated["changed"]:
+            return validated
         settings["wan_interfaces"] = validated["mappings"]
         rollback = deployment.collectors.with_name(
             deployment.collectors.name + ".rollback")

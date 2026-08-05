@@ -38,7 +38,7 @@ def _percent(value):
     except (TypeError, ValueError): return None
 
 
-def normalize(endpoints, config):
+def normalize(endpoints, config, observed_at=None):
     system = first_mapping(endpoints.get("system"))
     resources = first_mapping(endpoints.get("resources"))
     host = config.base_url.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
@@ -56,6 +56,7 @@ def normalize(endpoints, config):
         "hostname": hostname, "ip": management_ip, "serial": serial, "model": model,
         "vendor": "fortinet", "platform": "fortigate", "device_role": "firewall",
         "firmware": firmware, "operational_status": "online",
+        "source_record_id": device_id, "source_last_seen_at": observed_at,
         "_authoritative_fields": ["customer", "site", "hostname", "management_ip", "serial_number",
                                   "model", "vendor", "platform", "device_role", "firmware_version"]}
     common = {"collector": "fortigate", "customer": config.customer, "site": config.site,
@@ -90,6 +91,9 @@ def normalize(endpoints, config):
     if isinstance(interfaces, dict):
         interfaces = [({"name": name, **item} if isinstance(item, dict) else
                        {"name": name}) for name, item in interfaces.items()]
+    configured_wan = {value.name: value for value in getattr(
+        config, "wan_interfaces", ())}
+    observed_interfaces = []
     for index, item in enumerate(interfaces if isinstance(interfaces, list) else []):
         if not isinstance(item, dict): continue
         name = str(pick(item, "name", "interface_name", "interface", default=f"interface-{index}"))
@@ -103,7 +107,65 @@ def normalize(endpoints, config):
             "tx_errors": ("tx_errors", "out_errors"), "rx_discards": ("rx_discards", "in_discards"), "tx_discards": ("tx_discards", "out_discards")}
         ifields = {target: pick(item, *sources) for target, sources in aliases.items()}
         ifields = {key: value for key, value in ifields.items() if value not in (None, "")}
+        observed_interfaces.append((name, item, itags, ifields))
+        selected = configured_wan.get(name)
+        ifields.update({
+            "wan_classified": selected is not None,
+            "wan_role": selected.role if selected else "not_configured",
+            "wan_display_name": selected.display_name if selected else
+                str(itags.get("interface_description") or name),
+        })
         if ifields:
             points.append({"measurement": "network_interface", "tags": itags, "fields": ifields})
             points.append({"measurement": "interface", "tags": itags, "fields": dict(ifields)})
+    discovered = {name for name, _item, _tags, _fields in observed_interfaces}
+    wan_interfaces = []
+    for name, item, _tags, values in observed_interfaces:
+        selected = configured_wan.get(name)
+        if not selected:
+            continue
+        state = values.get("operational_status")
+        state_text = str(state).strip().casefold()
+        available = (state if isinstance(state, bool) else
+                     True if state_text in {"1", "true", "up", "active"} else
+                     False if state_text in {"0", "2", "false", "down", "inactive"} else None)
+        observation = {
+            "name": name, "interface_name": name,
+            "display_name": selected.display_name, "role": selected.role,
+            "available": available, "classification_authoritative": True,
+            "collector": "fortigate", "device": hostname,
+            "device_id": device_id, "observed_at": observed_at,
+            "speed_bps": values.get("speed_bps"),
+            "rx_bytes_total": values.get("rx_bytes"),
+            "tx_bytes_total": values.get("tx_bytes"),
+            "rx_bps": values.get("rx_bps"), "tx_bps": values.get("tx_bps"),
+        }
+        direct_sample = {"time": observed_at,
+                         "rx_bps": observation.get("rx_bps"),
+                         "tx_bps": observation.get("tx_bps")}
+        direct_sample = {key: value for key, value in direct_sample.items()
+                         if value is not None}
+        if len(direct_sample) > 1:
+            observation["samples"] = [direct_sample]
+        wan_interfaces.append({key: value for key, value in observation.items()
+                               if value is not None})
+    for name in sorted(set(configured_wan) - discovered):
+        selected = configured_wan[name]
+        wan_interfaces.append({
+            "name": name, "interface_name": name,
+            "display_name": selected.display_name, "role": selected.role,
+            "available": None, "classification_authoritative": True,
+            "collector": "fortigate", "device": hostname,
+            "device_id": device_id, "observed_at": observed_at,
+            "missing": True,
+        })
+    record["extensions"] = {
+        "interfaces": [{"interface_name": name,
+                        "alias": tags.get("interface_description", ""),
+                        **values} for name, _item, tags, values in observed_interfaces],
+        "wan_interfaces": wan_interfaces,
+        "wan_validation": {"configured": bool(configured_wan),
+                           "missing": sorted(set(configured_wan) - discovered)},
+        "ha": {"mode": security["ha_mode"], "status": security["ha_status"]},
+    }
     return record, points

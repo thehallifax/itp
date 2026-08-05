@@ -1,0 +1,8 @@
+{
+  "results": [
+    {"name": "port8", "alias": "Legacy circuit", "admin_status": true, "operational_status": false, "speed": 0, "in_octets": 0, "out_octets": 0},
+    {"name": "port9", "alias": "Primary circuit", "admin_status": true, "operational_status": true, "speed": 1000, "in_octets": 1000000, "out_octets": 500000},
+    {"name": "x1", "alias": "Campus LAN", "admin_status": true, "operational_status": true, "speed": 10000, "in_octets": 2000000, "out_octets": 1500000},
+    {"name": "x2", "alias": "Secondary circuit", "admin_status": true, "operational_status": true, "speed": 10000, "in_octets": 750000, "out_octets": 250000}
+  ]
+}

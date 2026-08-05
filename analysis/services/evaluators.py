@@ -560,6 +560,14 @@ class ServiceEvaluator:
             "observed_at": value.get("observed_at")}
             for value in sorted(signals, key=lambda item: (
                 str(item.get("role", "")), str(item.get("interface_name", "")))))
+        missing = [value for value in signals if value.get("missing") is True]
+        if missing:
+            return ServiceHealth("Internet", "Warning",
+                "A configured WAN interface was not discovered.",
+                tuple(sorted(str(value.get("display_name") or value.get("name")
+                                 or value.get("interface_name"))
+                             for value in missing)),
+                severity=STATUS_SEVERITY["Warning"], evidence=evidence)
         if stale or unknown:
             return ServiceHealth("Internet", "Unknown",
                 "WAN interface evidence is stale or incomplete.",

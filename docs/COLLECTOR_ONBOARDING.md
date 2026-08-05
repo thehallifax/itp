@@ -135,4 +135,7 @@ Palo Alto and FortiGate setup lists discovered interfaces and recommends likely
 WANs using device metadata. Recommendations require explicit selection. The
 saved `name` remains canonical device identity; alias/description is suggested
 only as `display_name`. Manual mappings that are temporarily absent are
-preserved with a warning. Exactly one selected WAN must be primary.
+preserved with a warning. Exactly one selected WAN must be primary. The setup
+command displays the proposed mapping and requires confirmation before it
+writes; `--dry-run` performs the same discovery and validation without changing
+configuration. A changed mapping creates `collectors.yml.rollback`.
