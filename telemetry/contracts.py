@@ -132,6 +132,20 @@ FIELD_TYPES = {
 }
 
 
+# Stable identity dimensions are tags. A point must never represent the same
+# identity key as both a tag and a field because InfluxDB fixes a column's type
+# when the measurement is first written.
+STABLE_IDENTITY_TAGS = frozenset({
+    "collector",
+    "customer_id",
+    "deployment_id",
+    "device_id",
+    "hostname",
+    "model",
+    "site_id",
+})
+
+
 def coerce_integer(value):
     if isinstance(value, bool):
         return int(value)
@@ -186,13 +200,20 @@ def normalize_point(point, metadata, point_number=1):
             point_number)
     tags = metadata.apply(point.get("tags", {}))
     collector = str(tags.get("collector") or "unknown")
-    if measurement == "infrastructure_device" and \
-            "model" in (point.get("fields") or {}):
+    source_fields = point.get("fields") or {}
+    collisions = sorted(STABLE_IDENTITY_TAGS.intersection(tags, source_fields))
+    if collisions:
+        field = collisions[0]
+        raise TelemetryValidationError(
+            measurement, field, "tag only", "tag and field",
+            collector, point_number)
+    if measurement in {"device", "infrastructure_device"} and \
+            "model" in source_fields:
         raise TelemetryValidationError(
             measurement, "model", "tag", "field",
             collector, point_number)
     fields = {}
-    for field, value in sorted((point.get("fields") or {}).items()):
+    for field, value in sorted(source_fields.items()):
         expected = FIELD_TYPES.get(measurement, {}).get(field)
         if expected is None:
             fields[field] = value

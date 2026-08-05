@@ -73,9 +73,8 @@ def normalize(endpoints, config):
     points = [{"measurement": "infrastructure_device", "tags": common,
                "fields": fields}]
     points.append({"measurement": "device", "tags": common,
-                   "fields": {**{key: value for key, value in fields.items()
-                              if key in ("online", "uptime_seconds", "serial", "firmware")},
-                              **({"model": model} if model else {})}})
+                   "fields": {key: value for key, value in fields.items()
+                              if key in ("online", "uptime_seconds", "serial", "firmware")}})
     points.append({"measurement": "availability", "tags": common, "fields": {"available": True}})
     performance = {key: value for key, value in fields.items()
                    if key in ("cpu_percent", "memory_used_percent", "uptime_seconds")}

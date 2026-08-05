@@ -122,6 +122,31 @@ def test_infrastructure_device_model_is_a_tag_contract():
     assert raised.value.received == "field"
 
 
+@pytest.mark.parametrize("measurement", ["device", "infrastructure_device"])
+def test_model_field_is_rejected_for_device_identity_measurements(measurement):
+    with pytest.raises(TelemetryValidationError) as raised:
+        normalize_point({
+            "measurement": measurement,
+            "tags": {"collector": "fortigate", "model": "FG6H1E"},
+            "fields": {"online": True, "model": "FG6H1E"},
+        }, DeploymentMetadata())
+    assert raised.value.field == "model"
+    assert raised.value.expected == "tag only"
+    assert raised.value.received == "tag and field"
+
+
+def test_stable_identity_tag_field_collision_is_rejected():
+    with pytest.raises(TelemetryValidationError) as raised:
+        normalize_point({
+            "measurement": "availability",
+            "tags": {"collector": "fortigate", "device_id": "fortigate:1"},
+            "fields": {"available": True, "device_id": "fortigate:1"},
+        }, DeploymentMetadata())
+    assert raised.value.field == "device_id"
+    assert raised.value.expected == "tag only"
+    assert raised.value.received == "tag and field"
+
+
 def test_every_collector_infrastructure_device_producer_is_covered():
     producers = {
         path.relative_to(ROOT).as_posix()

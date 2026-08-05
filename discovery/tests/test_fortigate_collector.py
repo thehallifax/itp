@@ -370,7 +370,7 @@ def test_optional_endpoint_and_partial_collection(tmp_path):
 def test_stable_identity_normalization_and_snmp_compatibility():
     settings = type("Settings", (), {"base_url": "https://10.0.0.1", "customer": "c", "site": "s"})()
     endpoint_data = {"system": {"results": {"hostname": "FG-A", "serial": "FGSERIAL",
-        "model": "FG-100F", "version": "7.4", "ip": "10.0.0.1", "uptime": 100}},
+        "model": "FG6H1E", "version": "7.4", "ip": "10.0.0.1", "uptime": 100}},
         "resources": {"results": {"cpu": 5, "memory": 40}},
         "interfaces": {"results": [{"name": "port1", "in_octets": 10, "out_octets": 20}]}}
     record, points = normalize(endpoint_data, settings)
@@ -380,12 +380,25 @@ def test_stable_identity_normalization_and_snmp_compatibility():
     assert record["source_asset_id"] == "FGSERIAL"
     infrastructure = next(point for point in points
                           if point["measurement"] == "infrastructure_device")
-    assert infrastructure["tags"]["model"] == "FG-100F"
+    assert infrastructure["tags"]["model"] == "FG6H1E"
     assert "model" not in infrastructure["fields"]
-    line = InfluxWriter.line_protocol(infrastructure)
-    tag_set, field_set = line.split(" ", 1)
-    assert ",model=FG-100F" in tag_set
-    assert "model=" not in field_set
+    device = next(point for point in points
+                  if point["measurement"] == "device")
+    assert device["tags"]["model"] == "FG6H1E"
+    assert "model" not in device["fields"]
+    assert device["fields"] == {
+        "firmware": "7.4",
+        "online": True,
+        "serial": "FGSERIAL",
+        "uptime_seconds": 100.0,
+    }
+    for point in points:
+        assert set(point["tags"]).isdisjoint(point["fields"])
+    for point in (infrastructure, device):
+        line = InfluxWriter.line_protocol(point)
+        tag_set, field_set = line.split(" ", 1)
+        assert ",model=FG6H1E" in tag_set
+        assert 'model="FG6H1E"' not in field_set
     assert {point["measurement"] for point in points} == {
         "infrastructure_device", "network_interface", "security_appliance",
         "device", "availability", "performance", "interface", "firewall"}
