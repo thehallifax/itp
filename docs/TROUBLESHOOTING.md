@@ -120,3 +120,25 @@ Use Collector Health and Doctor to distinguish Configuration required,
 Awaiting first collection, Data stale, Feature unavailable, Collector failed,
 and No matching records. A bare Grafana `No data` response is not a platform
 health decision.
+
+## FortiGate TLS validation
+
+Run the deployment-scoped, read-only test:
+
+```sh
+./itp collector test fortigate --deployment <deployment> --json
+```
+
+The diagnostic distinguishes certificate expiry, hostname mismatch, an
+incomplete publicly issued chain, an untrusted private CA, and a general trust
+failure. For an incomplete public chain, install the full-chain certificate on
+the FortiGate; no ITP CA import is required. For a genuinely private issuer,
+add only its CA certificate:
+
+```sh
+./itp credentials ca add <certificate.pem> --deployment <deployment>
+./itp collector test fortigate --deployment <deployment> --json
+```
+
+The runtime image already contains public roots. Do not import public roots per
+deployment and do not use `verify_tls: false` as a production fix.

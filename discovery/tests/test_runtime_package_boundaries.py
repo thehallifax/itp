@@ -46,3 +46,4 @@ def test_collector_dockerfile_copies_runtime_engine_not_scripts():
     dockerfile = (ROOT / "discovery/Dockerfile").read_text()
     assert "COPY analysis /app/analysis" in dockerfile
     assert "COPY scripts " not in dockerfile
+    assert "ca-certificates" in dockerfile

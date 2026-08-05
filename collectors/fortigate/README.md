@@ -5,6 +5,20 @@ resource usage, interfaces, and HA when supported. System status is required; op
 endpoint failures produce a partial health record instead of discarding valid data. TLS
 verification is enabled by default.
 
+ITP runtime images include Debian's maintained public CA trust store. A
+deployment-specific private CA loaded with the command below augments those
+public roots; it does not replace them.
+
+```sh
+./itp credentials ca add <certificate.pem> --deployment <deployment>
+```
+
+For a publicly issued certificate, install the full-chain certificate on the
+FortiGate. Do not normally import public roots or intermediates into ITP.
+Diagnostics distinguish expiry, hostname mismatch, incomplete public chains,
+untrusted private CAs, and generic trust failures. `verify_tls: false` is a
+diagnostic-only escape hatch and is not recommended for production.
+
 The runtime onboarding prompt accepts a hostname with an optional port
 (`firewall.example.invalid:8443`) or an HTTPS origin. It stores the canonical
 `collectors.fortigate.host` value and matching `FORTIGATE_HOST` once. HTTP and

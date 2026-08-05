@@ -41,6 +41,17 @@ Connection tests execute the registered read-only collector inspection and
 return redacted output. Consult the collector-specific document when an
 endpoint, role, certificate, or regional API setting is required.
 
+Collector and discovery images include the operating-system public CA store.
+Private deployment CAs are additive and apply only to the selected deployment:
+
+```bash
+./itp credentials ca add <certificate.pem> --deployment <deployment>
+```
+
+Install a full public certificate chain on the managed device rather than
+manually importing public roots into ITP. Keep TLS verification enabled;
+disabling it is diagnostic-only and permits interception and impersonation.
+
 ## Collector lifecycle contract
 
 Every enabled connector follows:

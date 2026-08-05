@@ -7,17 +7,46 @@ from dataclasses import dataclass, field
 class FortiGateError(RuntimeError):
     category = "invalid_response"
 
+    def __init__(self, message, *, remediation="", evidence=None):
+        super().__init__(message)
+        self.remediation = remediation
+        self.evidence = dict(evidence or {})
+
+    def diagnostic_payload(self):
+        payload = {"category": self.category, "message": str(self)}
+        if self.remediation:
+            payload["remediation"] = self.remediation
+        if self.evidence:
+            payload["tls"] = self.evidence
+        return payload
+
 
 class FortiGateCredentialError(FortiGateError):
-    category = "credential"
+    category = "authentication_failed"
 
 
 class FortiGatePermissionError(FortiGateError):
-    category = "permission"
+    category = "permission_denied"
 
 
 class FortiGateTLSError(FortiGateError):
-    category = "tls"
+    category = "tls_trust_failure"
+
+
+class FortiGateCertificateExpiredError(FortiGateTLSError):
+    category = "tls_certificate_expired"
+
+
+class FortiGateHostnameMismatchError(FortiGateTLSError):
+    category = "tls_hostname_mismatch"
+
+
+class FortiGateIncompleteChainError(FortiGateTLSError):
+    category = "tls_incomplete_chain"
+
+
+class FortiGatePrivateCAError(FortiGateTLSError):
+    category = "tls_untrusted_private_ca"
 
 
 class FortiGateTimeoutError(FortiGateError):
@@ -25,7 +54,7 @@ class FortiGateTimeoutError(FortiGateError):
 
 
 class FortiGateUnreachableError(FortiGateError):
-    category = "unreachable"
+    category = "tcp_connection_failed"
 
 
 @dataclass(frozen=True)

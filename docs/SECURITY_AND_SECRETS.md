@@ -19,6 +19,23 @@ creating a sanitised repository does not revoke an exposed credential.
 Bind services to localhost unless remote access is required. Protect remote
 bindings with host firewall rules and a trusted management network.
 
+## TLS trust
+
+Collector and discovery images initialize Debian's maintained public CA store.
+Connector SSL contexts begin with that public trust and then load any
+deployment-specific CA bundle, so adding an internal CA does not remove public
+roots. Import only a genuinely private issuing CA:
+
+```sh
+./itp credentials ca add <certificate.pem> --deployment <deployment>
+```
+
+Publicly issued services must present their complete server and intermediate
+chain. Do not copy public roots or host-specific certificates into deployments.
+Never include private keys in a CA input file. TLS verification remains enabled
+by default; disabling it is suitable only for bounded diagnosis because it
+permits endpoint impersonation.
+
 ## Support bundles
 
 `./itp support bundle` excludes secret environment files, credential files,

@@ -12,8 +12,11 @@ from collectors.base import ExecutionModeMismatch, RuntimePlacementCollector
 from collectors.config import load_config
 from collectors.fortigate.client import FortiGateClient
 from collectors.fortigate.collector import FortiGateCollector
-from collectors.fortigate.models import (EndpointResult, FortiGatePermissionError,
-                                          FortiGateTimeoutError)
+from collectors.fortigate.models import (
+    EndpointResult, FortiGateCertificateExpiredError,
+    FortiGateHostnameMismatchError, FortiGateIncompleteChainError,
+    FortiGatePermissionError, FortiGatePrivateCAError, FortiGateTimeoutError,
+    FortiGateTLSError)
 from collectors.fortigate.normalizer import normalize, stable_id
 
 
@@ -153,17 +156,64 @@ def test_tls_defaults_timeout_and_retry(monkeypatch):
     assert api.retry_count == 1 and delays == [1]
 
 
+def verification_error(code, message):
+    error = ssl.SSLCertVerificationError(1, message)
+    error.verify_code = code
+    error.verify_message = message
+    return error
+
+
 def test_tls_failure_is_classified_separately():
     class Client:
         async def get(self, *_args, **_kwargs):
             try:
-                raise ssl.SSLCertVerificationError("untrusted certificate")
+                raise verification_error(20, "unable to get local issuer certificate")
             except ssl.SSLError as cause:
                 raise httpx.ConnectError("TLS connection failed") from cause
-    from collectors.fortigate.models import FortiGateTLSError
-    api = FortiGateClient("fg.example.test", "token", client=Client())
-    with pytest.raises(FortiGateTLSError, match="TLS verification failed"):
+    api = FortiGateClient(
+        "fg.example.test", "token", client=Client(),
+        tls_inspector=lambda *_: {
+            "host": "fg.example.test", "issuer": "Unknown Issuer",
+            "subject": "CN=fg.example.test", "hostname_match": True,
+            "expired": False, "trust": "failed"})
+    with pytest.raises(FortiGateTLSError) as raised:
         asyncio.run(api.request("/test"))
+    assert raised.value.category == "tls_trust_failure"
+    assert raised.value.category != "unreachable"
+    assert raised.value.diagnostic_payload()["tls"]["trust"] == "failed"
+
+
+@pytest.mark.parametrize("code,message,evidence,error_type,category", [
+    (10, "certificate has expired", {"expired": True},
+     FortiGateCertificateExpiredError, "tls_certificate_expired"),
+    (62, "hostname mismatch", {"hostname_match": False},
+     FortiGateHostnameMismatchError, "tls_hostname_mismatch"),
+    (18, "self signed certificate", {
+        "subject": "CN=Private Root CA", "issuer": "CN=Private Root CA",
+        "hostname_match": True},
+     FortiGatePrivateCAError, "tls_untrusted_private_ca"),
+    (20, "unable to get local issuer certificate", {
+        "subject": "CN=firewall.example.test",
+        "issuer": "CN=Sectigo RSA Domain Validation Secure Server CA",
+        "hostname_match": True},
+     FortiGateIncompleteChainError, "tls_incomplete_chain"),
+])
+def test_tls_diagnostics_are_specific_and_safe(
+        code, message, evidence, error_type, category):
+    api = FortiGateClient(
+        "fg.example.test", "secret-token", client=object(),
+        tls_inspector=lambda *_: {"host": "fg.example.test",
+                                  "trust": "failed", **evidence})
+    error = asyncio.run(api._tls_error(verification_error(code, message)))
+    assert isinstance(error, error_type)
+    payload = error.diagnostic_payload()
+    assert payload["category"] == category
+    assert "secret-token" not in json.dumps(payload)
+    if category == "tls_incomplete_chain":
+        assert "No CA import is required" in payload["remediation"]
+        assert "credentials ca add" not in payload["remediation"]
+    if category == "tls_untrusted_private_ca":
+        assert "credentials ca add" in payload["remediation"]
 
 
 def test_optional_endpoint_and_partial_collection(tmp_path):

@@ -240,6 +240,14 @@ The goal is to batch usability improvements into dedicated housekeeping sprints 
 - Review onboarding after Palo Alto, FortiGate and PaperCut deployments.
 - Improve dashboard layout and responsive behaviour.
 - Review semantic empty states and panel density.
+- Add atomic `credentials grafana change --deployment <id>` rotation. Prompt
+  without echo, update Grafana first, persist the ITP secret only after success,
+  verify login, and roll back safely. Passwords must never enter command
+  history, logs, JSON, or support bundles. This follows a live case where the
+  stored ITP password diverged from Grafana's persisted administrator password.
+- Summarize default human CLI output. Keep detailed capability, measurement,
+  and pipeline evidence behind `--verbose`, with full structured output behind
+  `--json`.
 
 ## Collector onboarding follow-up
 

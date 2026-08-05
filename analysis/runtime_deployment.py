@@ -970,7 +970,11 @@ class RuntimeDeploymentManager:
         for certificate in certificates:
             try:
                 der = ssl.PEM_cert_to_DER_cert(certificate)
-            except ValueError as exc:
+                # Parsing base64 alone is insufficient: require OpenSSL to
+                # accept the X.509 object before it enters deployment trust.
+                ssl.create_default_context().load_verify_locations(
+                    cadata=certificate)
+            except (ValueError, ssl.SSLError) as exc:
                 raise RuntimeDeploymentError(
                     "CA input contains an invalid PEM certificate") from exc
             result.append((
