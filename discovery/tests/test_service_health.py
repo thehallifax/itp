@@ -17,7 +17,7 @@ def write(path, value):
 
 def fixture(tmp_path, *, capabilities=(), assets=(), collectors=(), signals=None,
             issues=(), risks=(), enabled_collectors=(), collector_capabilities=None,
-            sites_text=None):
+            sites_text=None, capability_manifests=None):
     state = tmp_path / "infrastructure/state.json"
     operations = tmp_path / "operations/operations.json"
     registry = tmp_path / "dashboard/managed/registry.json"
@@ -31,11 +31,15 @@ def fixture(tmp_path, *, capabilities=(), assets=(), collectors=(), signals=None
     write(registry, {"capabilities": list(capabilities),
                      "enabled_collectors": enabled,
                      "collector_capabilities": collector_capabilities or {}})
+    manifest = tmp_path / "capabilities/collectors.json"
+    if capability_manifests is not None:
+        write(manifest, {"collectors": capability_manifests})
     sites = tmp_path / "sites.yml"
     if sites_text is not None:
         sites.write_text(sites_text)
     return ServiceHealthEngine(state, operations, registry, output,
-                               sites_config=sites), output
+                               sites_config=sites,
+                               capability_manifest=manifest), output
 
 
 def service(result, name, site_id="all"):
@@ -176,6 +180,93 @@ def test_internet_evidence_separates_interface_identity_from_display_name(tmp_pa
     assert internet["affected_assets"] == ["WAN 2"]
     assert internet["evidence"][0]["interface"] == "ethernet1/6"
     assert internet["evidence"][0]["display_name"] == "WAN 2"
+
+
+def internet_manifest(collector, support="conditional", collection="unavailable"):
+    return {collector: {"capabilities": [{
+        "id": "wan_classification", "services": ["Internet"],
+        "support": support, "collection": collection,
+    }]}}
+
+
+def test_fortigate_internet_configuration_guidance_is_vendor_aware(tmp_path):
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+        enabled_collectors=["fortigate"],
+        collector_capabilities={"fortigate": ["internet"]},
+        capability_manifests=internet_manifest("fortigate"))
+    internet = service(engine.evaluate(NOW), "Internet")
+    assert internet["status"] == "Configuration Required"
+    assert internet["summary"] == (
+        "Configure one or more WAN interfaces in the FortiGate collector configuration.")
+    assert "Palo Alto" not in json.dumps(internet)
+
+
+def test_paloalto_internet_configuration_guidance_is_vendor_aware(tmp_path):
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+        enabled_collectors=["paloalto"],
+        collector_capabilities={"paloalto": ["internet"]},
+        capability_manifests=internet_manifest("paloalto"))
+    internet = service(engine.evaluate(NOW), "Internet")
+    assert internet["status"] == "Configuration Required"
+    assert "Palo Alto collector configuration" in internet["summary"]
+    assert "FortiGate" not in json.dumps(internet)
+
+
+def test_no_firewall_collector_means_internet_not_enabled(tmp_path):
+    engine, _ = fixture(tmp_path, capabilities=[], enabled_collectors=[])
+    internet = service(engine.evaluate(NOW), "Internet")
+    assert internet["status"] == "Not Enabled"
+
+
+def test_unsupported_firewall_wan_telemetry_is_not_available(tmp_path):
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+        enabled_collectors=["future-firewall"],
+        collector_capabilities={"future-firewall": ["internet"]},
+        capability_manifests={"future-firewall": {"capabilities": [{
+            "id": "interfaces", "services": ["Internet"],
+            "support": "supported", "collection": "failed",
+        }]}})
+    internet = service(engine.evaluate(NOW), "Internet")
+    assert internet["status"] == "Not Available"
+    assert internet["summary"] == (
+        "WAN telemetry is not available for the active firewall collector.")
+
+
+def test_multiple_firewall_collectors_are_evaluated_deterministically(tmp_path):
+    manifests = {
+        **internet_manifest("paloalto"),
+        **internet_manifest("fortigate"),
+    }
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+        enabled_collectors=["paloalto", "fortigate"],
+        collector_capabilities={
+            "paloalto": ["internet"], "fortigate": ["internet"]},
+        capability_manifests=manifests)
+    first = service(engine.evaluate(NOW), "Internet")
+    second = service(engine.evaluate(NOW), "Internet")
+    assert first == second
+    assert first["status"] == "Configuration Required"
+    assert first["summary"].startswith("Configure one or more WAN interfaces in the FortiGate")
+    assert "Palo Alto collector configuration" in first["summary"]
+
+
+def test_multiple_firewalls_preserve_healthy_evidence_and_report_failed_source(tmp_path):
+    manifests = {
+        **internet_manifest("fortigate", collection="failed"),
+        **internet_manifest("paloalto", collection="collected"),
+    }
+    engine, _ = fixture(tmp_path, capabilities=["internet"],
+        enabled_collectors=["fortigate", "paloalto"],
+        collector_capabilities={
+            "fortigate": ["internet"], "paloalto": ["internet"]},
+        capability_manifests=manifests, signals={"wan": [{
+            "name": "ethernet1/1", "role": "primary", "available": True,
+            "classification_authoritative": True,
+            "observed_at": "2026-07-23T13:59:00Z",
+        }]})
+    internet = service(engine.evaluate(NOW), "Internet")
+    assert internet["status"] == "Warning"
+    assert "another firewall source failed" in internet["summary"]
 
 
 def test_security_uses_subscription_and_certificate_evidence(tmp_path):

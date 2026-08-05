@@ -274,16 +274,22 @@ def _wan_rows(signals, scopes, service_scopes):
         value["scope"], value["time"], value["uplink"]))
 
 
-def _internet_rows(wan_rows, scopes, capability_enabled):
+def _internet_rows(wan_rows, scopes, service_scopes):
     rows = []
     for scope in scopes:
         selected = [value for value in wan_rows
                     if value["scope"] == scope["scope"]
                     and value.get("interface")]
-        if not capability_enabled:
+        service = next((value for value in
+            service_scopes.get(scope["scope"], {}).get("services", [])
+            if value.get("service") == "Internet"), {})
+        status = service.get("status", "Unknown")
+        if status == "Not Enabled":
             label, color = "Not Enabled", "gray"
         elif not selected:
-            label, color = "WAN Role Not Configured", "gray"
+            label = status
+            color = {"Critical": "red", "Warning": "orange",
+                     "Configuration Required": "orange"}.get(status, "gray")
         else:
             down = [value for value in selected if value["state"] == "Down"]
             unknown = [value for value in selected if value["state"] == "Unknown"]
@@ -296,7 +302,8 @@ def _internet_rows(wan_rows, scopes, capability_enabled):
             else:
                 label, color = (
                     f"{len(selected)} / {len(selected)} WANs Healthy", "green")
-        rows.append({"scope": scope["scope"], "value": label, "color": color})
+        rows.append({"scope": scope["scope"], "value": label, "color": color,
+                     "summary": service.get("summary", "")})
     return rows
 
 
@@ -751,8 +758,7 @@ class WallboardEngine:
                 "services": [],
             } for scope in scopes]
         monitoring = _monitoring_rows(collector_rows, scopes)
-        internet = _internet_rows(
-            wan_uplinks, scopes, "internet" in capabilities)
+        internet = _internet_rows(wan_uplinks, scopes, service_scopes)
         certificate_rows = _certificate_rows(
             operations, scopes, "firewall" in capabilities)
         security_rows = _service_card_rows(

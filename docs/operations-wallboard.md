@@ -103,6 +103,13 @@ directly from authoritative WAN signals and uses evidence-based wording such as
 **2 / 2 WANs Healthy**, **1 / 2 WANs Healthy**, and **Not Yet Collected**. It
 does not create a second Internet calculation.
 
+When no WAN signal exists, the card and explanatory panel render the canonical
+Internet Service Health result. Guidance is limited to enabled collectors:
+FortiGate deployments receive FortiGate configuration guidance, Palo Alto
+deployments receive Palo Alto guidance, unsupported firewall sources show
+**Not Available**, and deployments without a firewall collector show
+**Not Enabled** without generating a WAN configuration action.
+
 Each classified interface receives its own responsive graph named with both its
 friendly role and display name. The SQL predicate always uses the canonical
 PAN-OS `interface_name`; `display_name` is presentation metadata only. Download

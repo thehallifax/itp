@@ -22,7 +22,8 @@ def write(path, value):
 
 
 def fixture(tmp_path, *, capabilities=None, assets=None, operations=None, signals=None,
-            service_statuses=None, service_generated_at="2026-07-23T00:59:00Z"):
+            service_statuses=None, service_summaries=None,
+            service_generated_at="2026-07-23T00:59:00Z"):
     assets = assets if assets is not None else [
         {"canonical_id": "switch-1", "hostname": "CORE-1", "device_type": "switch",
          "online": True, "site": {"site_id": "site:hq", "display_name": "HQ"}},
@@ -71,12 +72,14 @@ def fixture(tmp_path, *, capabilities=None, assets=None, operations=None, signal
         "Compute": "compute", "Storage": "storage", "Voice": "voice",
         "Email": "email", "Security": "firewall", "Monitoring": "telemetry"}
     service_statuses = service_statuses or {"Wireless": "Warning", "Compute": "Unknown"}
+    service_summaries = service_summaries or {}
     def services():
         return [{
             "service": name,
             "status": ("Not Enabled" if capability_for[name] not in capabilities
                        else service_statuses.get(name, "Healthy")),
-            "severity": "Info", "summary": f"{name} canonical summary.",
+            "severity": "Info", "summary": service_summaries.get(
+                name, f"{name} canonical summary."),
             "affected_assets": [], "affected_users": None, "last_change": None,
             "evidence": []} for name in capability_for]
     service_values = services()
@@ -285,9 +288,12 @@ def test_three_wans_wrap_as_two_columns_then_full_width(tmp_path):
 def test_unclassified_interfaces_do_not_become_wan(tmp_path):
     result = fixture(tmp_path, signals={"wan": [{
         "name": "ethernet1/9", "available": True}]},
-        service_statuses={"Internet": "Unknown", "Wireless": "Warning",
-                          "Compute": "Unknown"}).run(NOW)
-    assert all(value["uplink"] == "Internet canonical summary."
+        service_statuses={"Internet": "Configuration Required",
+                          "Wireless": "Warning", "Compute": "Unknown"},
+        service_summaries={"Internet":
+            "Configure one or more WAN interfaces in the FortiGate collector configuration."}).run(NOW)
+    assert all(value["uplink"] ==
+               "Configure one or more WAN interfaces in the FortiGate collector configuration."
                for value in result["wan"]["uplinks"])
     assert all(value["state"] == "No WAN Telemetry"
                for value in result["wan"]["uplinks"])
@@ -295,7 +301,19 @@ def test_unclassified_interfaces_do_not_become_wan(tmp_path):
     traffic = next(value for value in dashboard["panels"]
                    if value["title"] == "WAN Telemetry")
     assert traffic["type"] == "text"
-    assert "WAN role not configured" in traffic["options"]["content"]
+    assert "Configuration Required" in traffic["options"]["content"]
+    assert "FortiGate collector configuration" in traffic["options"]["content"]
+    assert "Palo Alto" not in traffic["options"]["content"]
+
+
+def test_internet_not_enabled_does_not_create_wan_action_panel(tmp_path):
+    fixture(tmp_path, capabilities=[], signals={},
+        service_statuses={}).run(NOW)
+    dashboard = json.loads(
+        (tmp_path / "grafana/operations-wallboard.json").read_text())
+    assert not any(value["title"] == "WAN Telemetry"
+                   for value in dashboard["panels"])
+    assert "Palo Alto collector configuration" not in json.dumps(dashboard)
 
 
 def test_action_required_is_consolidated_filtered_and_ordered(tmp_path):

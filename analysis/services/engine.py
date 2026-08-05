@@ -33,9 +33,9 @@ def _overall(services):
     statuses = {value["status"] for value in enabled}
     if "Critical" in statuses:
         return "Critical"
-    if "Warning" in statuses:
+    if "Warning" in statuses or "Configuration Required" in statuses:
         return "Warning"
-    if "Unknown" in statuses or not enabled:
+    if "Unknown" in statuses or "Not Available" in statuses or not enabled:
         return "Unknown"
     return "Healthy"
 

@@ -12,13 +12,18 @@ VIRTUALISATION_SERVICE_NAMES = (
     "Virtualisation Management Plane", "Hypervisor Cluster", "Compute Capacity",
     "Virtual Machine Hosting", "Shared Storage", "Workload Availability",
 )
-SERVICE_STATUSES = ("Healthy", "Warning", "Critical", "Unknown", "Not Enabled")
+SERVICE_STATUSES = (
+    "Healthy", "Warning", "Critical", "Unknown", "Not Enabled",
+    "Not Available", "Configuration Required",
+)
 STATUS_SEVERITY = {
     "Healthy": "Info",
     "Warning": "Medium",
     "Critical": "Critical",
     "Unknown": "Info",
     "Not Enabled": "Info",
+    "Not Available": "Info",
+    "Configuration Required": "Medium",
 }
 
 

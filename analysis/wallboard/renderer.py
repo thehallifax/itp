@@ -16,6 +16,7 @@ MIXED_DATASOURCE = {"type": "datasource", "uid": "-- Mixed --"}
 HEALTH_COLORS = {"Healthy": "green", "Fresh": "green", "Warning": "orange",
                  "Stale": "orange", "Critical": "red", "Failed": "red",
                  "Unknown": "gray", "Not Enabled": "gray",
+                 "Not Available": "gray", "Configuration Required": "orange",
                  "Awaiting telemetry": "gray",
                  "Monitoring not started": "gray",
                  "Awaiting first collection": "gray",
@@ -90,6 +91,7 @@ def _mapping(value_colors=None):
 def _service_status(value):
     """Constrain wallboard service tiles to the operator-facing vocabulary."""
     if value in {"Healthy", "Warning", "Critical", "Not Enabled",
+                 "Not Available", "Configuration Required",
                  "Not Yet Collected", "Collector Disabled"}:
         return value
     lowered = str(value or "").casefold()
@@ -561,15 +563,18 @@ def write_wallboard(summary, template_path, summary_path, dashboard_path):
         if panel["title"] not in {"Internet / WAN", "WAN Traffic"}]
     dashboard["panels"].extend(wan_panels)
     panels = {value["title"]: value for value in dashboard["panels"]}
-    if not interfaces and "internet" in summary.get("capabilities", []):
+    internet_row = next((value for value in summary.get("internet", [])
+                         if value.get("scope") == "all"), {})
+    if not interfaces and internet_row.get("value") != "Not Enabled":
         panel = copy.deepcopy(prototype)
         panel.update({"id": 40, "title": "WAN Telemetry", "type": "text"})
         panel.pop("datasource", None)
         panel["targets"] = []
         panel["transformations"] = []
+        state = internet_row.get("value") or "Not Yet Collected"
+        detail = internet_row.get("summary") or "WAN telemetry is not yet available."
         panel["options"] = {"mode": "markdown", "content":
-            "## WAN role not configured\n\nSelect at least one authoritative "
-            "WAN interface in the Palo Alto collector configuration."}
+            f"## {state}\n\n{detail}"}
         dashboard["panels"].append(panel)
         panels[panel["title"]] = panel
 

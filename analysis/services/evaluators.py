@@ -55,6 +55,27 @@ def _number(value):
         return 0.0
 
 
+WAN_CONFIGURATION_GUIDANCE = {
+    "fortigate": "Configure one or more WAN interfaces in the FortiGate collector configuration.",
+    "paloalto": (
+        "Configure one or more authoritative WAN interfaces in the Palo Alto "
+        "collector configuration."),
+}
+
+
+def _internet_declarations(context):
+    """Return Internet declarations for enabled collectors only."""
+    values = []
+    for collector, manifest in sorted(
+            context.get("capability_manifest", {}).items()):
+        if collector not in context.get("enabled_collectors", ()):
+            continue
+        for capability in manifest.get("capabilities", []):
+            if "Internet" in capability.get("services", []):
+                values.append((collector, capability))
+    return values
+
+
 @dataclass(frozen=True)
 class ServiceDefinition:
     name: str
@@ -173,6 +194,8 @@ class ServiceEvaluator:
             "collection": value.get("collection"),
             "explanation": value.get("explanation"),
         } for collector, value in declared)
+        if definition.name == "Internet":
+            return self._internet(context, declared, capability_evidence)
         if failed:
             return ServiceHealth(
                 definition.name, "Critical",
@@ -180,7 +203,7 @@ class ServiceEvaluator:
                 tuple(sorted({collector for collector, _ in failed})),
                 severity=STATUS_SEVERITY["Critical"],
                 evidence=capability_evidence)
-        if degraded and not any(value.get("collection") == "collected"
+        if definition.name != "Internet" and degraded and not any(value.get("collection") == "collected"
                                 for _, value in applicable):
             return ServiceHealth(
                 definition.name, "Warning",
@@ -188,8 +211,6 @@ class ServiceEvaluator:
                 tuple(sorted({collector for collector, _ in degraded})),
                 severity=STATUS_SEVERITY["Warning"],
                 evidence=capability_evidence)
-        if definition.name == "Internet":
-            return self._internet(context)
         if definition.name == "Security":
             return self._security(context)
         if definition.name in VIRTUAL_SERVICE_IDS:
@@ -347,16 +368,59 @@ class ServiceEvaluator:
             evidence=evidence)
 
     @staticmethod
-    def _internet(context):
+    def _internet(context, declared=(), capability_evidence=()):
         now = context.get("now") or datetime.now(timezone.utc)
+        # An empty manifest is retained as a compatibility boundary for older
+        # state fixtures. Production capability projections always identify the
+        # enabled collector and its Internet/WAN declarations.
+        manifest_present = bool(context.get("capability_manifest"))
+        declarations = list(declared) if declared else _internet_declarations(context)
+        supported = [(collector, value) for collector, value in declarations
+                     if value.get("id") == "wan_classification"
+                     and value.get("support") in {"supported", "conditional"}]
+        if manifest_present and not supported:
+            collectors = tuple(sorted(context.get("enabled_collectors", ())))
+            return ServiceHealth("Internet", "Not Available",
+                "WAN telemetry is not available for the active firewall collector.",
+                collectors, severity=STATUS_SEVERITY["Not Available"],
+                evidence=capability_evidence or ({
+                    "type": "wan_policy", "supported": False,
+                    "enabled_collectors": list(collectors)},))
+        failed_collectors = sorted({collector for collector, value in supported
+                                    if value.get("collection") == "failed"})
         signals = [value for value in context["signals"].get("wan", [])
                    if isinstance(value, dict)
                    and value.get("classification_authoritative") is True]
         if not signals:
-            return ServiceHealth("Internet", "Unknown",
-                "No explicitly configured WAN interfaces provide trustworthy evidence.",
-                severity=STATUS_SEVERITY["Unknown"],
-                evidence=({"type": "wan_policy", "configured": False},))
+            collectors = sorted({collector for collector, _ in supported})
+            if failed_collectors:
+                return ServiceHealth("Internet", "Critical",
+                    "WAN telemetry collection failed for the active firewall collector.",
+                    tuple(failed_collectors), severity=STATUS_SEVERITY["Critical"],
+                    evidence=capability_evidence)
+            collections = {value.get("collection") for _, value in supported}
+            if "partial" in collections:
+                return ServiceHealth("Internet", "Warning",
+                    "WAN telemetry collection is incomplete for the active firewall collector.",
+                    tuple(collectors), severity=STATUS_SEVERITY["Warning"],
+                    evidence=capability_evidence)
+            if collections and collections <= {"not_yet_collected"}:
+                return ServiceHealth("Internet", "Unknown",
+                    "WAN telemetry has not yet been collected.", tuple(collectors),
+                    severity=STATUS_SEVERITY["Unknown"],
+                    evidence=capability_evidence)
+            guidance = [WAN_CONFIGURATION_GUIDANCE.get(collector,
+                f"Configure WAN telemetry for the {collector} collector.")
+                for collector in collectors]
+            summary = " ".join(guidance) or (
+                "No explicitly configured WAN interfaces provide trustworthy evidence.")
+            evidence = tuple(capability_evidence) + ({
+                "type": "wan_policy", "configured": False,
+                "collectors": collectors, "operator_action": summary},)
+            status = "Configuration Required" if supported else "Unknown"
+            return ServiceHealth("Internet", status, summary,
+                tuple(collectors), severity=STATUS_SEVERITY[status],
+                evidence=evidence)
         stale = []
         unknown = []
         for value in signals:
@@ -398,6 +462,9 @@ class ServiceEvaluator:
         else:
             status = "Healthy"
             summary = "All explicitly configured Internet uplinks are operational."
+        if failed_collectors and status == "Healthy":
+            status = "Warning"
+            summary = "Available WAN uplinks are operational, but another firewall source failed."
         return ServiceHealth("Internet", status, summary,
             tuple(sorted(str(value.get("display_name") or value.get("name")
                              or value.get("interface_name"))

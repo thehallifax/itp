@@ -44,6 +44,9 @@ python -m collectors services evaluators
 ## State policy
 
 - **Not Enabled** — the required capability is absent.
+- **Not Available** — an enabled collector does not support the service signal.
+- **Configuration Required** — the collector supports the signal but its
+  authoritative operator policy is not configured.
 - **Unknown** — the capability is enabled but no trustworthy evidence exists.
 - **Healthy** — positive asset, signal, or collector evidence exists without
   active degradation.
@@ -61,8 +64,9 @@ PipelineRun audit history, but cannot keep a service Warning or Critical.
 Current versus historical state and manual-run semantics are documented in
 [Status and Health State](status-and-health.md).
 
-`Unknown` remains the Service Health result for an enabled capability without
-trustworthy service evidence. The dashboard readiness contract adds the
+`Unknown` remains the Service Health result for an enabled capability awaiting
+trustworthy service evidence. `Configuration Required` and `Not Available`
+separate operator action from an unsupported active collector. The dashboard readiness contract adds the
 operator-facing distinction between first-run waiting and failed/stale
 collection; service evaluators must not duplicate collector readiness policy.
 
@@ -126,10 +130,16 @@ Every emitted row contains the selected status, human explanation, affected
 assets/users where inferable, last change, and evidence. Dashboards render this
 projection; they do not re-evaluate the decision.
 
-Internet evaluation consumes only signals marked
-`classification_authoritative=true`. Unconfigured, invalid, incomplete, or
-stale WAN evidence is Unknown. All configured uplinks down is Critical;
-primary down with a working configured backup is Warning.
+Internet evaluation first selects enabled collectors whose manifests declare
+the `wan_classification` Internet service capability. It never selects a firewall vendor merely
+because that vendor is supported by ITP. No enabled firewall collector is
+`Not Enabled`; an active collector without WAN support is `Not Available`; and
+missing authoritative WAN roles are `Configuration Required` with guidance for
+the selected collector. Evaluation consumes only signals marked
+`classification_authoritative=true`. Incomplete or stale collected evidence is
+Unknown. All configured uplinks down is Critical; primary down with a working
+configured backup is Warning. Multiple enabled firewall collectors are
+evaluated together in deterministic collector-name order.
 
 Security evaluation may use expired subscription and device-certificate
 evidence. Content package age is informational unless deployment policy
