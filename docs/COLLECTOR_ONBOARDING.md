@@ -51,6 +51,9 @@ Private deployment CAs are additive and apply only to the selected deployment:
 Install a full public certificate chain on the managed device rather than
 manually importing public roots into ITP. Keep TLS verification enabled;
 disabling it is diagnostic-only and permits interception and impersonation.
+For example, a Let's Encrypt leaf presented without its intermediate is an
+incomplete public chain: correct the certificate installation on the device;
+do not import Let's Encrypt into the deployment.
 
 ## Collector lifecycle contract
 
@@ -114,8 +117,9 @@ Palo Alto, FortiGate and PaperCut support guided setup:
 
 The workflow preserves credential references, performs the existing read-only
 connection inspection, reports partial capabilities, and offers a first
-collection. TLS inspection distinguishes DNS, TCP, trust, hostname, expiry and
-timeout failures. Import a private CA rather than disabling verification:
+collection. TLS inspection distinguishes DNS, TCP, incomplete public chains,
+private trust, hostname, expiry and timeout failures. For genuine internal PKI,
+import the private CA rather than disabling verification:
 
 ```bash
 ./itp credentials ca add <certificate> --deployment <deployment>

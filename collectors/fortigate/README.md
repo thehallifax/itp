@@ -19,6 +19,11 @@ Diagnostics distinguish expiry, hostname mismatch, incomplete public chains,
 untrusted private CAs, and generic trust failures. `verify_tls: false` is a
 diagnostic-only escape hatch and is not recommended for production.
 
+For example, if a FortiGate presents only its wildcard leaf and that leaf is
+issued by Let's Encrypt, install the full chain (including the required public
+intermediate) on the FortiGate. Do not import Let's Encrypt roots or
+intermediates into ITP. The private-CA command above is only for internal PKI.
+
 The runtime onboarding prompt accepts a hostname with an optional port
 (`firewall.example.invalid:8443`) or an HTTPS origin. It stores the canonical
 `collectors.fortigate.host` value and matching `FORTIGATE_HOST` once. HTTP and

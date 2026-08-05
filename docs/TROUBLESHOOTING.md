@@ -135,6 +135,10 @@ failure. For an incomplete public chain, install the full-chain certificate on
 the FortiGate; no ITP CA import is required. For a genuinely private issuer,
 add only its CA certificate:
 
+A typical incomplete-chain result is a single wildcard leaf issued by Let's
+Encrypt with no intermediate presented. Correct the FortiGate certificate
+installation; do not import Let's Encrypt roots or intermediates into ITP.
+
 ```sh
 ./itp credentials ca add <certificate.pem> --deployment <deployment>
 ./itp collector test fortigate --deployment <deployment> --json

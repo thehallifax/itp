@@ -32,6 +32,8 @@ roots. Import only a genuinely private issuing CA:
 
 Publicly issued services must present their complete server and intermediate
 chain. Do not copy public roots or host-specific certificates into deployments.
+If a FortiGate presents only a Let's Encrypt leaf, install its full chain on
+the FortiGate; importing Let's Encrypt into ITP is not an appropriate fix.
 Never include private keys in a CA input file. TLS verification remains enabled
 by default; disabling it is suitable only for bounded diagnosis because it
 permits endpoint impersonation.

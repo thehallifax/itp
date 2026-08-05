@@ -14,6 +14,7 @@ from collectors.fortigate.client import FortiGateClient
 from collectors.fortigate.collector import FortiGateCollector
 from collectors.fortigate.models import (
     EndpointResult, FortiGateCertificateExpiredError,
+    FortiGateCredentialError,
     FortiGateHostnameMismatchError, FortiGateIncompleteChainError,
     FortiGatePermissionError, FortiGatePrivateCAError, FortiGateTimeoutError,
     FortiGateTLSError)
@@ -141,6 +142,18 @@ def test_auth_header_normalization_and_token_redaction():
     asyncio.run(client.aclose())
 
 
+def test_http_401_after_tls_is_authentication_not_tls_failure():
+    async def handler(request):
+        return httpx.Response(401, request=request)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    api = FortiGateClient("fg.example.test", "secret-token", client=client)
+    with pytest.raises(FortiGateCredentialError) as raised:
+        asyncio.run(api.request("/test"))
+    assert raised.value.category == "authentication_failed"
+    assert "secret-token" not in str(raised.value)
+    asyncio.run(client.aclose())
+
+
 def test_tls_defaults_timeout_and_retry(monkeypatch):
     captured = {}
     class AsyncClient:
@@ -214,6 +227,61 @@ def test_tls_diagnostics_are_specific_and_safe(
         assert "credentials ca add" not in payload["remediation"]
     if category == "tls_untrusted_private_ca":
         assert "credentials ca add" in payload["remediation"]
+
+
+def test_live_shaped_public_leaf_only_chain_is_incomplete_not_private():
+    evidence = {
+        "host": "fortigate.example.edu.au",
+        "resolved_address": "192.0.2.10",
+        "subject": "commonName=*.example.edu.au",
+        "issuer": "countryName=US, organizationName=Let's Encrypt, commonName=YR2",
+        "subject_attributes": {"commonName": "*.example.edu.au"},
+        "issuer_attributes": {
+            "countryName": "US", "organizationName": "Let's Encrypt",
+            "commonName": "YR2"},
+        "hostname_match": True,
+        "expired": False,
+        "not_before": "Jun 15 03:08:43 2026 GMT",
+        "not_after": "Sep 13 03:08:42 2026 GMT",
+        "presented_chain_length": 1,
+        "trust": "failed",
+    }
+    api = FortiGateClient(
+        "fortigate.example.edu.au", "must-not-appear", client=object(),
+        tls_inspector=lambda *_: dict(evidence))
+
+    error = asyncio.run(api._tls_error(verification_error(
+        21, "unable to verify the first certificate")))
+    payload = error.diagnostic_payload()
+
+    assert isinstance(error, FortiGateIncompleteChainError)
+    assert payload["category"] == "tls_incomplete_chain"
+    assert payload["tls"]["public_issuer"] is True
+    assert payload["tls"]["presented_chain_length"] == 1
+    assert payload["tls"]["verify_code"] == 21
+    assert payload["tls"]["verify_message"] == (
+        "unable to verify the first certificate")
+    assert "full certificate chain" in payload["remediation"]
+    assert "No CA import is required" in payload["remediation"]
+    assert "credentials ca add" not in payload["remediation"]
+    assert "must-not-appear" not in json.dumps(payload)
+
+
+def test_ambiguous_chain_failure_remains_neutral_trust_failure():
+    api = FortiGateClient(
+        "fg.example.test", "token", client=object(),
+        tls_inspector=lambda *_: {
+            "host": "fg.example.test", "subject": "CN=fg.example.test",
+            "issuer": "CN=Unknown Issuer", "hostname_match": True,
+            "expired": False, "presented_chain_length": 1,
+            "trust": "failed"})
+    error = asyncio.run(api._tls_error(verification_error(
+        21, "unable to verify the first certificate")))
+    assert type(error) is FortiGateTLSError
+    assert error.category == "tls_trust_failure"
+    assert "credentials ca add" not in error.remediation
+    assert "verify_tls: false" not in error.remediation
+    assert "Do not disable TLS verification" in error.remediation
 
 
 def test_optional_endpoint_and_partial_collection(tmp_path):

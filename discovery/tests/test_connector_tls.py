@@ -3,11 +3,12 @@ from pathlib import Path
 
 import httpx
 import certifi
+import pytest
 import yaml
 
 from collectors.paloalto.api import PaloAltoClient
 from collectors.papercut.client import PaperCutClient
-from collectors.tls import connector_tls_context
+from collectors.tls import classify_certificate_issuer, connector_tls_context
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -39,6 +40,35 @@ def test_deployment_ca_augments_without_removing_public_roots(tmp_path):
     assert len(combined.get_ca_certs()) >= public_count
     bundle.unlink()
     assert len(connector_tls_context(True).get_ca_certs()) == public_count
+
+
+@pytest.mark.parametrize("issuer", [
+    "Let's Encrypt YR2",
+    "Internet Security Research Group ISRG Root X1",
+    "DigiCert TLS RSA SHA256 2020 CA1",
+    "GlobalSign RSA OV SSL CA 2018",
+    "Sectigo RSA Domain Validation Secure Server CA",
+    "COMODO RSA Certification Authority",
+    "Amazon Trust Services RSA 2048 M02",
+    "Google Trust Services WR2",
+    "Microsoft RSA Root Certificate Authority 2017",
+])
+def test_recognized_public_issuer_attributes(issuer):
+    assert classify_certificate_issuer(
+        {"commonName": "firewall.example.test"},
+        {"organizationName": issuer}) is True
+
+
+def test_unknown_issuer_is_not_assumed_private():
+    assert classify_certificate_issuer(
+        {"commonName": "firewall.example.test"},
+        {"organizationName": "Unclassified Certificate Authority"}) is None
+
+
+def test_internal_microsoft_ca_is_not_mistaken_for_public_microsoft_root():
+    assert classify_certificate_issuer(
+        {"commonName": "firewall.example.test"},
+        {"commonName": "Active Directory Enterprise CA"}) is False
 
 
 def test_custom_ca_extends_default_public_trust(monkeypatch, tmp_path):

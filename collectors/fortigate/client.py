@@ -6,7 +6,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-from collectors.tls import connector_tls_context, inspect_tls_peer
+from collectors.tls import (
+    classify_certificate_issuer,
+    connector_tls_context,
+    inspect_tls_peer,
+)
 from .models import (
     EndpointResult,
     FortiGateCredentialError,
@@ -70,17 +74,26 @@ class FortiGateClient:
             # to obtain optional leaf metadata must not mask it.
             evidence = {"host": parsed.hostname, "trust": "failed"}
         verification = self._verification_error(exc)
-        message = str(verification or exc).casefold()
+        verify_message = str(
+            getattr(verification, "verify_message", "")
+            or verification or exc)
+        message = verify_message.casefold()
         code = getattr(verification, "verify_code", None)
         issuer = str(evidence.get("issuer") or "").casefold()
         subject = str(evidence.get("subject") or "").casefold()
-        public_markers = (
-            "let's encrypt", "letsencrypt", "digicert", "sectigo",
-            "globalsign", "entrust", "godaddy", "amazon", "google trust",
-            "microsoft", "ssl.com", "zerossl")
-        private_markers = (
-            "internal", "private", "enterprise", "active directory",
-            "local ca", "root ca")
+        public_issuer = evidence.get("public_issuer")
+        if public_issuer is None:
+            public_issuer = classify_certificate_issuer(
+                evidence.get("subject_attributes") or {"display": subject},
+                evidence.get("issuer_attributes") or {"display": issuer})
+        evidence["public_issuer"] = public_issuer
+        evidence["verify_code"] = code
+        evidence["verify_message"] = verify_message
+        chain_failure = (
+            code in {2, 18, 19, 20, 21}
+            or "unable to get issuer" in message
+            or "unable to verify the first certificate" in message
+            or "issuer certificate" in message)
         if code == 10 or "expired" in message or evidence.get("expired"):
             return FortiGateCertificateExpiredError(
                 "The FortiGate TLS certificate has expired.",
@@ -94,26 +107,31 @@ class FortiGateClient:
                     "Use a hostname present in the certificate SANs or replace "
                     "the certificate with one covering this endpoint."),
                 evidence=evidence)
-        if code in {18, 19} or subject == issuer or any(
-                marker in issuer for marker in private_markers):
+        # Public issuer evidence takes precedence over generic self-signed or
+        # issuer lookup codes. Some OpenSSL builds report a lone public leaf as
+        # 18/19; that does not turn Let's Encrypt (or another public CA) private.
+        if (public_issuer is True and chain_failure
+                and evidence.get("hostname_match") is not False
+                and not evidence.get("expired")):
+            return FortiGateIncompleteChainError(
+                "The FortiGate is not presenting the required public intermediate certificate.",
+                remediation=(
+                    "Install the full certificate chain on the FortiGate. No CA "
+                    "import is required on the ITP host; do not import public "
+                    "CA roots or intermediates into this deployment."),
+                evidence=evidence)
+        if public_issuer is False and chain_failure:
             return FortiGatePrivateCAError(
                 "The FortiGate certificate is issued by an untrusted private CA.",
                 remediation=(
                     "Import the private CA for this deployment with: ./itp "
                     "credentials ca add <certificate.pem> --deployment <id>"),
                 evidence=evidence)
-        if code in {20, 21} and any(marker in issuer for marker in public_markers):
-            return FortiGateIncompleteChainError(
-                "The FortiGate is not presenting a complete public certificate chain.",
-                remediation=(
-                    "Install the full-chain certificate on the FortiGate. No CA "
-                    "import is required on the ITP host."),
-                evidence=evidence)
         return FortiGateTLSError(
             "The FortiGate certificate chain could not be verified inside the collector runtime.",
             remediation=(
-                "Verify the runtime public CA bundle and the certificate chain "
-                "presented by the FortiGate."),
+                "Inspect the certificate chain and runtime trust store. Do not "
+                "disable TLS verification."),
             evidence=evidence)
 
     @staticmethod
